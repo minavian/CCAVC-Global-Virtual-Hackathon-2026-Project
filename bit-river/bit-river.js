@@ -49,7 +49,11 @@ function mount(host, root, signal) {
           <span class="device-label tag-label">Passive tag</span>
           <span class="device-label reader-label">RFID reader <span class="connected" hidden>Connected</span></span>
           <div class="packets" role="group" aria-label="Simulated packets" hidden>
-            ${packets.map((p, i) => `<button type="button" class="packet" data-packet="${i}" aria-label="Inspect ${p.label} packet" aria-controls="reading" aria-keyshortcuts="Delete"><i aria-hidden="true"></i>${p.label}</button>`).join('')}
+            ${packets.map(p => `<button type="button" class="packet" aria-label="Inspect ${p.label} packet"
+                aria-pressed="false" aria-controls="reading" aria-keyshortcuts="Delete">
+              <span class="packet-face"><i aria-hidden="true"></i>${p.label}</span>
+              <span class="packet-value" aria-hidden="true">${p.value}</span>
+            </button>`).join('')}
           </div>
         </div>
         <aside class="readout" id="reading" tabindex="-1">
@@ -75,7 +79,7 @@ function mount(host, root, signal) {
   const motion = matchMedia('(prefers-reduced-motion: reduce)');
   const phases = [.22, .51, .80];
   let geometry, ink, bits, drawCard, audio, drag, replacement, returning;
-  let chapter = -1, selected = -1, missing = -1, hover = -1;
+  let chapter = -1, selected = -1, missing = -1;
   let progress = 0, clock = 0, lastTime, raf = 0;
   let visible = false, paused = false, sound = false, dirty = true, loadStarted = false;
   const on = (target, event, fn, options = {}) => target.addEventListener(event, fn, { ...options, signal });
@@ -135,9 +139,12 @@ function mount(host, root, signal) {
   function resetPackets() {
     clearTimeout(replacement);
     drag = returning = null;
-    missing = selected = hover = -1;
+    missing = selected = -1;
     phases.splice(0, 3, .22, .51, .80);
-    for (const node of nodes) node.classList.remove('missing', 'selected', 'held');
+    for (const node of nodes) {
+      node.classList.remove('missing', 'selected', 'held', 'peek');
+      node.setAttribute('aria-pressed', 'false');
+    }
     $('.announcement').textContent = '';
   }
   function setChapter(index) {
@@ -185,8 +192,9 @@ function mount(host, root, signal) {
     }
     const zoom = motion.matches ? [0, .45, 1, 1][chapter] : ease(.03, .69, progress);
     const push = motion.matches ? 0 : ease(.01, .22, progress) * (1 - ease(.26, .55, progress));
-    geometry = riverGeometry(w, h, zoom, host.clientWidth <= 680);
-    const { reader, tag, compact } = geometry;
+    const compact = w <= 520 || (w <= 680 && frame.clientHeight > 450);
+    geometry = riverGeometry(w, h, zoom, compact);
+    const { reader, tag } = geometry;
     const cardWidth = Math.min(w * (compact ? .62 : .39), h * (compact ? .99 : .95), 640) * (1 - .40 * zoom + push * .42);
     const readerWidth = Math.min(w * (compact ? .36 : .245), h * .56, 350) * (1 - .24 * zoom);
     for (const [name, center, width] of [['tag', tag, cardWidth], ['reader', reader, readerWidth]]) {
@@ -206,7 +214,7 @@ function mount(host, root, signal) {
     if (dirty) { dirty = false; layout(); }
     if (!geometry || !visible || document.hidden) { lastTime = undefined; return; }
     const focused = nodes.includes(root.activeElement) && root.activeElement.matches(':focus-visible');
-    const moving = !motion.matches && !paused && !drag && hover < 0 && !focused && progress > .32;
+    const moving = !motion.matches && !paused && !drag && !focused && progress > .32;
     const dt = lastTime === undefined ? 0 : Math.min((now - lastTime) / 1000, .05);
     lastTime = moving ? now : undefined;
     if (moving) clock += dt;
@@ -258,8 +266,9 @@ function mount(host, root, signal) {
       root.activeElement.matches(':focus-visible');
     if (restoreFocus) $('.readout').focus({ preventScroll: true });
     missing = i;
-    hover = selected = -1;
-    nodes[i].classList.remove('selected');
+    selected = -1;
+    nodes[i].classList.remove('selected', 'peek');
+    nodes[i].setAttribute('aria-pressed', 'false');
     nodes[i].classList.add('missing');
     showReading();
     $('.announcement').textContent = 'WARNING: Data packet missing! The tag is sending a replacement.';
@@ -279,18 +288,28 @@ function mount(host, root, signal) {
   }
   on($('.lift'), 'click', () => steal(selected));
   nodes.forEach((node, i) => {
+    let dragged = false;
     on(node, 'pointerenter', event => {
-      if (event.pointerType === 'mouse' && !drag) { hover = i; inspect(i); }
+      if (event.pointerType === 'mouse' && !drag && missing < 0) {
+        node.classList.add('peek');
+        inspect(i);
+      }
     });
-    on(node, 'pointerleave', () => { if (hover === i) hover = -1; wake(); });
+    on(node, 'pointerleave', () => node.classList.remove('peek'));
     on(node, 'focus', () => inspect(i));
     on(node, 'blur', wake);
-    on(node, 'click', () => inspect(i));
+    on(node, 'click', event => {
+      if (missing >= 0 || (dragged && event.detail)) return;
+      const pin = node.getAttribute('aria-pressed') === 'false';
+      nodes.forEach((packet, index) => packet.setAttribute('aria-pressed', String(pin && index === i)));
+      inspect(i);
+    });
     on(node, 'keydown', event => {
       if (event.key === 'Delete') { event.preventDefault(); steal(i); }
     });
     on(node, 'pointerdown', event => {
       if (!event.isPrimary || event.button !== 0 || missing >= 0) return;
+      dragged = false;
       inspect(i);
       drag = { i, id: event.pointerId, startX: event.clientX, startY: event.clientY, origin: positionPacket(i) };
       node.setPointerCapture(event.pointerId);
@@ -307,6 +326,7 @@ function mount(host, root, signal) {
       if (drag?.id !== event.pointerId || drag.i !== i) return;
       const { position } = drag;
       drag = null;
+      dragged = Boolean(position);
       node.classList.remove('held');
       if (event.type === 'pointerup' && position && !geometry.contains(position.x, position.y)) steal(i);
       wake();
