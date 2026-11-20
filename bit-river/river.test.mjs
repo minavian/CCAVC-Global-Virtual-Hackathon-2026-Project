@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { riverGeometry } from './river.js';
+import { replyFront, riverGeometry } from './river.js';
+
+test('the reply builds from the tag to the reader over the reveal chapters', () => {
+  assert.equal(replyFront(.22), 0);
+  assert.ok(replyFront(.37) > 0);
+  assert.ok(replyFront(.55) > replyFront(.37) && replyFront(.55) < 1);
+  assert.equal(replyFront(.77), 1);
+});
 
 test('the card, reader and draggable packets share the river at every zoom', () => {
   for (const [w, h, compact] of [[1440, 700, false], [390, 320, true], [320, 160, true]]) {

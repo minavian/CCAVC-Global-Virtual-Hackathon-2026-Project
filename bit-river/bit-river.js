@@ -1,4 +1,4 @@
-import { clamp, ease, riverGeometry, sizeCanvas, drawField, drawTraffic } from './river.js';
+import { clamp, ease, replyFront, riverGeometry, sizeCanvas, drawField, drawTraffic } from './river.js';
 
 const file = name => new URL(name, import.meta.url).href;
 const chapters = [
@@ -12,6 +12,8 @@ const packets = [
   { label: 'Auth', value: '8A 2F', meaning: 'A fictional authentication response.' },
   { label: 'Data', value: 'Gallery pass', meaning: 'An example entry stored on the tag.' }
 ];
+const sparks = Array.from({ length: 10 }, (_, i) =>
+  `<i style="--angle:${i * 36}deg;--delay:${i % 3 * 35}ms"></i>`).join('');
 const icons = {
   brand: '<path d="M2 19C10 19 8 5 16 5s6 18 16 18M2 14C9 14 9 2 16 2s9 16 16 16M2 24c10 0 8-14 14-14s5 18 16 18"/>',
   sound: '<path d="M4 9h3l5-4v14l-5-4H4z"/><path class="mute" d="m16 9 5 6m0-6-5 6"/><path class="waves" d="M15.5 8a6 6 0 0 1 0 8m2-11a10 10 0 0 1 0 14"/>',
@@ -51,6 +53,7 @@ function mount(host, root, signal) {
           <div class="packets" role="group" aria-label="Simulated packets" hidden>
             ${packets.map(p => `<button type="button" class="packet" aria-label="Inspect ${p.label} packet"
                 aria-pressed="false" aria-controls="reading" aria-keyshortcuts="Delete">
+              <span class="packet-sparks" aria-hidden="true">${sparks}</span>
               <span class="packet-face"><i aria-hidden="true"></i>${p.label}</span>
               <span class="packet-value" aria-hidden="true">${p.value}</span>
             </button>`).join('')}
@@ -66,7 +69,7 @@ function mount(host, root, signal) {
       </div>
       <footer class="navigation">
         <nav aria-label="Transmission chapters">
-          ${chapters.map((c, i) => `<button type="button" data-chapter="${i}"><span>0${i + 1}</span> ${c.name}</button>`).join('')}
+          ${chapters.map((c, i) => `<button type="button" data-chapter="${i}"><span>0${i + 1}</span><b>${c.name}</b></button>`).join('')}
         </nav>
         <button type="button" class="advance"></button>
       </footer>
@@ -116,7 +119,7 @@ function mount(host, root, signal) {
     $('.lift').hidden = !inspecting;
     $('.help').hidden = chapter !== 3;
     if (missing >= 0) {
-      $('.legend-name').textContent = 'Transmission interrupted';
+      $('.legend-name').textContent = 'Packet lost';
       $('.route').textContent = 'WARNING: Data packet missing! 🚨';
       $('.help').textContent = 'In this demo the tag sends a replacement.';
     } else if (inspecting) {
@@ -126,7 +129,7 @@ function mount(host, root, signal) {
     } else {
       $('.legend-name').textContent = ['Power field', 'Signal path', 'Reply signal', 'Packet inspector'][chapter];
       $('.route').textContent = ['Reader → tag', 'Across the air gap', 'Tag → reader', 'Select a packet'][chapter];
-      $('.help').textContent = 'Hover or tap to inspect. Drag a packet out to interrupt the stream.';
+      $('.help').textContent = 'Inspect a packet or drag it out of the river.';
     }
   }
   function inspect(index) {
@@ -163,7 +166,9 @@ function mount(host, root, signal) {
       else stop.removeAttribute('aria-current');
     });
     const last = index === chapters.length - 1;
-    $('.advance').innerHTML = (last ? 'Replay' : index === 0 ? 'Scroll to explore' : 'Next chapter') + icon(last ? 'replay' : 'down');
+    const label = last ? 'Replay' : index === 0 ? 'Scroll to explore' : 'Next chapter';
+    const shortLabel = last ? 'Replay' : index === 0 ? 'Explore' : 'Next';
+    $('.advance').innerHTML = `<span class="advance-full">${label}</span><span class="advance-short">${shortLabel}</span>` + icon(last ? 'replay' : 'down');
     showReading();
   }
   function go(index) {
@@ -182,17 +187,17 @@ function mount(host, root, signal) {
   function layout() {
     const travel = Math.max(1, host.offsetHeight - frame.offsetHeight);
     progress = clamp(-host.getBoundingClientRect().top / travel);
-    $('.pause').hidden = progress <= .32 || motion.matches;
+    $('.pause').hidden = !replyFront(progress) || motion.matches;
     setChapter(chapters.findLastIndex(c => progress >= c.at));
     const w = plot.clientWidth, h = plot.clientHeight;
     if (!w || !h) return;
-    if (!geometry || w !== geometry.w || h !== geometry.h) {
-      ink = sizeCanvas($('.field'), w, h);
-      bits = sizeCanvas($('.traffic'), w, h);
+    const compact = w <= 520 || (w <= 680 && frame.clientHeight > 450);
+    if (!geometry || w !== geometry.w || h !== geometry.h || compact !== geometry.compact) {
+      ink = sizeCanvas($('.field'), w, h, compact);
+      bits = sizeCanvas($('.traffic'), w, h, compact);
     }
     const zoom = motion.matches ? [0, .45, 1, 1][chapter] : ease(.03, .69, progress);
     const push = motion.matches ? 0 : ease(.01, .22, progress) * (1 - ease(.26, .55, progress));
-    const compact = w <= 520 || (w <= 680 && frame.clientHeight > 450);
     geometry = riverGeometry(w, h, zoom, compact);
     const { reader, tag } = geometry;
     const cardWidth = Math.min(w * (compact ? .62 : .39), h * (compact ? .99 : .95), 640) * (1 - .40 * zoom + push * .42);
@@ -203,18 +208,18 @@ function mount(host, root, signal) {
       plot.style.setProperty('--' + name + '-w', width + 'px');
     }
     if (drawCard) drawCard(zoom);
-    drawField(ink, geometry, zoom, chapter >= 2);
+    drawField(ink, geometry, zoom, progress);
   }
   function positionPacket(i) {
-    const t = returning?.i === i ? phases[i] * ease(0, 1.1, clock - returning.start) : phases[i];
+    const phase = geometry.compact ? .12 + phases[i] * .76 : phases[i];
+    const t = returning?.i === i ? phase * ease(0, 1.1, clock - returning.start) : phase;
     return geometry.point(t, (i - 1) * .88);
   }
   function tick(now) {
     raf = 0;
     if (dirty) { dirty = false; layout(); }
     if (!geometry || !visible || document.hidden) { lastTime = undefined; return; }
-    const focused = nodes.includes(root.activeElement) && root.activeElement.matches(':focus-visible');
-    const moving = !motion.matches && !paused && !drag && !focused && progress > .32;
+    const moving = !motion.matches && !paused && replyFront(progress) > 0;
     const dt = lastTime === undefined ? 0 : Math.min((now - lastTime) / 1000, .05);
     lastTime = moving ? now : undefined;
     if (moving) clock += dt;
@@ -297,7 +302,6 @@ function mount(host, root, signal) {
     });
     on(node, 'pointerleave', () => node.classList.remove('peek'));
     on(node, 'focus', () => inspect(i));
-    on(node, 'blur', wake);
     on(node, 'click', event => {
       if (missing >= 0 || (dragged && event.detail)) return;
       const pin = node.getAttribute('aria-pressed') === 'false';
@@ -308,7 +312,7 @@ function mount(host, root, signal) {
       if (event.key === 'Delete') { event.preventDefault(); steal(i); }
     });
     on(node, 'pointerdown', event => {
-      if (!event.isPrimary || event.button !== 0 || missing >= 0) return;
+      if (!event.isPrimary || event.button !== 0 || missing >= 0 || drag) return;
       dragged = false;
       inspect(i);
       drag = { i, id: event.pointerId, startX: event.clientX, startY: event.clientY, origin: positionPacket(i) };
