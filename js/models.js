@@ -25,7 +25,8 @@
     'Key fob': ['rfid-chip', 'antenna-coil', 'protective-encapsulation', 'key-mat-pins-and-guide-mount',
       'indicator-light-pipe-foot', 'inner-guide-rib-1', 'inner-stop-1', 'inner-guide-rib-2', 'inner-stop-2',
       'pcb-alignment-bosses-and-indexing-pins', 'molded-support-ribs-and-hollow-standoffs', 'dielectric-cushion-strips'],
-    'Phone': ['nfc-antenna', 'wireless-charging-coil', 'silicon-carbon-battery', 'mainboard-and-midframe'],
+    'Phone': ['nfc-antenna', 'wireless-charging-coil', 'silicon-carbon-battery', 'mainboard-and-midframe',
+      'rear-camera-modules'],
     'Contactless card': ['perimeter-and-coupling-antenna', 'die-pocket-floor', 'module-substrate', 'die-underfill',
       'silicon-die', 'module-antenna']
   };
@@ -106,6 +107,7 @@
   // it turns around and its screen comes on by itself, waking from the always-on display
   // into the lock screen. A tap flips it between screen and cameras.
   function phone(T, shell, model, reduceMotion) {
+    rebuildIsland(T, shell);
     refineBack(T, shell);
     const screen = window.RFIDLockScreen.create(T, reduceMotion, { width: .0752, height: .1612, radius: .0086 });
     const display = shell.getObjectByName('oled-display-assembly') || shell;
@@ -129,6 +131,138 @@
     };
   }
 
+  // The camera island, laid out like the real phone: four lenses in a diamond (round at top
+  // and bottom, cushion-shaped housings left and right), a bold Hasselblad-style H in the
+  // middle, a white sensor with a dark pair beside it, a small sensor low right, and fine
+  // markings around the rim. The model keeps its own black glass and silver ring; its
+  // lenses, dot and printed layer are replaced.
+  const ISLAND = { x: 0, y: .04221, r: .0288, face: -.01016 };   // model units (meters)
+  function rebuildIsland(T, shell) {
+    const cover = shell.getObjectByName('glacier-white-rear-cover');
+    if (!cover) return;
+    const size = new T.Vector3(), center = new T.Vector3(), drop = [];
+    let lensMaterial = null;
+    cover.traverse(part => {
+      if (!part.isMesh) return;
+      const box = part.geometry.boundingBox || (part.geometry.computeBoundingBox(), part.geometry.boundingBox);
+      box.getSize(size); box.getCenter(center);
+      const inside = Math.hypot(center.x - ISLAND.x, center.y - ISLAND.y) < ISLAND.r
+        && size.x < 2.1 * ISLAND.r && size.y < 2.1 * ISLAND.r;
+      if (!inside) return;
+      const printed = part.material.isMeshBasicMaterial;          // the old H and markings
+      const raised = box.min.z < ISLAND.face - .00012;            // lens housings and glass
+      const dot = size.x < .003 && size.y < .003;                 // the old sensor dot
+      if (raised && part.material.map && !printed) lensMaterial = part.material;
+      if (printed || raised || dot) drop.push(part);
+    });
+    if (!drop.length) return;
+    for (const part of drop) { part.removeFromParent(); part.geometry.dispose(); }
+
+    // Built facing the viewer (+z out of the island, x to the right as seen from behind),
+    // then turned around to face out of the phone's back.
+    const R = ISLAND.r, island = new T.Group();
+    island.rotation.y = Math.PI;
+    island.position.set(ISLAND.x, ISLAND.y, ISLAND.face);
+    cover.add(island);
+    const housing = new T.MeshStandardMaterial({ color: 0x232427, metalness: .75, roughness: .32 });
+    const rim = new T.MeshStandardMaterial({ color: 0x5f6268, metalness: .9, roughness: .3 });
+    const glass = lensMaterial || new T.MeshPhysicalMaterial({ color: 0x0b0d14, roughness: .1, clearcoat: 1 });
+    const depth = .00045;
+    const add = (geometry, material, x, y, z) => {
+      const mesh = new T.Mesh(geometry, material);
+      mesh.position.set(x * R, y * R, z);
+      island.add(mesh);
+      return mesh;
+    };
+    function lens([x, y], shape, outer, inner) {
+      if (shape === 'round') {
+        const barrel = add(new T.CylinderGeometry(outer * R, outer * R * 1.02, depth, 56), housing, x, y, depth / 2);
+        barrel.rotation.x = Math.PI / 2;
+      } else {
+        const a = outer * R, r = a * .44, s = new T.Shape();
+        s.moveTo(-a + r, -a); s.lineTo(a - r, -a); s.quadraticCurveTo(a, -a, a, -a + r);
+        s.lineTo(a, a - r); s.quadraticCurveTo(a, a, a - r, a); s.lineTo(-a + r, a);
+        s.quadraticCurveTo(-a, a, -a, a - r); s.lineTo(-a, -a + r); s.quadraticCurveTo(-a, -a, -a + r, -a);
+        const bevel = .00008;
+        add(new T.ExtrudeGeometry(s, { depth: depth - 2 * bevel, bevelEnabled: true, bevelSize: bevel, bevelThickness: bevel,
+          bevelSegments: 3, curveSegments: 10 }), housing, x, y, bevel);
+      }
+      add(new T.CircleGeometry(inner * R, 56), glass, x, y, depth + .00002);
+      add(new T.TorusGeometry(inner * R + .00016, .00014, 10, 64), rim, x, y, depth);   // a lens barrel edge
+    }
+    lens([0, .66], 'round', .25, .19);       // top
+    lens([0, -.66], 'round', .23, .17);      // bottom
+    lens([-.66, 0], 'cushion', .22, .165);   // left
+    lens([.66, 0], 'cushion', .22, .165);    // right
+
+    const face = new T.Mesh(new T.CircleGeometry(R * .99, 72), new T.MeshStandardMaterial({
+      map: islandFace(T), transparent: true, depthWrite: false, metalness: .55, roughness: .35,
+      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4
+    }));
+    face.position.z = .00002;
+    island.add(face);
+  }
+
+  // The printed side of the island, drawn as seen from behind the phone: the H, the
+  // sensors and the rim markings. The canvas spans the island's diameter.
+  function islandFace(T) {
+    const size = 1024, half = size / 2, canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    const c = canvas.getContext('2d');
+    const at = (x, y) => [half + x * half, half - y * half];   // island units → canvas
+
+    // The H: two slanted stems and a heavy crossbar that reaches past the left stem.
+    const h = 140, slant = .2, stem = 32, gap = 50;
+    const left = -(stem + gap / 2), right = gap / 2;
+    const quad = (x0, x1, y0, y1) => {                           // a slanted bar from y0 (top) to y1
+      c.moveTo(x0 + slant * -y0, y0); c.lineTo(x1 + slant * -y0, y0);
+      c.lineTo(x1 + slant * -y1, y1); c.lineTo(x0 + slant * -y1, y1); c.closePath();
+    };
+    c.save();
+    c.translate(...at(-.01, .01));
+    const metal = c.createLinearGradient(0, -h / 2, 0, h / 2);
+    metal.addColorStop(0, '#f4f5f6'); metal.addColorStop(.5, '#c9cbce'); metal.addColorStop(1, '#a3a6aa');
+    c.fillStyle = metal;
+    c.beginPath();
+    quad(left, left + stem, -h / 2, h / 2);
+    quad(right, right + stem, -h / 2, h / 2);
+    quad(left - 18, right + stem, -13, 13);
+    c.fill();
+    c.restore();
+
+    // Sensors: a white one with a dark pair beside it, and a small dark one low right.
+    const [wx, wy] = at(.45, .47);
+    const white = c.createRadialGradient(wx - 4, wy - 4, 2, wx, wy, 19);
+    white.addColorStop(0, '#ffffff'); white.addColorStop(.7, '#e9e9e7'); white.addColorStop(1, '#9d9e9f');
+    c.fillStyle = white; c.beginPath(); c.arc(wx, wy, 18, 0, Math.PI * 2); c.fill();
+    for (const dy of [-13, 13]) {
+      c.beginPath(); c.arc(wx + 40, wy + dy, 9, 0, Math.PI * 2);
+      c.fillStyle = '#17191c'; c.fill(); c.strokeStyle = '#3d4045'; c.lineWidth = 2; c.stroke();
+    }
+    const [sx, sy] = at(.45, -.45);
+    c.beginPath(); c.arc(sx, sy, 15, 0, Math.PI * 2);
+    c.fillStyle = '#121417'; c.fill(); c.strokeStyle = '#41454b'; c.lineWidth = 2.5; c.stroke();
+    c.beginPath(); c.arc(sx - 4, sy - 4, 3, 0, Math.PI * 2); c.fillStyle = 'rgba(160, 175, 200, .5)'; c.fill();
+
+    // Fine markings around the rim.
+    c.fillStyle = '#7b7e83';
+    c.font = '500 26px "Inter Tight", "Helvetica Neue", Arial, sans-serif';
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    if ('letterSpacing' in c) c.letterSpacing = '3px';
+    for (const [text, angle] of [['F1.5-3.5', 135], ['LUMO', 45], ['14-230mm', 225], ['CAMERA SYSTEM', 315]]) {
+      const a = angle * Math.PI / 180, [x, y] = at(Math.cos(a) * .86, Math.sin(a) * .86);
+      c.save(); c.translate(x, y);
+      c.rotate(-a + (Math.sin(a) > 0 ? Math.PI / 2 : -Math.PI / 2));   // follow the rim, reading upright
+      c.fillText(text, 0, 0);
+      c.restore();
+    }
+
+    const map = new T.CanvasTexture(canvas);
+    map.colorSpace = T.SRGBColorSpace;
+    map.anisotropy = 4;
+    return map;
+  }
+
   // The phone's white back loses its detail under the studio light, and its flash is a plain
   // cream disc that reads as an empty hole. Give both something to show.
   function refineBack(T, shell) {
@@ -140,7 +274,7 @@
       const geometry = part.geometry;
       if (!geometry.boundingBox) geometry.computeBoundingBox();
       geometry.boundingBox.getSize(size); geometry.boundingBox.getCenter(center);
-      if (part.material.map && size.x > .05) deepenCover(T, part);
+      if (part.material.map && size.y > .1) deepenCover(T, part);   // the whole back, not the island
       // The flash sits in the corner opposite the camera island: a lens and its surround.
       else if (size.x < .01 && size.y < .01 && center.x > .02 && center.y > .06) flash.push(part);
     });
