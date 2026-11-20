@@ -107,6 +107,7 @@
   // into the lock screen. A tap flips it between screen and cameras.
   function phone(T, shell, model, reduceMotion) {
     refineBack(T, shell);
+    redrawH(T, shell);
     const screen = window.RFIDLockScreen.create(T, reduceMotion, { width: .0752, height: .1612, radius: .0086 });
     const display = shell.getObjectByName('oled-display-assembly') || shell;
     screen.mesh.position.z = display === shell ? .0077 : .00103;   // just above the cover glass
@@ -129,6 +130,60 @@
     };
   }
 
+  // The H on the camera island, traced from a 1500 px product photo of the real phone:
+  // photo pixel coordinates, with the island's black glass centred at (459.31, 365.09)
+  // and 265.3 px in radius. Two strokes leaning right and a crossbar that reaches past
+  // the left stroke into the right one.
+  const H_PHOTO = {
+    centre: [459.31, 365.09], radius: 265.3,
+    outline: [
+      [448.27, 335], [464.36, 335], [455.42, 361], [473.98, 361], [481.54, 335], [496.68, 335],
+      [478.81, 391], [465.26, 391], [471.95, 368], [453.01, 368], [445.10, 391], [430.73, 391],
+      [437.93, 368], [425.20, 368], [425.20, 361], [440.13, 361]
+    ],
+    // Its colour in the photo, from the top of the strokes to the bottom.
+    shade: [[0, '#616368'], [.25, '#525359'], [.5, '#4e4f56'], [.75, '#3e3f47'], [1, '#3b3c42']]
+  };
+  const ISLAND_GLASS = { y: .04221, r: .0288 };   // the island's black glass, in model units
+
+  // Replace the model's H with the traced one. The island's printed layer shows its
+  // texture upside down (not mirrored), so the H is drawn flipped to read upright.
+  function redrawH(T, shell) {
+    const cover = shell.getObjectByName('glacier-white-rear-cover');
+    let print = null;
+    cover?.traverse(part => { if (part.isMesh && part.material.isMeshBasicMaterial && part.material.map) print = part; });
+    const image = print?.material.map.image;
+    if (!image?.width) return;
+    const box = print.geometry.boundingBox || (print.geometry.computeBoundingBox(), print.geometry.boundingBox);
+    const scale = image.width / (box.max.x - box.min.x);                  // texture pixels per meter
+    const cx = image.width / 2, cy = (ISLAND_GLASS.y - box.min.y) * scale, R = ISLAND_GLASS.r * scale;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = image.width; canvas.height = image.height;
+    const c = canvas.getContext('2d');
+    c.drawImage(image, 0, 0);
+    c.clearRect(cx - .17 * R, cy - .14 * R, .34 * R, .28 * R);            // the model's own H
+
+    // Photo pixels → island units (y down as seen) → texture pixels (flipped vertically).
+    const [px, py] = H_PHOTO.centre, k = R / H_PHOTO.radius;
+    const toTexture = ([x, y]) => [cx + (x - px) * k, cy - (y - py) * k];
+    const tops = H_PHOTO.outline.map(([, y]) => y), top = Math.min(...tops), bottom = Math.max(...tops);
+    const [, gy0] = toTexture([0, top]), [, gy1] = toTexture([0, bottom]);
+    const shade = c.createLinearGradient(0, gy0, 0, gy1);
+    for (const [at, colour] of H_PHOTO.shade) shade.addColorStop(at, colour);
+    c.fillStyle = shade;
+    c.beginPath();
+    H_PHOTO.outline.forEach((point, i) => { const [x, y] = toTexture(point); i ? c.lineTo(x, y) : c.moveTo(x, y); });
+    c.closePath();
+    c.fill();
+
+    const original = print.material.map, map = new T.CanvasTexture(canvas);
+    for (const key of ['flipY', 'colorSpace', 'wrapS', 'wrapT', 'channel', 'magFilter', 'minFilter']) map[key] = original[key];
+    map.anisotropy = 8;
+    print.material = print.material.clone();
+    print.material.map = map;
+  }
+
   // The phone's white back loses its detail under the studio light, and its flash is a plain
   // cream disc that reads as an empty hole. Give both something to show.
   function refineBack(T, shell) {
@@ -140,7 +195,7 @@
       const geometry = part.geometry;
       if (!geometry.boundingBox) geometry.computeBoundingBox();
       geometry.boundingBox.getSize(size); geometry.boundingBox.getCenter(center);
-      if (part.material.map && size.x > .05) deepenCover(T, part);
+      if (part.material.map && size.y > .1) deepenCover(T, part);   // the whole back, not the island's print
       // The flash sits in the corner opposite the camera island: a lens and its surround.
       else if (size.x < .01 && size.y < .01 && center.x > .02 && center.y > .06) flash.push(part);
     });
