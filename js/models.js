@@ -141,8 +141,9 @@
       [478.81, 391], [465.26, 391], [471.95, 368], [453.01, 368], [445.10, 391], [430.73, 391],
       [437.93, 368], [425.20, 368], [425.20, 361], [440.13, 361]
     ],
-    // Its colour in the photo, from the top of the strokes to the bottom.
-    shade: [[0, '#616368'], [.25, '#525359'], [.5, '#4e4f56'], [.75, '#3e3f47'], [1, '#3b3c42']]
+    // Its shading in the photo, from the top of the strokes to the bottom, brightened so it
+    // reads as polished metal against the black glass.
+    shade: [[0, '#c4c6cb'], [.25, '#adafb5'], [.5, '#a2a4ab'], [.75, '#8d8f97'], [1, '#83858c']]
   };
   const ISLAND_GLASS = { y: .04221, r: .0288 };   // the island's black glass, in model units
 
