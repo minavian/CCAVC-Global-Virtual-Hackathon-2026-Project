@@ -35,6 +35,7 @@ Written by <who> · <date> · Issue #<n>
 - [3D rendering pipeline](#3d-rendering-pipeline-jslandingjs-createscene)
 - [The three 3D objects](#the-three-3d-objects-jsmodelsjs-models)
 - [The phone's lock screen](#the-phones-lock-screen-jslockscreenjs)
+- [Bit River transmission](#bit-river-transmission-bit-river)
 
 ---
 
@@ -141,3 +142,41 @@ Written by Claude (Claude Code) for Mina Vian · 2026-11-20 · Issue #5
 
 **Likely questions.**
 - Q: Is the lock screen copied from a real phone? A: It is drawn in code and modelled on a ColorOS lock screen; no personal details are shown.
+
+---
+
+### Bit River transmission (`bit-river/`)
+Written by OpenAI Codex for Akris Luno · 2026-11-21 · Issue #12
+
+**What it does.** Scroll from the team's contactless card into a river of bits. The reader's field supplies energy to the card. The chip varies the load on its antenna, and the reader detects those changes as a reply. The river, packet labels and replacement trick are illustrations. [NXP antenna guide, section 2.1](https://www.nxp.com/docs/en/application-note/AN12549.pdf)
+
+**How it works.**
+
+- `index.html` is the standalone demo. The reusable part is the `<rfid-bit-river>` element in `bit-river.js`. Its `layout()` function measures how far the visitor has scrolled through the element. That position sets the chapter and camera view. The buttons move to positions on the same scroll track.
+- `loadCard()` in `card.js` opens the existing `models/contactless-card.glb`. It tilts the complete card as the view moves toward the air gap. The still in `assets/card.webp` is rendered from that model and covers loading time or loss of 3D support. The reader image is a studio render of a small tabletop reader made for this demo.
+- `riverGeometry()` in `river.js` maps a position along the river and a lane across it to a point on the screen. Zero is the card and one is the reader. The strands, digits and packet buttons follow the same path. The chapter stays still when the visitor requests reduced motion. Its animation loop sleeps outside the viewport.
+- `inspect()` shows fictional sample values. `steal()` temporarily removes a packet dropped outside the stream, announces the loss and sends a replacement after 1.5 seconds. Scroll back to clear the interaction. Sound starts only after the visitor enables it.
+
+**Why it is built this way.** The scene owns its markup, styles and input handlers inside a shadow root. That keeps the landing carousel and the river independent. Both use the project's existing Three.js import map and static file server.
+
+**How to combine it with the landing page.** Place these lines after the existing hero or story section, outside its fixed or clipped stage.
+
+```html
+<rfid-bit-river></rfid-bit-river>
+<script type="module" src="./bit-river/bit-river.js"></script>
+```
+
+The component uses normal document scrolling. For the current single-screen hero, these host styles enable the handoff and preserve vertical swipes over the carousel. A landing page that already scrolls can use the element directly.
+
+```css
+html { overflow-y: auto; }
+body { height: auto; overflow: visible; }
+.stage { touch-action: pan-y; }
+```
+
+**How to check it.** Serve the repository root and open `/bit-river/`. Scroll through the reveal, green connection indicator and moving packets. Enable sound before Connect for the chime. Hover, tap or Tab to a packet to inspect it. Drag it away, use **Lift this packet**, or press Delete while it has focus. The warning should clear and the packet should return. Replay takes you back to the card. Run `node --test bit-river/river.test.mjs` with Node 22.7 or newer to check the river endpoints and drag boundaries.
+
+**Likely questions.**
+
+- Q: Does the demo read a real card? A: Every value comes from the small `packets` array. It runs entirely in the browser.
+- Q: Does RFID send a replacement when someone takes a packet? A: That sequence is a game mechanic. Real card communication uses protocol-specific commands and responses.
