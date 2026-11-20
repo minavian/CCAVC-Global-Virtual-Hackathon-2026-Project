@@ -94,7 +94,7 @@ body::after {
   pointer-events: none;
 }
 
-.stage-light, .shadows, .posters, .stage canvas {
+.stage-light, .shadows, .stage canvas {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -120,18 +120,6 @@ body::after {
   background: radial-gradient(closest-side, rgba(36, 30, 22, .3), rgba(36, 30, 22, .1) 55%, rgba(36, 30, 22, 0));
   opacity: 0;
   transform-origin: 50% 50%;
-}
-
-/* Static renders of the models: shown until the 3D scene draws, and kept if it can't. */
-.posters img {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 100px;
-  height: 100px;
-  object-fit: contain;
-  transform-origin: 50% 50%;
-  opacity: 0;   /* landing.js places and reveals them */
 }
 
 .stage canvas { display: block; }

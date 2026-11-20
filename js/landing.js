@@ -36,7 +36,6 @@
   const DRIFT_BACK_AFTER = 6;    // idle seconds before the carousel returns to the key fob
   const DRIFT_DURATION = 1.7;
   const NAMES = ['Key fob', 'Phone', 'Contactless card'];
-  const MODEL_SPAN = [2.16, 2.87, 2.39];     // model units that fill one pose size
   const BASE_PITCH = [.16, -.09, .11];
   const BASE_YAW = [-.42, .38, -.24];
   const BASE_ROLL = [-.31, -.19, .14];
@@ -47,10 +46,9 @@
   const $ = id => document.getElementById(id);
   const stage = $('stage'), headline = $('headline'), subline = $('subline');
   const copyBox = document.querySelector('.copy');
-  const posterLayer = $('posters'), announcer = $('focus-name');
+  const announcer = $('focus-name');
   const words = [...headline.querySelectorAll('.word')];
   const dots = [...subline.querySelectorAll('.dots span')];
-  const posters = [...posterLayer.children];
   const shadows = [...document.querySelectorAll('.shadows i')];
   const light = document.querySelector('.stage-light');
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
@@ -243,8 +241,7 @@
 
   // Reduced motion: objects swap places with a quick fade instead of orbiting.
   function blink() {
-    const layer = gl ? gl.canvas : posterLayer;
-    layer.animate([{ opacity: .25 }, { opacity: 1 }], { duration: 320, easing: 'ease-out' });
+    gl?.canvas.animate([{ opacity: .25 }, { opacity: 1 }], { duration: 320, easing: 'ease-out' });
   }
 
   // ---------- Opening ----------
@@ -407,26 +404,17 @@
     computePoses();
     const fade = entrance;
     light.style.opacity = fade;
+    // Shadows wait for the models, which stream in as GLB files.
+    const shown = fade * (gl?.shown ?? 0);
     shadows.forEach((el, i) => {
       const p = poses[i], [sw, drop] = SHADOW[i];
       const lift = 1 - (p.float || 0) * .05;
       const width = p.size * sw * lift, height = p.size * .075 * lift;
       const y = p.baseY + p.size * drop;
       el.style.transform = `translate(${(p.x - 50).toFixed(1)}px, ${(y - 50).toFixed(1)}px) scale(${(width / 100).toFixed(3)}, ${(height / 100).toFixed(3)})`;
-      el.style.opacity = (fade * (1 - p.depth) ** 2 * .85).toFixed(3);
+      el.style.opacity = (shown * (1 - p.depth) ** 2 * .85).toFixed(3);
     });
-    if (gl?.ready) gl.draw(dt, fade);
-    else drawPosters(fade);
-  }
-
-  function drawPosters(fade) {
-    posters.forEach((img, i) => {
-      const p = poses[i], s = p.size * 1.25;
-      img.style.transform = `translate(${(p.x - 50).toFixed(1)}px, ${(p.y - 50).toFixed(1)}px) rotate(${(-p.roll).toFixed(3)}rad) scale(${(s / 100).toFixed(3)})`;
-      img.style.opacity = (fade * (1 - .45 * p.depth)).toFixed(3);
-      img.style.filter = `blur(${(p.depth * 3).toFixed(1)}px) grayscale(${(p.depth * .8).toFixed(2)})`;
-      img.style.zIndex = String(Math.round((1 - p.depth) * 100));
-    });
+    gl?.draw(dt, fade);
   }
 
   function frame(now) {
@@ -540,20 +528,22 @@
   // ---------- 3D ----------
   async function loadScene() {
     try {
-      const [T, { RoundedBoxGeometry }, { toCreasedNormals }] = await Promise.all([
+      const [T, { GLTFLoader }, { RoomEnvironment }] = await Promise.all([
         import('three'),
-        import('three/addons/geometries/RoundedBoxGeometry.js'),
-        import('three/addons/utils/BufferGeometryUtils.js')
+        import('three/addons/loaders/GLTFLoader.js'),
+        import('three/addons/environments/RoomEnvironment.js')
       ]);
-      gl = createScene(T, { RoundedBoxGeometry, toCreasedNormals });
+      const objects = await window.RFIDModels.load(T, GLTFLoader, reduced);
+      gl = createScene(T, objects, RoomEnvironment);
       if (layout) gl.resize(layout.w, layout.h);
+      if (intro === null && focus === 0 && !flight) arrive(0);
     } catch (error) {
       gl = null;
-      console.warn('The 3D scene could not start; showing still renders instead.', error);
+      console.warn('The 3D models could not load; showing the words only.', error);
     }
   }
 
-  function createScene(T, addons) {
+  function createScene(T, objects, RoomEnvironment) {
     const canvas = document.createElement('canvas');
     canvas.setAttribute('aria-hidden', 'true');
     canvas.style.opacity = '0';
@@ -561,13 +551,17 @@
     const renderer = new T.WebGLRenderer({ canvas, alpha: true, antialias: false, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(devicePixelRatio || 1, coarse ? 1.75 : 2));
     renderer.setClearColor(0x000000, 0);
-    const objects = window.RFIDModels.build(T, addons, renderer, reduced);
 
     const scene = new T.Scene();
     const eye = new T.OrthographicCamera(0, 1, 1, 0, 1, 2000);
     eye.position.z = 1000;
-    scene.add(new T.HemisphereLight(0xfffcf6, 0x928f86, 1.7));
-    for (const [x, y, z, power] of [[-4, 6, 5, 2.9], [4, 3, -3, 2.6], [2, -3, 4, .7]]) {
+    // A soft studio for the models' PBR materials to reflect, plus a key and fill light.
+    const studio = new T.PMREMGenerator(renderer);
+    scene.environment = studio.fromScene(new RoomEnvironment(), .04).texture;
+    scene.environmentIntensity = .9;
+    studio.dispose();
+    scene.add(new T.HemisphereLight(0xfffcf6, 0x928f86, .9));
+    for (const [x, y, z, power] of [[-4, 6, 5, 1.8], [4, 3, -3, 1.4], [2, -3, 4, .4]]) {
       const lamp = new T.DirectionalLight(0xfffaf0, power);
       lamp.position.set(x, y, z);
       scene.add(lamp);
@@ -662,7 +656,7 @@
     const quad = new T.Mesh(new T.PlaneGeometry(2, 2), composite);
     screen.add(quad);
 
-    let wide = 0, high = 0, drawn = false;
+    let wide = 0, high = 0, shown = 0;   // shown fades the models in once they have loaded
     function resize(w, h) {
       if (!w || !h || (w === wide && h === high)) return;
       wide = w; high = h;
@@ -680,12 +674,13 @@
       objects.forEach((o, i) => {
         const p = poses[i], g = stands[i], sway = calm ? 0 : Math.sin(elapsed * .27 + i * 1.3);
         g.position.set(p.x, high - p.y, -325 * p.depth);
-        g.scale.setScalar(p.size / MODEL_SPAN[i]);
+        g.scale.setScalar(p.size / o.span);
         g.rotation.set(BASE_PITCH[i] + sway * .044 + p.leanY * .1,
           BASE_YAW[i] + p.side * .49 + twist * TAU / 3 + sway * .115 + p.leanX * .15, p.roll, 'YXZ');
         o.action.update(clock, dt, o.model);
       });
-      canvas.style.opacity = fade;
+      shown = Math.min(1, shown + dt / .6);
+      canvas.style.opacity = fade * easeOutCubic(shown);
       renderer.setRenderTarget(target);
       renderer.render(scene, eye);
 
@@ -713,7 +708,6 @@
         renderer.setRenderTarget(null);
         renderer.render(screen, flat);
       }
-      if (!drawn) { drawn = true; posterLayer.hidden = true; }
     }
 
     // Model actions start a little later than asked, so a press lands after the motion.
@@ -728,13 +722,13 @@
 
     canvas.addEventListener('webglcontextlost', e => {
       e.preventDefault();
-      gl = null; posterLayer.hidden = false; canvas.remove();
+      gl = null; canvas.remove();
     });
-    stage.insertBefore(canvas, posterLayer.nextSibling);
+    stage.insertBefore(canvas, announcer);
 
     return {
       canvas,
-      ready: true,
+      get shown() { return shown; },
       resize,
       draw(dt, fade) { actionClock(); baseDraw(dt, fade); },
       activate,
@@ -774,14 +768,13 @@
     started = true;
     wake();
     await scene;
-    if (!playing && gl) arrive(0);
   }
 
   begin();
 
   if (params.has('debug')) {
     window.__hero = {
-      get state() { return { intro, phase, velocity, twist, focus, entrance, docked, flight: !!flight, gl: !!gl?.ready }; },
+      get state() { return { intro, phase, velocity, twist, focus, entrance, docked, flight: !!flight, gl: !!gl, shown: gl?.shown ?? 0 }; },
       skip: () => finishIntro(true)
     };
   }
