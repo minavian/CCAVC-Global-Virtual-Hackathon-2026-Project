@@ -594,7 +594,8 @@
         uniform vec2 pixel;
         uniform vec3 paper;
         uniform float trail;
-        float blurAt(vec2 uv) { return smoothstep(.521, .651, texture2D(depthMap, uv).x); }
+        // Only objects that have receded blur; the front one stays sharp through its whole depth.
+        float blurAt(vec2 uv) { return smoothstep(.535, .64, texture2D(depthMap, uv).x); }
         vec3 fit(vec3 v) {
           vec3 a = v * (v + .0245786) - .000090537;
           vec3 b = v * (.983729 * v + .4329510) + .238081;
@@ -612,33 +613,38 @@
           vec4 result = vec4(0.);
           bool empty = false;
           if (center.a < .002) {
-            vec2 x = vec2(2. * pixel.x, 0.), y = vec2(0., 2. * pixel.y);
-            float around = texture2D(picture, vUv + x).a + texture2D(picture, vUv - x).a
-                         + texture2D(picture, vUv + y).a + texture2D(picture, vUv - y).a;
+            // Skip empty paper quickly, but look as far as the blur reaches.
+            float around = 0.;
+            for (int i = 0; i < 8; i++) {
+              float a = float(i) * .78539816;
+              around += texture2D(picture, vUv + vec2(cos(a), sin(a)) * pixel * 3.).a;
+            }
             empty = around < .002;
           }
           if (!empty) {
             if (blur > .012) {
+              // Three rings of eight taps, each ring turned a little to fill the gaps.
               color = center * 4.;
-              for (int i = 0; i < 8; i++) {
-                float a = float(i) * .78539816;
-                vec2 off = vec2(cos(a), sin(a)) * pixel * blur;
-                vec4 nearTap = texture2D(picture, vUv + off);
-                vec4 farTap = texture2D(picture, vUv + off * 2.);
-                // A sharp foreground edge must not spread into clear background pixels.
-                if (center.a < .01) {
-                  nearTap *= smoothstep(.015, .2, blurAt(vUv + off));
-                  farTap *= smoothstep(.015, .2, blurAt(vUv + off * 2.));
+              float total = 4.;
+              for (int ring = 1; ring <= 3; ring++) {
+                float r = float(ring), weight = 1.9 - .4 * r;
+                for (int i = 0; i < 8; i++) {
+                  float a = float(i) * .78539816 + r * .26;
+                  vec2 uv = vUv + vec2(cos(a), sin(a)) * pixel * blur * r;
+                  vec4 tap = texture2D(picture, uv);
+                  // A sharp foreground edge must not spread into clear background pixels.
+                  if (center.a < .01) tap *= smoothstep(.015, .2, blurAt(uv));
+                  color += weight * tap;
+                  total += weight;
                 }
-                color += 1.5 * nearTap + farTap;
               }
-              color /= 24.;
+              color /= total;
             }
             if (color.a >= .002) {
               vec3 rgb = srgb(aces(color.rgb / color.a));
               float luma = dot(rgb, vec3(.2126, .7152, .0722));
               rgb = mix(rgb, vec3(luma), .8 * blur);
-              rgb = mix(rgb, paper, .36 * blur);
+              rgb = mix(rgb, paper, .2 * blur);
               result = vec4(rgb * color.a, color.a);
             }
           }
@@ -666,7 +672,7 @@
       const ratio = renderer.getPixelRatio(), pw = Math.round(w * ratio), ph = Math.round(h * ratio);
       target.setSize(pw, ph);
       for (const h2 of history) h2.setSize(pw, ph);
-      composite.uniforms.pixel.value.set(1.9 / w, 1.9 / h);
+      composite.uniforms.pixel.value.set(3.4 / w, 3.4 / h);   // blur radius per ring, in CSS pixels
       trailing = false;
     }
 
