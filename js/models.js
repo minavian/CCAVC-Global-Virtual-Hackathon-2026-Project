@@ -19,6 +19,16 @@
     ['Phone', 'models/oppo-find-x9-ultra.glb', phone],
     ['Contactless card', 'models/contactless-card.glb', card]
   ];
+  // Parts sealed inside each object. The landing page never opens the objects, so these
+  // are dropped at load: about half the triangles and draw calls, none of them visible.
+  const SEALED = {
+    'Key fob': ['rfid-chip', 'antenna-coil', 'protective-encapsulation', 'key-mat-pins-and-guide-mount',
+      'indicator-light-pipe-foot', 'inner-guide-rib-1', 'inner-stop-1', 'inner-guide-rib-2', 'inner-stop-2',
+      'pcb-alignment-bosses-and-indexing-pins', 'molded-support-ribs-and-hollow-standoffs', 'dielectric-cushion-strips'],
+    'Phone': ['nfc-antenna', 'wireless-charging-coil', 'silicon-carbon-battery', 'mainboard-and-midframe'],
+    'Contactless card': ['perimeter-and-coupling-antenna', 'die-pocket-floor', 'module-substrate', 'die-underfill',
+      'silicon-die', 'module-antenna']
+  };
   const clamp01 = v => Math.max(0, Math.min(1, v));
 
   function load(T, GLTFLoader, reduceMotion) {
@@ -26,11 +36,18 @@
     return Promise.all(FILES.map(async ([name, url, behave]) => {
       const gltf = await loader.loadAsync(url);
       const model = new T.Group(), shell = gltf.scene;
+      for (const part of SEALED[name].map(n => shell.getObjectByName(n)).filter(Boolean)) {
+        part.removeFromParent();
+        part.traverse(piece => piece.geometry?.dispose());
+      }
       liftDecals(T, shell);
       const box = new T.Box3().setFromObject(shell);
       shell.position.sub(box.getCenter(new T.Vector3()));
       const size = box.getSize(new T.Vector3());
       model.add(shell);
+      // Nothing inside the model moves on its own except what the behaviours below animate,
+      // so skip recomputing those transforms every frame.
+      shell.traverse(part => { part.updateMatrix(); part.matrixAutoUpdate = false; });
       return { name, model, span: Math.max(size.x, size.y), action: behave(T, shell, model, reduceMotion) };
     }));
   }
@@ -65,6 +82,7 @@
     const key = shell.getObjectByName('lock-button');
     const lampMesh = firstMesh(shell.getObjectByName('indicator-light-guide'));
     const rest = key ? key.position.z : 0, travel = .0009;   // about 1 mm of key travel
+    if (key) key.matrixAutoUpdate = true;                     // the one part that moves
     let lamp = null, base = null;
     if (lampMesh?.material?.emissive) {
       lamp = lampMesh.material = lampMesh.material.clone();
@@ -104,7 +122,8 @@
         if (t >= wakeAt) { wakeAt = Infinity; screen.wake(t); }
         const target = facing ? 0 : Math.PI;
         object.rotation.y = reduceMotion.matches ? target : T.MathUtils.damp(object.rotation.y, target, 4.2, dt);
-        screen.update(t, dt);
+        // The screen only needs drawing while it faces the viewer.
+        screen.update(t, dt, Math.cos(object.rotation.y) > -.2);
       }
     };
   }
