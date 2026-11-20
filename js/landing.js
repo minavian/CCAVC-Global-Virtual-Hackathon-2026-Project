@@ -36,7 +36,6 @@
   const DRIFT_BACK_AFTER = 6;    // idle seconds before the carousel returns to the key fob
   const DRIFT_DURATION = 1.7;
   const NAMES = ['Key fob', 'Phone', 'Contactless card'];
-  const MODEL_SPAN = [2.16, 2.87, 2.39];     // model units that fill one pose size
   const BASE_PITCH = [.16, -.09, .11];
   const BASE_YAW = [-.42, .38, -.24];
   const BASE_ROLL = [-.31, -.19, .14];
@@ -47,10 +46,9 @@
   const $ = id => document.getElementById(id);
   const stage = $('stage'), headline = $('headline'), subline = $('subline');
   const copyBox = document.querySelector('.copy');
-  const posterLayer = $('posters'), announcer = $('focus-name');
+  const announcer = $('focus-name');
   const words = [...headline.querySelectorAll('.word')];
   const dots = [...subline.querySelectorAll('.dots span')];
-  const posters = [...posterLayer.children];
   const shadows = [...document.querySelectorAll('.shadows i')];
   const light = document.querySelector('.stage-light');
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
@@ -128,9 +126,10 @@
       ? { x: 0, y: copy.bottom - rect.top + h * .02, w, h: 0 }
       : { x: 0, y: 0, w: Math.max(1, copy.left - rect.left), h };
     if (narrow) region.h = Math.max(1, h - region.y);
+    // The front object is large and the other two tuck in close behind it.
     const r = narrow
-      ? { cx: .5, cy: .5, ax: .4, ay: .24, dz: .02, size: Math.min(region.w * .47, region.h * .42) }
-      : { cx: .5, cy: .47, ax: .41, ay: .37, dz: .02, size: Math.min(region.w * .5, region.h * .46) };
+      ? { cx: .5, cy: .5, ax: .3, ay: .2, dz: .02, size: Math.min(region.w * .75, region.h * .6) }
+      : { cx: .5, cy: .48, ax: .29, ay: .27, dz: .02, size: Math.min(region.w * .7, region.h * .62) };
     layout = {
       w, h, size: r.size,
       cx: (region.x + region.w * r.cx) / w, cy: (region.y + region.h * r.cy) / h,
@@ -144,8 +143,13 @@
     const reach = Math.sin(TAU / 3);
     const dx = 2 * w * layout.ax * reach, dy = -2 * h * layout.ay * reach, span = Math.hypot(dx, dy) || 1;
     layout.dirX = dx / span; layout.dirY = dy / span; layout.slotSpan = span / 2;
+    // The 3D canvas only covers where the objects can reach while they orbit, not the page.
+    const cx = layout.cx * w, cy = layout.cy * h, s = layout.size;
+    const halfW = Math.max(layout.ax * w + .45 * s, .6 * s), halfH = Math.max(layout.ay * h + .45 * s, .6 * s) + layout.dz * h;
+    const left = Math.max(0, Math.floor(cx - halfW)), top = Math.max(0, Math.floor(cy - halfH));
+    layout.box = { x: left, y: top, w: Math.min(w, Math.ceil(cx + halfW)) - left, h: Math.min(h, Math.ceil(cy + halfH)) - top };
     measureHeadline();
-    gl?.resize(w, h);
+    gl?.resize(layout.box);
   }
 
   function measureHeadline() {
@@ -228,9 +232,7 @@
   // An object settled at the front.
   function arrive(i) {
     if (i === 0) landedAt = clock;
-    if (!gl) return;
-    if (i === 0) gl.activate(0, clock + .12);
-    if (i === 1) gl.activate(1, clock + .15);
+    gl?.arrive(i, clock + .12);
   }
 
   function updateFocus() {
@@ -243,8 +245,7 @@
 
   // Reduced motion: objects swap places with a quick fade instead of orbiting.
   function blink() {
-    const layer = gl ? gl.canvas : posterLayer;
-    layer.animate([{ opacity: .25 }, { opacity: 1 }], { duration: 320, easing: 'ease-out' });
+    gl?.canvas.animate([{ opacity: .25 }, { opacity: 1 }], { duration: 320, easing: 'ease-out' });
   }
 
   // ---------- Opening ----------
@@ -407,36 +408,29 @@
     computePoses();
     const fade = entrance;
     light.style.opacity = fade;
+    // Shadows wait for the models, which stream in as GLB files.
+    const shown = fade * (gl?.shown ?? 0);
     shadows.forEach((el, i) => {
       const p = poses[i], [sw, drop] = SHADOW[i];
       const lift = 1 - (p.float || 0) * .05;
       const width = p.size * sw * lift, height = p.size * .075 * lift;
       const y = p.baseY + p.size * drop;
       el.style.transform = `translate(${(p.x - 50).toFixed(1)}px, ${(y - 50).toFixed(1)}px) scale(${(width / 100).toFixed(3)}, ${(height / 100).toFixed(3)})`;
-      el.style.opacity = (fade * (1 - p.depth) ** 2 * .85).toFixed(3);
+      el.style.opacity = (shown * (1 - p.depth) ** 2 * .85).toFixed(3);
     });
-    if (gl?.ready) gl.draw(dt, fade);
-    else drawPosters(fade);
-  }
-
-  function drawPosters(fade) {
-    posters.forEach((img, i) => {
-      const p = poses[i], s = p.size * 1.25;
-      img.style.transform = `translate(${(p.x - 50).toFixed(1)}px, ${(p.y - 50).toFixed(1)}px) rotate(${(-p.roll).toFixed(3)}rad) scale(${(s / 100).toFixed(3)})`;
-      img.style.opacity = (fade * (1 - .45 * p.depth)).toFixed(3);
-      img.style.filter = `blur(${(p.depth * 3).toFixed(1)}px) grayscale(${(p.depth * .8).toFixed(2)})`;
-      img.style.zIndex = String(Math.round((1 - p.depth) * 100));
-    });
+    gl?.draw(dt, fade);
   }
 
   function frame(now) {
     frameId = 0;
     if (document.hidden) { lastNow = null; return; }
+    const raw = lastNow === null ? 0 : Math.max(0, (now - lastNow) / 1000);
     // Clamp the step so a hitch slows the motion down instead of skipping it.
-    const dt = lastNow === null ? 0 : Math.min(.1, Math.max(0, (now - lastNow) / 1000));
+    const dt = Math.min(.1, raw);
     lastNow = now;
     step(dt);
     render(dt);
+    gl?.tune(raw);
     frameId = requestAnimationFrame(frame);
   }
 
@@ -505,7 +499,8 @@
     const hit = hitTest(e.clientX, e.clientY);
     if (hit === -1) travel(Math.round(phase), .7);
     else if (hit !== focus) bringToFront(hit);
-    else { travel(Math.round(phase), .5); gl?.activate(hit, clock); }
+    else if (flight || Math.abs(phase - Math.round(phase)) > .02) travel(Math.round(phase), .5);
+    else gl?.activate(hit, clock);
   }
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) stage.addEventListener(type, release);
   addEventListener('pointerup', e => { if (e.pointerId === skipPointer) skipPointer = null; });
@@ -540,45 +535,62 @@
   // ---------- 3D ----------
   async function loadScene() {
     try {
-      const [T, { RoundedBoxGeometry }, { toCreasedNormals }] = await Promise.all([
+      const [T, { GLTFLoader }, { RoomEnvironment }] = await Promise.all([
         import('three'),
-        import('three/addons/geometries/RoundedBoxGeometry.js'),
-        import('three/addons/utils/BufferGeometryUtils.js')
+        import('three/addons/loaders/GLTFLoader.js'),
+        import('three/addons/environments/RoomEnvironment.js')
       ]);
-      gl = createScene(T, { RoundedBoxGeometry, toCreasedNormals });
-      if (layout) gl.resize(layout.w, layout.h);
+      const objects = await window.RFIDModels.load(T, GLTFLoader, reduced);
+      const scene = createScene(T, objects, RoomEnvironment);
+      if (layout) scene.resize(layout.box);
+      await scene.warm();
+      gl = scene;
+      if (intro === null && focus === 0 && !flight) arrive(0);
     } catch (error) {
       gl = null;
-      console.warn('The 3D scene could not start; showing still renders instead.', error);
+      console.warn('The 3D models could not load; showing the words only.', error);
     }
   }
 
-  function createScene(T, addons) {
+  function createScene(T, objects, RoomEnvironment) {
     const canvas = document.createElement('canvas');
     canvas.setAttribute('aria-hidden', 'true');
     canvas.style.opacity = '0';
     const coarse = matchMedia('(pointer: coarse)').matches;
     const renderer = new T.WebGLRenderer({ canvas, alpha: true, antialias: false, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, coarse ? 1.75 : 2));
+    // Resolution adapts to the device: it starts at the screen's own density (capped) and
+    // steps down while frames run slow, then back up once they are comfortably fast.
+    const maxRatio = Math.min(devicePixelRatio || 1, coarse ? 1.75 : 2), minRatio = Math.max(.75, maxRatio * .5);
+    let ratio = maxRatio;
+    renderer.setPixelRatio(ratio);
     renderer.setClearColor(0x000000, 0);
-    const objects = window.RFIDModels.build(T, addons, renderer, reduced);
 
     const scene = new T.Scene();
     const eye = new T.OrthographicCamera(0, 1, 1, 0, 1, 2000);
     eye.position.z = 1000;
-    scene.add(new T.HemisphereLight(0xfffcf6, 0x928f86, 1.7));
-    for (const [x, y, z, power] of [[-4, 6, 5, 2.9], [4, 3, -3, 2.6], [2, -3, 4, .7]]) {
+    // A soft studio for the models' PBR materials to reflect, plus a key and a fill light
+    // (every extra light costs each pixel of every physical material).
+    const studio = new T.PMREMGenerator(renderer);
+    scene.environment = studio.fromScene(new RoomEnvironment(), .04).texture;
+    scene.environmentIntensity = .95;
+    studio.dispose();
+    scene.add(new T.HemisphereLight(0xfffcf6, 0x928f86, .95));
+    for (const [x, y, z, power] of [[-4, 6, 5, 1.85], [4, 3, -3, 1.4]]) {
       const lamp = new T.DirectionalLight(0xfffaf0, power);
       lamp.position.set(x, y, z);
       scene.add(lamp);
     }
     const stands = objects.map(o => { const g = new T.Group(); g.add(o.model); scene.add(g); return g; });
+    if (params.has('debug')) window.__three = { scene, renderer };
+    renderer.info.autoReset = false;
+    const stats = { calls: 0, triangles: 0 };
 
     const floatColor = renderer.extensions.has('EXT_color_buffer_float');
     const target = new T.WebGLRenderTarget(1, 1, {
       type: floatColor ? T.HalfFloatType : T.UnsignedByteType,
       depthTexture: new T.DepthTexture(1, 1, T.UnsignedIntType),
-      samples: Math.min(coarse ? 2 : 4, renderer.capabilities.maxSamples)
+      // Dense screens hide jagged edges by themselves, so they get lighter antialiasing.
+      samples: Math.min(coarse || maxRatio >= 1.75 ? 2 : 4, renderer.capabilities.maxSamples)
     });
     const history = [0, 1].map(() => new T.WebGLRenderTarget(1, 1, { depthBuffer: false }));
     let current = 0, trailing = false;
@@ -589,7 +601,7 @@
       depthTest: false, depthWrite: false, blending: T.NoBlending, toneMapped: false,
       uniforms: {
         picture: { value: target.texture }, depthMap: { value: target.depthTexture },
-        previous: { value: history[1].texture }, trail: { value: 0 },
+        previous: { value: history[1].texture }, trail: { value: 0 }, exposure: { value: .82 },
         pixel: { value: new T.Vector2() }, paper: { value: new T.Vector3(245 / 255, 242 / 255, 236 / 255) }
       },
       vertexShader: `varying vec2 vUv;
@@ -599,7 +611,9 @@
         uniform vec2 pixel;
         uniform vec3 paper;
         uniform float trail;
-        float blurAt(vec2 uv) { return smoothstep(.521, .651, texture2D(depthMap, uv).x); }
+        uniform float exposure;
+        // Only objects that have receded blur; the front one stays sharp through its whole depth.
+        float blurAt(vec2 uv) { return smoothstep(.535, .64, texture2D(depthMap, uv).x); }
         vec3 fit(vec3 v) {
           vec3 a = v * (v + .0245786) - .000090537;
           vec3 b = v * (.983729 * v + .4329510) + .238081;
@@ -612,38 +626,41 @@
         }
         vec3 srgb(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(1. / 2.4)) - .055, step(.0031308, c)); }
         void main() {
-          float blur = blurAt(vUv);
           vec4 center = texture2D(picture, vUv), color = center;
           vec4 result = vec4(0.);
           bool empty = false;
           if (center.a < .002) {
-            vec2 x = vec2(2. * pixel.x, 0.), y = vec2(0., 2. * pixel.y);
-            float around = texture2D(picture, vUv + x).a + texture2D(picture, vUv - x).a
-                         + texture2D(picture, vUv + y).a + texture2D(picture, vUv - y).a;
-            empty = around < .002;
+            // Most of the canvas is bare paper: four taps as far out as the blur reaches
+            // are enough to skip it.
+            vec2 d = pixel * 2.6;
+            empty = texture2D(picture, vUv + d).a + texture2D(picture, vUv - d).a
+                  + texture2D(picture, vUv + vec2(d.x, -d.y)).a + texture2D(picture, vUv + vec2(-d.x, d.y)).a < .002;
           }
+          float blur = empty ? 0. : blurAt(vUv);
           if (!empty) {
             if (blur > .012) {
+              // Three rings of eight taps, each ring turned a little to fill the gaps.
               color = center * 4.;
-              for (int i = 0; i < 8; i++) {
-                float a = float(i) * .78539816;
-                vec2 off = vec2(cos(a), sin(a)) * pixel * blur;
-                vec4 nearTap = texture2D(picture, vUv + off);
-                vec4 farTap = texture2D(picture, vUv + off * 2.);
-                // A sharp foreground edge must not spread into clear background pixels.
-                if (center.a < .01) {
-                  nearTap *= smoothstep(.015, .2, blurAt(vUv + off));
-                  farTap *= smoothstep(.015, .2, blurAt(vUv + off * 2.));
+              float total = 4.;
+              for (int ring = 1; ring <= 3; ring++) {
+                float r = float(ring), weight = 1.9 - .4 * r;
+                for (int i = 0; i < 8; i++) {
+                  float a = float(i) * .78539816 + r * .26;
+                  vec2 uv = vUv + vec2(cos(a), sin(a)) * pixel * blur * r;
+                  vec4 tap = texture2D(picture, uv);
+                  // A sharp foreground edge must not spread into clear background pixels.
+                  if (center.a < .01) tap *= smoothstep(.015, .2, blurAt(uv));
+                  color += weight * tap;
+                  total += weight;
                 }
-                color += 1.5 * nearTap + farTap;
               }
-              color /= 24.;
+              color /= total;
             }
             if (color.a >= .002) {
-              vec3 rgb = srgb(aces(color.rgb / color.a));
+              vec3 rgb = srgb(aces(color.rgb / color.a * exposure));
               float luma = dot(rgb, vec3(.2126, .7152, .0722));
               rgb = mix(rgb, vec3(luma), .8 * blur);
-              rgb = mix(rgb, paper, .36 * blur);
+              rgb = mix(rgb, paper, .2 * blur);
               result = vec4(rgb * color.a, color.a);
             }
           }
@@ -662,32 +679,72 @@
     const quad = new T.Mesh(new T.PlaneGeometry(2, 2), composite);
     screen.add(quad);
 
-    let wide = 0, high = 0, drawn = false;
-    function resize(w, h) {
-      if (!w || !h || (w === wide && h === high)) return;
-      wide = w; high = h;
-      eye.right = w; eye.top = h; eye.updateProjectionMatrix();
-      renderer.setSize(w, h, false);
-      const ratio = renderer.getPixelRatio(), pw = Math.round(w * ratio), ph = Math.round(h * ratio);
+    // The canvas covers only `box` (in stage pixels); poses are shifted into it.
+    let wide = 0, high = 0, left = 0, top = 0, shown = 0;   // shown fades the models in once loaded
+    function resize(box, force = false) {
+      if (!box || !box.w || !box.h) return;
+      if (!force && box.w === wide && box.h === high && box.x === left && box.y === top) return;
+      left = box.x; top = box.y;
+      Object.assign(canvas.style, { left: left + 'px', top: top + 'px', width: box.w + 'px', height: box.h + 'px' });
+      if (!force && box.w === wide && box.h === high) return;
+      wide = box.w; high = box.h;
+      eye.right = wide; eye.top = high; eye.updateProjectionMatrix();
+      renderer.setSize(wide, high, false);
+      const pw = Math.round(wide * ratio), ph = Math.round(high * ratio);
       target.setSize(pw, ph);
       for (const h2 of history) h2.setSize(pw, ph);
-      composite.uniforms.pixel.value.set(1.9 / w, 1.9 / h);
+      composite.uniforms.pixel.value.set(3.4 / wide, 3.4 / high);   // blur radius per ring, in CSS pixels
       trailing = false;
+    }
+
+    // Compile every shader and upload every texture before the first frame, including the
+    // phone's screen layers that start hidden, so nothing stalls mid-animation later.
+    async function warm() {
+      const hidden = [];
+      scene.traverse(o => { if (!o.visible) { hidden.push(o); o.visible = true; } });
+      renderer.setRenderTarget(target);
+      try { await renderer.compileAsync(scene, eye); } catch { renderer.compile(scene, eye); }
+      scene.traverse(o => {
+        for (const material of [].concat(o.material || [])) {
+          for (const value of Object.values(material)) if (value?.isTexture) renderer.initTexture(value);
+        }
+      });
+      for (const o of hidden) o.visible = false;
+      renderer.setRenderTarget(null);
+      renderer.compile(screen, flat);
+    }
+
+    // Watch real frame times (not throttled background ones) and trade resolution for speed.
+    let slow = 0, fast = 0, settle = 2;
+    function tune(dt) {
+      if (settle > 0) { settle -= dt; return; }              // let shaders compile first
+      if (!(dt > 0) || dt > .1) return;
+      if (dt > 1 / 45) { slow += dt; fast = 0; } else { slow = Math.max(0, slow - dt * .5); fast += dt < 1 / 56 ? dt : -fast; }
+      let next = ratio;
+      if (slow > .8 && ratio > minRatio) next = Math.max(minRatio, ratio - .25);
+      else if (fast > 6 && ratio < maxRatio) next = Math.min(maxRatio, ratio + .25);
+      if (next === ratio) return;
+      ratio = next; slow = fast = 0; settle = .5;
+      renderer.setPixelRatio(ratio);
+      resize({ x: left, y: top, w: wide, h: high }, true);
     }
 
     function draw(dt, fade) {
       if (!wide || !high) return;
       objects.forEach((o, i) => {
         const p = poses[i], g = stands[i], sway = calm ? 0 : Math.sin(elapsed * .27 + i * 1.3);
-        g.position.set(p.x, high - p.y, -325 * p.depth);
-        g.scale.setScalar(p.size / MODEL_SPAN[i]);
+        g.position.set(p.x - left, high - (p.y - top), -325 * p.depth);
+        g.scale.setScalar(p.size / o.span);
         g.rotation.set(BASE_PITCH[i] + sway * .044 + p.leanY * .1,
           BASE_YAW[i] + p.side * .49 + twist * TAU / 3 + sway * .115 + p.leanX * .15, p.roll, 'YXZ');
         o.action.update(clock, dt, o.model);
       });
-      canvas.style.opacity = fade;
+      shown = Math.min(1, shown + dt / .6);
+      canvas.style.opacity = fade * easeOutCubic(shown);
       renderer.setRenderTarget(target);
+      renderer.info.reset();
       renderer.render(scene, eye);
+      stats.calls = renderer.info.render.calls; stats.triangles = renderer.info.render.triangles;
 
       // A soft motion trail, only while the objects spin in.
       const spinning = intro !== null || flight?.link;
@@ -713,31 +770,50 @@
         renderer.setRenderTarget(null);
         renderer.render(screen, flat);
       }
-      if (!drawn) { drawn = true; posterLayer.hidden = true; }
     }
 
     // Model actions start a little later than asked, so a press lands after the motion.
     const pending = [];
-    function activate(i, at) { pending.push({ i, at }); }
+    const queue = (i, at, kind) => pending.push({ i, at, kind });
     const actionClock = () => {
       for (let k = pending.length - 1; k >= 0; k--) {
-        if (clock >= pending[k].at) { objects[pending[k].i].action.activate(clock); pending.splice(k, 1); }
+        const { i, at, kind } = pending[k];
+        if (clock >= at) { objects[i].action[kind]?.(clock); pending.splice(k, 1); }
       }
     };
     const baseDraw = draw;
 
     canvas.addEventListener('webglcontextlost', e => {
       e.preventDefault();
-      gl = null; posterLayer.hidden = false; canvas.remove();
+      gl = null; canvas.remove();
     });
-    stage.insertBefore(canvas, posterLayer.nextSibling);
+    stage.insertBefore(canvas, announcer);
 
     return {
       canvas,
-      ready: true,
+      get shown() { return shown; },
+      get ratio() { return ratio; },
+      tune,
+      warm,
+      // Dev aid (?debug): average milliseconds per fully finished frame, independent of
+      // requestAnimationFrame throttling, plus the scene's draw calls and triangles.
+      bench(frames = 60) {
+        const context = renderer.getContext(), pixel = new Uint8Array(4);
+        context.readPixels(0, 0, 1, 1, context.RGBA, context.UNSIGNED_BYTE, pixel);
+        const start = performance.now();
+        for (let k = 0; k < frames; k++) {
+          clock += 1 / 60;
+          actionClock();
+          baseDraw(1 / 60, 1);
+          context.readPixels(0, 0, 1, 1, context.RGBA, context.UNSIGNED_BYTE, pixel);
+        }
+        const ms = (performance.now() - start) / frames;
+        return { ms: +ms.toFixed(2), ...stats, ratio: renderer.getPixelRatio(), size: [wide, high] };
+      },
       resize,
       draw(dt, fade) { actionClock(); baseDraw(dt, fade); },
-      activate,
+      arrive(i, at) { queue(i, at, 'arrive'); },
+      activate(i, at) { queue(i, at, 'activate'); },
       present(i) { objects[i].action.present?.(); }
     };
   }
@@ -774,15 +850,16 @@
     started = true;
     wake();
     await scene;
-    if (!playing && gl) arrive(0);
   }
 
   begin();
 
   if (params.has('debug')) {
     window.__hero = {
-      get state() { return { intro, phase, velocity, twist, focus, entrance, docked, flight: !!flight, gl: !!gl?.ready }; },
-      skip: () => finishIntro(true)
+      get state() { return { intro, phase, velocity, twist, focus, entrance, docked, flight: !!flight, gl: !!gl, shown: gl?.shown ?? 0 }; },
+      skip: () => finishIntro(true),
+      bring: i => bringToFront(i, .4),
+      bench: frames => gl?.bench(frames)
     };
   }
 })();

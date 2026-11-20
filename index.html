@@ -20,7 +20,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;800&display=block">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Inter+Tight:wght@400;500;800&display=block">
   <link rel="stylesheet" href="styles.css">
   <script type="importmap">
     {"imports": {
@@ -28,6 +28,7 @@
       "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
     }}
   </script>
+  <script src="js/lockscreen.js" defer></script>
   <script src="js/models.js" defer></script>
   <script src="js/landing.js" defer></script>
 </head>
@@ -37,11 +38,6 @@
       aria-label="Three everyday things that use RFID: a key fob, a phone and a contactless card. Use the left and right arrow keys to turn them.">
       <div class="stage-light" aria-hidden="true"></div>
       <div class="shadows" aria-hidden="true"><i></i><i></i><i></i></div>
-      <div class="posters" id="posters" aria-hidden="true">
-        <img src="assets/posters/key-fob.webp" alt="" draggable="false">
-        <img src="assets/posters/phone.webp" alt="" draggable="false">
-        <img src="assets/posters/card.webp" alt="" draggable="false">
-      </div>
       <p class="visually-hidden" id="focus-name" aria-live="polite"></p>
     </div>
     <div class="copy">
