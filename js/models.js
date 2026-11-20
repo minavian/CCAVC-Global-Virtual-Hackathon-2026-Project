@@ -3,9 +3,12 @@
  * Each GLB is centered, in meters, Y up, front facing +Z, with named parts.
  *
  * window.RFIDModels.load(THREE, GLTFLoader, reduceMotion) resolves to three objects
- * in carousel order, each { name, model, span, action }:
+ * in carousel order, each { name, model, span, open, part, action }:
  *   model  a THREE.Group to place in a scene
  *   span   the model's larger side (width or height), for scaling it to a pixel size
+ *   open   open(e, push) opens the model (0 = closed, 1 = exploded) with its own animation;
+ *          push (0–1) moves the outer shells further out of the way
+ *   part   part(name) finds a named part, for example to label it
  *   action { arrive?(t), activate(t), present?(), update(t, dt, model) }
  *     arrive   the object has settled at the front
  *     activate the visitor tapped it (or pressed Enter) while it is at the front
@@ -19,8 +22,8 @@
     ['Phone', 'models/oppo-find-x9-ultra.glb', phone],
     ['Contactless card', 'models/contactless-card.glb', card]
   ];
-  // Parts sealed inside each object. The landing page never opens the objects, so these
-  // are dropped at load: about half the triangles and draw calls, none of them visible.
+  // Parts sealed inside each object. They stay hidden (about half the triangles and draw
+  // calls, none of them visible) until the object is opened with `open(e)`.
   const SEALED = {
     'Key fob': ['rfid-chip', 'antenna-coil', 'protective-encapsulation', 'key-mat-pins-and-guide-mount',
       'indicator-light-pipe-foot', 'inner-guide-rib-1', 'inner-stop-1', 'inner-guide-rib-2', 'inner-stop-2',
@@ -29,6 +32,10 @@
     'Contactless card': ['perimeter-and-coupling-antenna', 'die-pocket-floor', 'module-substrate', 'die-underfill',
       'silicon-die', 'module-antenna']
   };
+  // Where `open(e, push)` sends the outer shells (meters, at push = 1): the front shell
+  // lifts up and out of frame, the rear one drops down, leaving the inside on its own.
+  // (The front shell also moves right, so it never crosses the story's words on the left.)
+  const PUSH = { 'front-housing': [.05, .16, .03], 'rear-housing': [-.01, -.16, -.02] };
   const clamp01 = v => Math.max(0, Math.min(1, v));
 
   function load(T, GLTFLoader, reduceMotion) {
@@ -36,10 +43,8 @@
     return Promise.all(FILES.map(async ([name, url, behave]) => {
       const gltf = await loader.loadAsync(url);
       const model = new T.Group(), shell = gltf.scene;
-      for (const part of SEALED[name].map(n => shell.getObjectByName(n)).filter(Boolean)) {
-        part.removeFromParent();
-        part.traverse(piece => piece.geometry?.dispose());
-      }
+      const sealed = SEALED[name].map(n => shell.getObjectByName(n)).filter(Boolean);
+      for (const part of sealed) part.visible = false;
       liftDecals(T, shell);
       const box = new T.Box3().setFromObject(shell);
       shell.position.sub(box.getCenter(new T.Vector3()));
@@ -48,8 +53,42 @@
       // Nothing inside the model moves on its own except what the behaviours below animate,
       // so skip recomputing those transforms every frame.
       shell.traverse(part => { part.updateMatrix(); part.matrixAutoUpdate = false; });
-      return { name, model, span: Math.max(size.x, size.y), action: behave(T, shell, model, reduceMotion) };
+      const open = opener(gltf.animations.find(clip => clip.name === 'Explode'), shell, sealed);
+      return { name, model, span: Math.max(size.x, size.y), open, part: n => shell.getObjectByName(n),
+        action: behave(T, shell, model, reduceMotion) };
     }));
+  }
+
+  // `open(e, push)` poses the model's own "Explode" animation at e (0 = closed, 1 = fully
+  // open), sampled directly from its keyframes so scrubbing backwards and forwards is exact.
+  // `push` (0–1) carries the outer shells further out, clearing the frame for the inside.
+  // The sealed parts appear as soon as it starts to open and hide again once it closes.
+  function opener(clip, shell, sealed) {
+    const tracks = (clip?.tracks || []).map(track => {
+      const dot = track.name.lastIndexOf('.');
+      const node = shell.getObjectByName(track.name.slice(0, dot));
+      return node && { node, property: track.name.slice(dot + 1), sample: track.createInterpolant(),
+        away: PUSH[node.name] };
+    }).filter(Boolean);
+    let current = '';
+    return (e, push = 0) => {
+      e = clamp01(e); push = clamp01(push);
+      const key = e + '|' + push;
+      if (key === current || !tracks.length) return;
+      current = key;
+      const t = e * clip.duration;
+      for (const { node, property, sample, away } of tracks) {
+        const value = sample.evaluate(t);
+        if (property === 'position') {
+          node.position.fromArray(value);
+          if (away) node.position.set(node.position.x + away[0] * push, node.position.y + away[1] * push, node.position.z + away[2] * push);
+        }
+        else if (property === 'quaternion') node.quaternion.fromArray(value);
+        else if (property === 'scale') node.scale.fromArray(value);
+        node.updateMatrix();
+      }
+      for (const part of sealed) part.visible = e > 0;
+    };
   }
 
   // Printed artwork and contact pads are flat sheets lying exactly on another surface

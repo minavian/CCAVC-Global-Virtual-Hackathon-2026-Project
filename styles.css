@@ -1,4 +1,5 @@
-/* Landing hero. One screen: three objects, one headline, one line. */
+/* Landing page. The hero and the 3D stage are pinned like a video frame; scrolling plays
+   the story on top of them (js/story.js). */
 
 :root {
   --paper: #f5f2ec;
@@ -10,13 +11,16 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
-html, body { height: 100%; }
+/* The page scrolls (that is how the story plays), but without a visible scrollbar. */
+html {
+  background: var(--paper);
+  scrollbar-width: none;
+}
 
-html { background: var(--paper); overflow: hidden; }
+html::-webkit-scrollbar { display: none; }
 
 body {
   margin: 0;
-  overflow: hidden;
   overscroll-behavior: none;
   background: var(--paper);
   color: var(--ink);
@@ -54,10 +58,13 @@ body::after {
 
 /* Layout: objects on the left, words on the right. */
 .hero {
-  position: relative;
+  position: fixed;
+  top: 0;
+  left: 0;
   z-index: 1;
+  width: 100%;
   height: 100vh;
-  height: 100svh;
+  height: 100lvh;              /* stable while a phone's toolbar shows and hides */
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
   grid-template-areas: ". copy";
@@ -74,12 +81,15 @@ body::after {
   overflow: hidden;
   outline: none;
   cursor: grab;
-  touch-action: none;
+  touch-action: pan-y;         /* sideways drags turn the objects, vertical swipes scroll */
   user-select: none;
   -webkit-user-select: none;
 }
 
 .stage.is-dragging { cursor: grabbing; }
+
+/* Once the story plays, the stage is only a picture: scrolling works everywhere. */
+.stage.is-story { pointer-events: none; cursor: auto; }
 
 .stage:focus-visible::after {
   content: "";
@@ -173,6 +183,211 @@ html[data-intro] #headline:not([data-docked]) {
 html[data-intro] #subline,
 html[data-intro] .stage-light { opacity: 0; }
 
+/* ---------- The story ---------- */
+
+/* Gives the page its scroll length: the hero screen plus the story's screens. */
+.track { height: calc((var(--story-length, 4.9) + 1) * 100vh); }
+
+.story {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.story-title {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: clamp(64px, 15vh, 180px);
+  padding: 0 var(--gutter);
+  text-align: center;
+  visibility: hidden;
+}
+
+.story-title h2 {
+  margin: 0;
+  font-weight: 800;
+  font-size: clamp(40px, min(6vw, 11vh), 124px);
+  line-height: .95;
+  letter-spacing: -.042em;
+  word-spacing: .06em;
+}
+
+.story-title p {
+  max-width: 36ch;
+  margin: clamp(12px, 2.2vh, 26px) auto 0;
+  font-size: clamp(16px, min(1.5vw, 2.7vh), 25px);
+  line-height: 1.4;
+  letter-spacing: -.012em;
+  color: var(--muted);
+}
+
+/* The words on the left while the key fob is on the right. Beats share one grid cell
+   and cross-fade. */
+.story-panel {
+  position: absolute;
+  left: var(--gutter);
+  top: 50%;
+  width: min(38vw, 560px);
+  display: grid;
+  transform: translateY(-50%);
+}
+
+.beat {
+  grid-area: 1 / 1;
+  align-self: center;
+  visibility: hidden;
+}
+
+.kicker {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.beat h3 {
+  margin: .45em 0 .42em;
+  font-weight: 800;
+  font-size: clamp(34px, min(4vw, 7.6vh), 78px);
+  line-height: .98;
+  letter-spacing: -.036em;
+}
+
+.beat p:last-child {
+  margin: 0;
+  max-width: 31ch;
+  font-size: clamp(17px, min(1.45vw, 2.6vh), 23px);
+  line-height: 1.45;
+  letter-spacing: -.01em;
+  color: var(--muted);
+}
+
+/* Labels on the open key fob, joined to their parts by hairlines. */
+.callout-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  stroke: var(--ink);
+  stroke-width: 1;
+  fill: var(--ink);
+}
+
+.callout-lines path { fill: none; stroke-opacity: .5; }
+
+.callouts { position: absolute; inset: 0; }
+
+.callout {
+  position: absolute;
+  left: 0;
+  top: 0;
+  max-width: 230px;
+  opacity: 0;
+}
+
+.callout b {
+  display: block;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -.01em;
+}
+
+.callout span {
+  display: block;
+  margin-top: 2px;
+  font-size: 13.5px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+/* A quiet invitation to scroll, under the hero. */
+.scroll-cue {
+  position: absolute;
+  left: 50%;
+  bottom: 74px;
+  margin: 0;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .24em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: 0;
+  transform: translateX(-50%);
+}
+
+.scroll-cue i {
+  width: 1px;
+  height: 36px;
+  background: linear-gradient(var(--ink), var(--ink)) 0 0 / 1px 40% no-repeat, rgba(13, 13, 12, .14);
+  animation: cue 1.8s cubic-bezier(.65, 0, .35, 1) infinite;
+}
+
+@keyframes cue {
+  from { background-position: 0 -40%; }
+  to { background-position: 0 140%; }
+}
+
+/* Chapters, like a video's scrubber. */
+.chapters {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  display: flex;
+  gap: clamp(14px, 2.4vw, 34px);
+  padding-top: 12px;
+  transform: translateX(-50%);
+  pointer-events: auto;
+  transition: opacity .6s ease;
+}
+
+html[data-intro] .chapters { opacity: 0; pointer-events: none; }
+
+.chapters-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: rgba(13, 13, 12, .14);
+  overflow: hidden;
+}
+
+.chapters-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--ink);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+}
+
+.chapters button {
+  appearance: none;
+  padding: 6px 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--muted);
+  opacity: .62;
+  cursor: pointer;
+  transition: opacity .3s ease, color .3s ease;
+}
+
+.chapters button:hover, .chapters button[aria-current] { color: var(--ink); opacity: 1; }
+.chapters button:focus-visible { outline: 1.5px solid var(--ink); outline-offset: 4px; border-radius: 4px; }
+
 /* Phones and tall windows: words on top, objects below. */
 @media (max-aspect-ratio: 1/1), (max-width: 760px) {
   .hero {
@@ -194,6 +409,29 @@ html[data-intro] .stage-light { opacity: 0; }
     margin-top: clamp(12px, 2.2svh, 28px);
     font-size: clamp(16px, min(4.4vw, 2.5svh), 26px);
   }
+
+  /* The story stacks too: the key fob on top, its words underneath. */
+  .story-title { top: clamp(56px, 12vh, 140px); }
+  .story-title h2 { font-size: clamp(34px, min(10vw, 7vh), 80px); }
+
+  .story-panel {
+    top: auto;
+    bottom: calc(env(safe-area-inset-bottom) + 64px);
+    width: auto;
+    right: var(--gutter);
+    transform: none;
+  }
+
+  .beat h3 { font-size: clamp(28px, min(8vw, 4.8vh), 52px); }
+  .beat p:last-child { font-size: clamp(15px, min(4vw, 2.2vh), 19px); }
+  .kicker { font-size: 11px; }
+
+  .callout { max-width: 150px; }
+  .callout b { font-size: 12.5px; }
+  .callout span { display: none; }
+
+  .scroll-cue { bottom: 64px; }
+  .chapters { bottom: calc(env(safe-area-inset-bottom) + 10px); }
 }
 
 @media (prefers-reduced-motion: reduce) {

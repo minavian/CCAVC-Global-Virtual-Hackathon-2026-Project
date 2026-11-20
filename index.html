@@ -30,6 +30,7 @@
   </script>
   <script src="js/lockscreen.js" defer></script>
   <script src="js/models.js" defer></script>
+  <script src="js/story.js" defer></script>
   <script src="js/landing.js" defer></script>
 </head>
 <body>
@@ -49,5 +50,42 @@
       <p id="subline">and almost nobody knows how it works<span class="dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></p>
     </div>
   </main>
+
+  <!-- The story after the hero. It is pinned over the stage and played by scrolling
+       (see js/story.js); the empty track below only gives the page its scroll length. -->
+  <div class="story" id="story">
+    <section class="story-title" aria-labelledby="story-title">
+      <h2 id="story-title"><span class="word">This</span> <span class="word">is</span> <span class="word">RFID</span> <span class="word">technology.</span></h2>
+      <p>Radio-frequency identification: a tiny chip that answers a reader without being touched.</p>
+    </section>
+    <section class="story-panel" aria-label="Inside the key fob">
+      <article class="beat">
+        <p class="kicker">01 · Key fob</p>
+        <h3>It unlocks your car without touching it.</h3>
+        <p>Most people think the buttons are the whole story. Open it up, and something else is hiding inside.</p>
+      </article>
+      <article class="beat">
+        <p class="kicker">Open it up</p>
+        <h3>A transponder, sealed in resin.</h3>
+        <p>Under the shell sits a tiny transponder: a chip on a little circuit board, and a coil of copper wire. It has no battery of its own.</p>
+      </article>
+      <article class="beat">
+        <p class="kicker">The core of RFID</p>
+        <h3>A coil and a chip.</h3>
+        <p>The coil is the antenna. When a reader’s magnetic field passes through it, it makes just enough electricity to wake the chip, and the chip answers with its ID.</p>
+      </article>
+    </section>
+    <svg class="callout-lines" aria-hidden="true"></svg>
+    <div class="callouts" aria-hidden="true"></div>
+    <p class="scroll-cue" aria-hidden="true"><span>Scroll</span><i></i></p>
+    <nav class="chapters" aria-label="Chapters">
+      <div class="chapters-track" aria-hidden="true"><i class="chapters-fill"></i></div>
+      <button type="button">Intro</button>
+      <button type="button">RFID</button>
+      <button type="button">Key fob</button>
+      <button type="button">Inside</button>
+    </nav>
+  </div>
+  <div class="track" aria-hidden="true"></div>
 </body>
 </html>
