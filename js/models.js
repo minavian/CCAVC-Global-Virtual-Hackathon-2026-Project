@@ -26,12 +26,32 @@
     return Promise.all(FILES.map(async ([name, url, behave]) => {
       const gltf = await loader.loadAsync(url);
       const model = new T.Group(), shell = gltf.scene;
+      liftDecals(T, shell);
       const box = new T.Box3().setFromObject(shell);
       shell.position.sub(box.getCenter(new T.Vector3()));
       const size = box.getSize(new T.Vector3());
       model.add(shell);
       return { name, model, span: Math.max(size.x, size.y), action: behave(T, shell, model, reduceMotion) };
     }));
+  }
+
+  // Printed artwork and contact pads are flat sheets lying exactly on another surface
+  // (the card's ink on its plastic, the pads level with the clear film). Two surfaces at
+  // the same depth flicker as the GPU picks a different winner each frame, so the flat
+  // sheet is nudged toward the viewer in depth only. Nothing moves on screen.
+  function liftDecals(T, shell) {
+    const size = new T.Vector3();
+    shell.traverse(part => {
+      if (!part.isMesh) return;
+      const geometry = part.geometry;
+      if (!geometry.boundingBox) geometry.computeBoundingBox();
+      geometry.boundingBox.getSize(size);
+      if (size.z > Math.max(size.x, size.y) * 1e-5) return;   // only truly flat sheets
+      part.material = part.material.clone();
+      part.material.polygonOffset = true;
+      part.material.polygonOffsetFactor = -1;
+      part.material.polygonOffsetUnits = -4;
+    });
   }
 
   function firstMesh(object) {
