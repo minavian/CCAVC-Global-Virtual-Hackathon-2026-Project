@@ -17,6 +17,11 @@
 - Check affected pages at mobile and desktop widths. Verify keyboard navigation, visible focus, and accessible form labels where applicable.
 - Keep API behavior and shared types in sync when a change affects both client and server.
 
+## Explain your work
+
+- **After you write or change code, add or update its entry in [`EXPLAINED.md`](EXPLAINED.md) in the same pull request.** In the interviews, every team member must be able to explain any part of the project, including parts a teammate or an AI tool wrote.
+- AI agents: do this every time, without being asked. Follow the template in `EXPLAINED.md`, write for a teammate who has not seen the code, and say which tool wrote it and for whom.
+
 ## Verification and review
 
 - Run the available repository checks and test changed pages locally before opening a pull request. Exercise affected links, forms, and interactions. Use sample or mock data where needed.
