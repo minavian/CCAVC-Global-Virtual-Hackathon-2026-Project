@@ -127,8 +127,8 @@
       : { x: 0, y: 0, w: Math.max(1, copy.left - rect.left), h };
     if (narrow) region.h = Math.max(1, h - region.y);
     const r = narrow
-      ? { cx: .5, cy: .5, ax: .4, ay: .24, dz: .02, size: Math.min(region.w * .47, region.h * .42) }
-      : { cx: .5, cy: .47, ax: .41, ay: .37, dz: .02, size: Math.min(region.w * .5, region.h * .46) };
+      ? { cx: .5, cy: .5, ax: .4, ay: .24, dz: .02, size: Math.min(region.w * .75, region.h * .6) }
+      : { cx: .5, cy: .47, ax: .41, ay: .37, dz: .02, size: Math.min(region.w * .7, region.h * .62) };
     layout = {
       w, h, size: r.size,
       cx: (region.x + region.w * r.cx) / w, cy: (region.y + region.h * r.cy) / h,
