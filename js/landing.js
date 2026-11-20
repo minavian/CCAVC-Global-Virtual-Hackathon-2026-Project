@@ -217,7 +217,7 @@
   }
 
   // The close-up on the open key fob: the parts that do the RFID work, and their frame.
-  const INSIDE_PARTS = ['antenna-coil', 'rfid-chip', 'protective-encapsulation'];
+  const INSIDE_PARTS = ['antenna-coil', 'rfid-chip'];
   function insideRect() {
     const { w, h } = layout;
     return stacked.matches ? { x: w * .07, y: h * .16, w: w * .86, h: h * .4 }

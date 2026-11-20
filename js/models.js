@@ -32,6 +32,11 @@
     'Contactless card': ['perimeter-and-coupling-antenna', 'die-pocket-floor', 'module-substrate', 'die-underfill',
       'silicon-die', 'module-antenna']
   };
+  // Sealed parts that stay hidden even when the object opens. The fob's resin potting is a
+  // see-through blob: it writes no depth, so the background blur smears it into a grey
+  // square, and it would cover the chip anyway.
+  const STAY_HIDDEN = ['protective-encapsulation'];
+
   // Where `open(e, push)` sends the outer shells (meters, at push = 1): the front shell
   // lifts up and out of frame, the rear one drops down, leaving the inside on its own.
   // (The front shell also moves right, so it never crosses the story's words on the left.)
@@ -45,6 +50,7 @@
       const model = new T.Group(), shell = gltf.scene;
       const sealed = SEALED[name].map(n => shell.getObjectByName(n)).filter(Boolean);
       for (const part of sealed) part.visible = false;
+      const revealed = sealed.filter(part => !STAY_HIDDEN.includes(part.name));
       liftDecals(T, shell);
       const box = new T.Box3().setFromObject(shell);
       shell.position.sub(box.getCenter(new T.Vector3()));
@@ -53,7 +59,7 @@
       // Nothing inside the model moves on its own except what the behaviours below animate,
       // so skip recomputing those transforms every frame.
       shell.traverse(part => { part.updateMatrix(); part.matrixAutoUpdate = false; });
-      const open = opener(gltf.animations.find(clip => clip.name === 'Explode'), shell, sealed);
+      const open = opener(gltf.animations.find(clip => clip.name === 'Explode'), shell, revealed);
       return { name, model, span: Math.max(size.x, size.y), open, part: n => shell.getObjectByName(n),
         action: behave(T, shell, model, reduceMotion) };
     }));

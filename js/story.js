@@ -30,18 +30,17 @@
   };
   const CHAPTERS = [['Intro', 0], ['RFID', .85], ['Key fob', 1.95], ['Inside', 3.55]];
 
-  // Parts of the open key fob to label. `aim` is the spot on the part the line points to,
-  // as a fraction of its half-size from its centre (x right, y down); `at` is where the
-  // label sits, in pixels from that spot (`narrow` for phones: aim and at).
+  // Parts of the open key fob to label. The line starts at `aim` on `part` (a fraction of
+  // the part's half-size from its centre, x right and y down). The label sits just outside
+  // `frame` (the whole piece the part belongs to) on `side`, so it never covers the object,
+  // whatever size the object is drawn at. `narrowSide` is used on phones.
   const CALLOUTS = [
-    { part: 'copper-winding-and-leads', title: 'Copper antenna coil', text: 'Catches the reader’s magnetic field.',
-      aim: [.94, -.34], at: [70, -96], narrow: [[0, -1], [-40, -46]] },
-    { part: 'rfid-ic-package', title: 'Transponder chip', text: 'Stores the ID. Wakes when the coil powers it.',
-      aim: [0, -.5], at: [-40, -150], narrow: [[0, -.6], [-40, -104]] },
-    { part: 'two-ceramic-tuning-capacitors', title: 'Tuning capacitors', text: 'Tune the coil to the reader’s frequency.',
-      aim: [0, 0], at: [70, 170], narrow: [[0, 0], [20, 70]] },
-    { part: 'translucent-sealant', title: 'Resin seal', text: 'Keeps water and knocks away from the chip.',
-      aim: [0, 0], at: [-90, 160], narrow: [[0, 0], [-20, 80]] }
+    { part: 'copper-winding-and-leads', frame: 'antenna-coil', aim: [.96, -.15], side: 'right', narrowSide: 'top',
+      title: 'Copper antenna coil', text: 'Catches the reader’s magnetic field.' },
+    { part: 'two-ceramic-tuning-capacitors', frame: 'rfid-chip', aim: [0, 0], side: 'top', narrowSide: 'top',
+      title: 'Tuning capacitors', text: 'Tune the coil to the reader’s frequency.' },
+    { part: 'rfid-ic-package', frame: 'rfid-chip', aim: [0, 0], side: 'bottom', narrowSide: 'bottom',
+      title: 'Transponder chip', text: 'Stores the ID. Wakes when the coil powers it.' }
   ];
 
   const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
@@ -88,7 +87,7 @@
         inside: easeInOut(span(TIME.inside, s)),
         labels: CALLOUTS.map((_, k) => easeOut(clamp01((s - TIME.labels.start - k * TIME.labels.stagger) / TIME.labels.span))),
         beats: TIME.beats.map(([a, b]) => Math.min(clamp01((s - a) / .18), 1 - clamp01((s - b) / .14))),
-        callouts: CALLOUTS.map(c => c.part)
+        callouts: [...new Set(CALLOUTS.flatMap(c => [c.part, c.frame]))]
       };
     }
 
@@ -138,14 +137,24 @@
           label.line.setAttribute('opacity', '0'); label.dot.setAttribute('opacity', '0');
           return;
         }
-        const [aim, at] = narrow ? label.narrow : [label.aim, label.at];
+        // The spot the line starts from, on the part itself.
         const [cx, cy, hw = 0, hh = 0] = point;
-        const px = cx + aim[0] * hw, py = cy + aim[1] * hh;
-        const w = label.el.offsetWidth, h = label.el.offsetHeight;
-        let lx = px + at[0], ly = py + at[1];
+        const px = cx + label.aim[0] * hw, py = cy + label.aim[1] * hh;
+        // The whole piece it belongs to; the label goes just outside it.
+        const [fx, fy, fw, fh] = points[label.frame] || point;
+        const w = label.el.offsetWidth, h = label.el.offsetHeight, gap = narrow ? 18 : 30;
+        const place = side => side === 'top' ? [px - 14, fy - fh - gap - h]
+          : side === 'bottom' ? [px - 14, fy + fh + gap]
+          : side === 'right' ? [fx + fw + gap, py - h / 2]
+          : [fx - fw - gap - w, py - h / 2];
+        let side = narrow ? label.narrowSide : label.side;
+        let [lx, ly] = place(side);
+        if (side === 'right' && lx + w > innerWidth - 12) [lx, ly] = place(side = 'top');
         lx = Math.min(Math.max(lx, minX), innerWidth - w - 12);
         ly = Math.min(Math.max(ly, 12), innerHeight - h - 12);
-        const anchorX = lx + (lx > px ? 0 : w), anchorY = ly + h / 2;
+        // The line meets the label's nearest edge: straight up or down to it, or across.
+        const anchorX = side === 'right' ? lx - 8 : side === 'left' ? lx + w + 8 : Math.min(Math.max(px, lx + 4), lx + w - 4);
+        const anchorY = side === 'top' ? ly + h + 8 : side === 'bottom' ? ly - 8 : Math.min(Math.max(py, ly + 4), ly + h - 4);
         label.el.style.transform = `translate(${lx.toFixed(1)}px, ${(ly + (1 - q) * 10).toFixed(1)}px)`;
         label.el.style.opacity = q.toFixed(3);
         // The line draws itself from the part out to the label.
