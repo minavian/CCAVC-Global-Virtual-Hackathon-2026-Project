@@ -6,7 +6,10 @@
  * in carousel order, each { name, model, span, action }:
  *   model  a THREE.Group to place in a scene
  *   span   the model's larger side (width or height), for scaling it to a pixel size
- *   action { activate(t), present?(), update(t, dt, model) }
+ *   action { arrive?(t), activate(t), present?(), update(t, dt, model) }
+ *     arrive   the object has settled at the front
+ *     activate the visitor tapped it (or pressed Enter) while it is at the front
+ *     present  it is leaving the front
  */
 (function () {
   'use strict';
@@ -49,6 +52,7 @@
     }
     let since = -10;
     return {
+      arrive(t) { since = t; },
       activate(t) { since = t; },
       update(t) {
         const p = (t - since) / .46;
@@ -60,16 +64,27 @@
     };
   }
 
-  // At rest the phone shows its cameras, like the sketch; woken, it turns to its screen.
+  // Away from the front the phone shows its cameras, like the sketch. Brought to the front
+  // it turns around and its screen comes on by itself, waking from the always-on display
+  // into the lock screen. A tap flips it between screen and cameras.
   function phone(T, shell, model, reduceMotion) {
+    const screen = window.RFIDLockScreen.create(T, reduceMotion, { width: .0752, height: .1612, radius: .0086 });
+    const display = shell.getObjectByName('oled-display-assembly') || shell;
+    screen.mesh.position.z = display === shell ? .0077 : .00103;   // just above the cover glass
+    display.add(screen.mesh);
     model.rotation.y = Math.PI;
-    let wake = -10;
+    let facing = false, wakeAt = Infinity;
+    const face = t => { facing = true; wakeAt = t + .35; };
+    const turnAway = () => { facing = false; wakeAt = Infinity; screen.sleep(); };
     return {
-      activate(t) { wake = t; },
-      present() { wake = -10; },
+      arrive(t) { if (!facing) face(t); },
+      activate(t) { if (facing) turnAway(); else face(t); },
+      present: turnAway,
       update(t, dt, object) {
-        const target = t - wake < 5 ? 0 : Math.PI;
+        if (t >= wakeAt) { wakeAt = Infinity; screen.wake(t); }
+        const target = facing ? 0 : Math.PI;
         object.rotation.y = reduceMotion.matches ? target : T.MathUtils.damp(object.rotation.y, target, 4.2, dt);
+        screen.update(t, dt);
       }
     };
   }

@@ -227,9 +227,7 @@
   // An object settled at the front.
   function arrive(i) {
     if (i === 0) landedAt = clock;
-    if (!gl) return;
-    if (i === 0) gl.activate(0, clock + .12);
-    if (i === 1) gl.activate(1, clock + .15);
+    gl?.arrive(i, clock + .12);
   }
 
   function updateFocus() {
@@ -494,7 +492,8 @@
     const hit = hitTest(e.clientX, e.clientY);
     if (hit === -1) travel(Math.round(phase), .7);
     else if (hit !== focus) bringToFront(hit);
-    else { travel(Math.round(phase), .5); gl?.activate(hit, clock); }
+    else if (flight || Math.abs(phase - Math.round(phase)) > .02) travel(Math.round(phase), .5);
+    else gl?.activate(hit, clock);
   }
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) stage.addEventListener(type, release);
   addEventListener('pointerup', e => { if (e.pointerId === skipPointer) skipPointer = null; });
@@ -719,10 +718,11 @@
 
     // Model actions start a little later than asked, so a press lands after the motion.
     const pending = [];
-    function activate(i, at) { pending.push({ i, at }); }
+    const queue = (i, at, kind) => pending.push({ i, at, kind });
     const actionClock = () => {
       for (let k = pending.length - 1; k >= 0; k--) {
-        if (clock >= pending[k].at) { objects[pending[k].i].action.activate(clock); pending.splice(k, 1); }
+        const { i, at, kind } = pending[k];
+        if (clock >= at) { objects[i].action[kind]?.(clock); pending.splice(k, 1); }
       }
     };
     const baseDraw = draw;
@@ -738,7 +738,8 @@
       get shown() { return shown; },
       resize,
       draw(dt, fade) { actionClock(); baseDraw(dt, fade); },
-      activate,
+      arrive(i, at) { queue(i, at, 'arrive'); },
+      activate(i, at) { queue(i, at, 'activate'); },
       present(i) { objects[i].action.present?.(); }
     };
   }
@@ -782,7 +783,8 @@
   if (params.has('debug')) {
     window.__hero = {
       get state() { return { intro, phase, velocity, twist, focus, entrance, docked, flight: !!flight, gl: !!gl, shown: gl?.shown ?? 0 }; },
-      skip: () => finishIntro(true)
+      skip: () => finishIntro(true),
+      bring: i => bringToFront(i, .4)
     };
   }
 })();
