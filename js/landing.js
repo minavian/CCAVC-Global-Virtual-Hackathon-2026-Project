@@ -583,7 +583,7 @@
       depthTest: false, depthWrite: false, blending: T.NoBlending, toneMapped: false,
       uniforms: {
         picture: { value: target.texture }, depthMap: { value: target.depthTexture },
-        previous: { value: history[1].texture }, trail: { value: 0 },
+        previous: { value: history[1].texture }, trail: { value: 0 }, exposure: { value: .82 },
         pixel: { value: new T.Vector2() }, paper: { value: new T.Vector3(245 / 255, 242 / 255, 236 / 255) }
       },
       vertexShader: `varying vec2 vUv;
@@ -593,6 +593,7 @@
         uniform vec2 pixel;
         uniform vec3 paper;
         uniform float trail;
+        uniform float exposure;
         // Only objects that have receded blur; the front one stays sharp through its whole depth.
         float blurAt(vec2 uv) { return smoothstep(.535, .64, texture2D(depthMap, uv).x); }
         vec3 fit(vec3 v) {
@@ -640,7 +641,7 @@
               color /= total;
             }
             if (color.a >= .002) {
-              vec3 rgb = srgb(aces(color.rgb / color.a));
+              vec3 rgb = srgb(aces(color.rgb / color.a * exposure));
               float luma = dot(rgb, vec3(.2126, .7152, .0722));
               rgb = mix(rgb, vec3(luma), .8 * blur);
               rgb = mix(rgb, paper, .2 * blur);
