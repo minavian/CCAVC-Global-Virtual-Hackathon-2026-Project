@@ -106,6 +106,7 @@
   // it turns around and its screen comes on by itself, waking from the always-on display
   // into the lock screen. A tap flips it between screen and cameras.
   function phone(T, shell, model, reduceMotion) {
+    refineBack(T, shell);
     const screen = window.RFIDLockScreen.create(T, reduceMotion, { width: .0752, height: .1612, radius: .0086 });
     const display = shell.getObjectByName('oled-display-assembly') || shell;
     screen.mesh.position.z = display === shell ? .0077 : .00103;   // just above the cover glass
@@ -126,6 +127,55 @@
         screen.update(t, dt, Math.cos(object.rotation.y) > -.2);
       }
     };
+  }
+
+  // The phone's white back loses its detail under the studio light; give it something to show.
+  function refineBack(T, shell) {
+    const cover = shell.getObjectByName('glacier-white-rear-cover');
+    if (!cover) return;
+    const size = new T.Vector3();
+    cover.traverse(part => {
+      if (!part.isMesh) return;
+      const geometry = part.geometry;
+      if (!geometry.boundingBox) geometry.computeBoundingBox();
+      geometry.boundingBox.getSize(size);
+      if (part.material.map && size.x > .05) deepenCover(T, part);
+    });
+  }
+
+  // Bring out the back's brushed swirl and engraved logo. They are faint lines on top of
+  // broad soft shading, so the fine detail (image minus a blurred copy) is amplified a lot
+  // and the broad shading only a little. The white also comes down a touch.
+  function deepenCover(T, mesh) {
+    const original = mesh.material.map, image = original.image;
+    if (!image?.width) return;
+    const w = image.width, h = image.height;
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const c = canvas.getContext('2d', { willReadFrequently: true });
+    c.drawImage(image, 0, 0);
+    const pixels = c.getImageData(0, 0, w, h), d = pixels.data;
+    const soft = document.createElement('canvas');
+    soft.width = w; soft.height = h;
+    const s = soft.getContext('2d', { willReadFrequently: true });
+    if ('filter' in s) s.filter = `blur(${Math.round(w / 90)}px)`;
+    s.drawImage(image, 0, 0);
+    const blur = 'filter' in s ? s.getImageData(0, 0, w, h).data : null;
+    for (let i = 0; i < d.length; i += 4) {
+      for (let k = 0; k < 3; k++) {
+        const v = d[i + k], b = blur ? blur[i + k] : 238;
+        d[i + k] = 236 + (b - 236) * 1.4 + (v - b) * 4.5;
+      }
+    }
+    c.putImageData(pixels, 0, 0);
+    const map = new T.CanvasTexture(canvas);
+    for (const key of ['flipY', 'colorSpace', 'wrapS', 'wrapT', 'channel', 'magFilter', 'minFilter']) map[key] = original[key];
+    map.offset.copy(original.offset); map.repeat.copy(original.repeat); map.rotation = original.rotation;
+    map.anisotropy = 4;
+    mesh.material = mesh.material.clone();
+    mesh.material.map = map;
+    mesh.material.color.setScalar(.93);
+    mesh.material.envMapIntensity = .8;
   }
 
   // Flip the card over.
