@@ -129,18 +129,42 @@
     };
   }
 
-  // The phone's white back loses its detail under the studio light; give it something to show.
+  // The phone's white back loses its detail under the studio light, and its flash is a plain
+  // cream disc that reads as an empty hole. Give both something to show.
   function refineBack(T, shell) {
     const cover = shell.getObjectByName('glacier-white-rear-cover');
     if (!cover) return;
-    const size = new T.Vector3();
+    const size = new T.Vector3(), center = new T.Vector3(), flash = [];
     cover.traverse(part => {
       if (!part.isMesh) return;
       const geometry = part.geometry;
       if (!geometry.boundingBox) geometry.computeBoundingBox();
-      geometry.boundingBox.getSize(size);
+      geometry.boundingBox.getSize(size); geometry.boundingBox.getCenter(center);
       if (part.material.map && size.x > .05) deepenCover(T, part);
+      // The flash sits in the corner opposite the camera island: a lens and its surround.
+      else if (size.x < .01 && size.y < .01 && center.x > .02 && center.y > .06) flash.push(part);
     });
+    const thickness = part => part.geometry.boundingBox.max.z - part.geometry.boundingBox.min.z;
+    const lens = flash.find(part => thickness(part) < 1e-6), ring = flash.find(part => part !== lens);
+    if (lens) {
+      const old = lens.material, box = lens.geometry.boundingBox, position = lens.geometry.attributes.position;
+      const uv = new Float32Array(position.count * 2);
+      for (let i = 0; i < position.count; i++) {
+        uv[i * 2] = (position.getX(i) - box.min.x) / (box.max.x - box.min.x);
+        uv[i * 2 + 1] = (position.getY(i) - box.min.y) / (box.max.y - box.min.y);
+      }
+      lens.geometry.setAttribute('uv', new T.BufferAttribute(uv, 2));
+      lens.material = new T.MeshPhysicalMaterial({
+        map: flashFace(T), roughness: .3, metalness: 0, clearcoat: 1, clearcoatRoughness: .06,
+        polygonOffset: old.polygonOffset, polygonOffsetFactor: old.polygonOffsetFactor, polygonOffsetUnits: old.polygonOffsetUnits
+      });
+    }
+    if (ring) {
+      ring.material = ring.material.clone();
+      ring.material.color.setHex(0x8f8a80);
+      ring.material.metalness = .9;
+      ring.material.roughness = .24;
+    }
   }
 
   // Bring out the back's brushed swirl and engraved logo. They are faint lines on top of
@@ -176,6 +200,33 @@
     mesh.material.map = map;
     mesh.material.color.setScalar(.93);
     mesh.material.envMapIntensity = .8;
+  }
+
+  // A frosted flash lens: fine Fresnel rings over a warm and a cool LED.
+  function flashFace(T) {
+    const size = 256, canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    const c = canvas.getContext('2d'), mid = size / 2;
+    const glass = c.createRadialGradient(mid * .8, mid * .75, 4, mid, mid, mid);
+    glass.addColorStop(0, '#f3ecd8'); glass.addColorStop(.6, '#ddd2b4'); glass.addColorStop(1, '#b9ad8c');
+    c.fillStyle = glass; c.fillRect(0, 0, size, size);
+    c.strokeStyle = 'rgba(96, 82, 52, .32)'; c.lineWidth = 2;
+    for (let r = 12; r < mid; r += 9) { c.beginPath(); c.arc(mid, mid, r, 0, Math.PI * 2); c.stroke(); }
+    const led = (x, fill) => {
+      c.beginPath(); c.roundRect(x - 26, mid - 26, 52, 52, 8);
+      c.fillStyle = 'rgba(70, 58, 34, .85)'; c.fill();                      // the LED package
+      c.beginPath(); c.roundRect(x - 19, mid - 19, 38, 38, 5);
+      c.fillStyle = fill; c.fill();                                          // the phosphor
+      c.fillStyle = 'rgba(70, 58, 34, .5)'; c.fillRect(x - 3, mid - 13, 6, 26);
+    };
+    led(mid - 34, '#e8ab4f');   // warm
+    led(mid + 34, '#f8f1dc');   // cool
+    c.strokeStyle = 'rgba(58, 48, 30, .6)'; c.lineWidth = 8;
+    c.beginPath(); c.arc(mid, mid, mid - 5, 0, Math.PI * 2); c.stroke();
+    const map = new T.CanvasTexture(canvas);
+    map.colorSpace = T.SRGBColorSpace;
+    map.anisotropy = 4;
+    return map;
   }
 
   // Flip the card over.
