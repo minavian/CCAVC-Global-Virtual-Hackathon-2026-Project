@@ -197,7 +197,6 @@ function mount(host, root, signal) {
     if (chapter === 3) resetPackets();
     chapter = index;
     frame.dataset.chapter = index;
-    frame.toggleAttribute('data-inside', index >= 2);
     fadeText($('.copy h2'), chapters[index].title);
     fadeText($('.copy p'), chapters[index].copy ?? '');
     $('.packets').inert = index !== 3;

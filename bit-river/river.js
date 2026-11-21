@@ -64,7 +64,6 @@ export function sizeCanvas(canvas, w, h, compact) {
 export function drawField(ctx, geometry, zoom, progress, clock) {
   const { w, h, tag, reader, point, compact } = geometry;
   ctx.clearRect(0, 0, w, h);
-  const dark = progress >= .55;
   ctx.lineCap = ctx.lineJoin = 'round';
   ctx.lineWidth = .8;
   for (let i = 1; i <= 5; i++) {
@@ -84,9 +83,9 @@ export function drawField(ctx, geometry, zoom, progress, clock) {
   if (!front) return;
   const lanes = compact ? 18 : 36;
   const copper = ctx.createLinearGradient(tag.x, 0, reader.x, 0);
-  copper.addColorStop(0, dark ? '#f5a569' : '#a04c2a');
-  copper.addColorStop(.48, dark ? '#e09055' : '#ae6b42');
-  copper.addColorStop(1, dark ? '#ffc28b' : '#9d4b32');
+  copper.addColorStop(0, '#a04c2a');
+  copper.addColorStop(.48, '#ae6b42');
+  copper.addColorStop(1, '#9d4b32');
   ctx.strokeStyle = copper;
   for (let i = 0; i < lanes; i++) {
     // Open from the center first. Neighboring strands catch up as the front advances.
@@ -117,7 +116,6 @@ export function drawField(ctx, geometry, zoom, progress, clock) {
 export function drawTraffic(ctx, geometry, progress, clock) {
   const { w, h, point, compact } = geometry;
   ctx.clearRect(0, 0, w, h);
-  const dark = progress >= .55;
   const front = replyFront(progress);
   ctx.lineCap = ctx.lineJoin = 'round';
   const charging = ease(.035, .15, progress) * (1 - ease(.29, .46, progress));
@@ -126,7 +124,7 @@ export function drawTraffic(ctx, geometry, progress, clock) {
     const tail = Math.min(1, head + .24);
     const pulse = ctx.createLinearGradient(point(head).x, 0, point(tail).x + .01, 0);
     pulse.addColorStop(0, 'rgba(191,108,63,0)');
-    pulse.addColorStop(.22, dark ? '#eccba5' : '#9f6344');
+    pulse.addColorStop(.22, '#9f6344');
     pulse.addColorStop(1, 'rgba(191,108,63,0)');
     ctx.globalAlpha = charging * (.64 + .15 * Math.cos(clock * 4));
     ctx.strokeStyle = pulse;
@@ -138,7 +136,7 @@ export function drawTraffic(ctx, geometry, progress, clock) {
 
   const cellAt = t => ((t - clock * .064) % 1 + 1) % 1 * 8;
   const amplitude = (compact ? 3.5 : 5.5) * ease(.07, .40, front);
-  ctx.strokeStyle = dark ? '#ffba7b' : '#a65030';
+  ctx.strokeStyle = '#a65030';
   ctx.globalAlpha = .23 + ease(.05, .48, front) * .48;
   ctx.lineWidth = compact ? 1 : 1.25;
   trace(0, front, 0, Math.max(2, Math.ceil(288 * front)), t =>
@@ -151,7 +149,7 @@ export function drawTraffic(ctx, geometry, progress, clock) {
     if (head > front || head === tail) continue;
     const light = ctx.createLinearGradient(point(tail).x, 0, point(head).x, 0);
     light.addColorStop(0, 'transparent');
-    light.addColorStop(.78, dark ? '#ffc593' : '#bb6944');
+    light.addColorStop(.78, '#bb6944');
     light.addColorStop(1, 'transparent');
     ctx.strokeStyle = light;
     ctx.lineWidth = compact ? 1.35 : 1.75;
@@ -166,8 +164,8 @@ export function drawTraffic(ctx, geometry, progress, clock) {
   for (let i = 0; i < lanes; i++) {
     const lane = i / (lanes - 1) * 1.42 - .71;
     ctx.font = `${compact ? 9 : 11}px ui-monospace, monospace`;
-    ctx.fillStyle = dark ? '#ffe8cd' : '#8e492e';
-    ctx.strokeStyle = dark ? '#ffc188' : '#a6542f';
+    ctx.fillStyle = '#8e492e';
+    ctx.strokeStyle = '#a6542f';
     ctx.lineWidth = 1.3;
     for (let j = 0; j < count; j++) {
       const t = (j / count + i * .057 + clock * .064) % 1;
