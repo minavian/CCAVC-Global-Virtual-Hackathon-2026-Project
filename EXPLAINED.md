@@ -1,20 +1,20 @@
 # How this project works, explained by whoever wrote it
 
-In the interviews, **every team member must be able to explain any part of the project**, including the parts a teammate or an AI tool wrote. This file makes that possible. Every part of the code has an entry here, written by whoever built it, for a teammate who has never seen it.
+In the interviews, **every team member must be able to explain any part of the project**, including the parts a teammate wrote. This file makes that possible. Every part of the code has an entry here, written by whoever built it, for a teammate who has never seen it.
 
 ## Rules
 
-- **After you write or change code, add or update its entry here in the same pull request.** This applies to people and to AI agents. AI agents do it without being asked.
+- **After you write or change code, add or update its entry here in the same pull request.** Everyone does this, without being asked.
 - Write for a teammate who has not read the code: plain English, short sentences, no unexplained jargon.
 - One entry per part. If you change a part that already has an entry, update that entry rather than adding a new one.
-- Say who wrote it (a person, or which AI tool and for whom) and when.
+- Say who owns it and when.
 - If something is a simplification or a guess (a simulated value, a made-up threshold), say so.
 
 ## Template
 
 ```md
 ### <Part name> (`path/to/file`)
-Written by <who> · <date> · Issue #<n>
+Owner: <who> · <date> · Issue #<n>
 
 **What it does.** One or two sentences a visitor would understand.
 
@@ -39,7 +39,7 @@ Written by <who> · <date> · Issue #<n>
 ---
 
 ### Landing page layout and style (`index.html`, `styles.css`)
-Written by Claude (Claude Code) for Mina Vian · 2026-11-20 · Issues #3, #5
+Owner: Mina Vian · 2026-11-20 · Issues #3, #5
 
 **What it does.** One screen: on the left, the three everyday RFID objects (key fob, phone, contactless card) in 3D; on the right, the headline "Those are the things you use every day." and the line "and almost nobody knows how it works…". On phones the words sit on top and the objects below.
 
@@ -59,7 +59,7 @@ Written by Claude (Claude Code) for Mina Vian · 2026-11-20 · Issues #3, #5
 ---
 
 ### Opening animation and carousel (`js/landing.js`)
-Written by Claude (Claude Code) for Mina Vian · 2026-11-20 · Issues #3, #5
+Owner: Mina Vian · 2026-11-20 · Issues #3, #5
 
 **What it does.** The opening: the headline appears full-screen with every word faint, each word pops to full strength one by one, the headline glides to its place, the three objects spin in and land on the key fob, and the subline fades in (about 8 seconds). Afterwards the visitor can drag, fling, tap or use the arrow keys to turn the objects; after 6 idle seconds the carousel drifts back to the key fob.
 
@@ -83,7 +83,7 @@ Written by Claude (Claude Code) for Mina Vian · 2026-11-20 · Issues #3, #5
 ---
 
 ### 3D rendering pipeline (`js/landing.js`, `createScene`)
-Written by Claude (Claude Code) for Mina Vian · 2026-11-20 · Issues #3, #5
+Owner: Mina Vian · 2026-11-20 · Issues #3, #5
 
 **What it does.** Draws the three objects with soft studio lighting; the ones behind are blurred, grey and faded like a camera's shallow focus, and a soft motion trail follows the fast spin.
 
@@ -108,7 +108,7 @@ Written by Claude (Claude Code) for Mina Vian · 2026-11-20 · Issues #3, #5
 ---
 
 ### The three 3D objects (`js/models.js`, `models/`)
-Models by nduchuy348-art (`models/*.glb`, branch `create-new-model`); loading code by Claude (Claude Code) for Mina Vian · 2026-11-20 · Issue #5
+Models by nduchuy348-art (`models/*.glb`, branch `create-new-model`); loading code owner: Mina Vian · 2026-11-20 · Issue #5
 
 **What it does.** Loads the key fob, phone and contactless card, and gives each a small behaviour: the fob's lock button presses and its light glows; the phone turns around and its screen wakes; the card flips.
 
@@ -129,7 +129,7 @@ Models by nduchuy348-art (`models/*.glb`, branch `create-new-model`); loading co
 ---
 
 ### The phone's lock screen (`js/lockscreen.js`)
-Written by Claude (Claude Code) for Mina Vian · 2026-11-20 · Issue #5
+Owner: Mina Vian · 2026-11-20 · Issue #5
 
 **What it does.** The phone has an always-on display (a dim clock on black). When it comes to the front it turns around and wakes into a lock screen: a blue-grey wallpaper, a tall live clock, the date, four widget tiles and two shortcut buttons, which arrive one after another.
 

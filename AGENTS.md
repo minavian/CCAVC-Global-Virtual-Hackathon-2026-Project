@@ -19,13 +19,13 @@
 
 ## Explain your work
 
-- **After you write or change code, add or update its entry in [`EXPLAINED.md`](EXPLAINED.md) in the same pull request.** In the interviews, every team member must be able to explain any part of the project, including parts a teammate or an AI tool wrote.
-- AI agents: do this every time, without being asked. Follow the template in `EXPLAINED.md`, write for a teammate who has not seen the code, and say which tool wrote it and for whom.
+- **After you write or change code, add or update its entry in [`EXPLAINED.md`](EXPLAINED.md) in the same pull request.** In the interviews, every team member must be able to explain any part of the project, including parts a teammate wrote.
+- Do this every time, without being asked. Follow the template in `EXPLAINED.md` and write for a teammate who has not seen the code.
 
 ## Verification and review
 
 - Run the available repository checks and test changed pages locally before opening a pull request. Exercise affected links, forms, and interactions. Use sample or mock data where needed.
-- Review AI-generated changes yourself. In the pull request, include `Closes #<issue-number>`, summarize what you verified, and call out any checks you could not run.
+- Review every change yourself. In the pull request, include `Closes #<issue-number>`, summarize what you verified, and call out any checks you could not run.
 - Merge after team review and keep `main` usable. After merging, delete the issue branch and clean up any associated worktree.
 
 ## Secrets
