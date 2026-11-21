@@ -2,19 +2,21 @@ import { SCAN_TIMING } from './scan-timing.js';
 
 const stage = document.querySelector('.scan-stage');
 const sequence = stage.closest('.scan-sequence');
+const experience = stage.parentElement;
 const depth = sequence.querySelector('.scan-depth');
+const story = sequence.querySelector('.story');
+const track = sequence.querySelector('.track');
 const viewport = stage.querySelector('.scan-view');
 const preview = stage.querySelector('.scan-preview');
+const revealPreview = stage.querySelector('.scan-reveal-preview');
 const grab = stage.querySelector('.scan-grab');
 const gesture = stage.querySelector('.scan-gesture');
 const keyboardHint = stage.querySelector('.scan-keyboard');
 const next = stage.querySelector('.scan-next');
 const status = stage.querySelector('.scan-status');
 const reveal = stage.querySelector('.scan-reveal');
-const anatomy = stage.querySelector('.scan-anatomy');
-const insideAnchor = sequence.querySelector('#scan-inside');
 const riverSection = document.querySelector('#bit-river');
-const river = riverSection.querySelector('rfid-bit-river');
+const deep = document.querySelector('#take-apart');
 const motion = matchMedia('(prefers-reduced-motion: reduce)');
 const CARD = 2;
 const READ_AREA = { width: .8, height: .72 };
@@ -47,8 +49,6 @@ function loadScene() {
       grab.classList.add('is-fallback');
       stage.querySelector('#scan-instructions').textContent = 'Select Scan card to try the simulated scan.';
       keyboardHint.hidden = true;
-      river.removeAttribute('data-external-card');
-      river.setExternalCard?.(false);
       status.textContent = 'The 3D view is unavailable. You can still explore how a scan works.';
       wake();
       return null;
@@ -161,11 +161,11 @@ function finishScan() {
   playing = false;
   manualPosition = null;
   completed = true;
-  depth.hidden = insideAnchor.hidden = riverSection.hidden = false;
+  depth.hidden = track.hidden = riverSection.hidden = deep.hidden = false;
   keyboardHint.hidden = true;
   paint();
   if (moveFocus) {
-    (anatomy.hidden ? reveal : anatomy.querySelector('h2')).focus({ preventScroll: true });
+    (story.hidden ? reveal : story.querySelector('.chapters button')).focus({ preventScroll: true });
   }
 }
 
@@ -174,24 +174,6 @@ function placeViewport(fixed) {
   viewport.classList.toggle('is-handoff', fixed);
   if (fixed) document.body.append(viewport);
   else stage.insertBefore(viewport, gesture);
-}
-
-function paintRiver() {
-  if (!completed || !scene) return false;
-  const top = riverSection.getBoundingClientRect().top;
-  const entered = top <= 1;
-  const progress = entered ? 1 : clamp(1 - top / stage.clientHeight);
-  if (!progress) return false;
-  const target = river.getCardTarget?.({ atEntry: !entered });
-  if (!target) return false;
-  placeViewport(true);
-  const position = motion.matches ? Number(progress === 1) : progress;
-  scene.drawRiver(position, target);
-  const clip = entered && target.clip;
-  viewport.style.clipPath = clip
-    ? `inset(${Math.max(0, clip.top)}px ${Math.max(0, viewport.clientWidth - clip.right)}px ${Math.max(0, viewport.clientHeight - clip.bottom)}px ${Math.max(0, clip.left)}px)`
-    : '';
-  return true;
 }
 
 function paint(now = performance.now()) {
@@ -238,36 +220,42 @@ function paint(now = performance.now()) {
     sectionFocus = grab;
   }
 
-  const progress = completed ? clamp(-sequence.getBoundingClientRect().top / depth.offsetHeight) : 0;
-  const inside = completed && progress > .38;
-  const view = inside ? 'inside' : completed ? 'reveal' : 'pick';
-  stage.dataset.view = view;
-  preview.hidden = !fallback || completed;
-  reveal.hidden = view !== 'reveal';
-  anatomy.hidden = !inside;
-  next.hidden = view !== 'reveal';
-  const anatomyOpacity = motion.matches ? Number(inside) : ease(cue(progress, .38, .68));
-  reveal.style.setProperty('--reveal-opacity', motion.matches ? 1 : 1 - ease(cue(progress, .06, .38)));
-  anatomy.style.setProperty('--inside-opacity', anatomyOpacity);
-  if (sectionFocus === anatomy && anatomyOpacity === 1) {
-    anatomy.querySelector('h2').focus({ preventScroll: true });
-    sectionFocus = null;
-  } else if (sectionFocus === riverSection && riverSection.getBoundingClientRect().top <= 1) {
-    riverSection.focus({ preventScroll: true });
-    sectionFocus = null;
-  }
-
-  if (paintRiver()) return;
-  viewport.style.clipPath = '';
   placeViewport(false);
+  const travel = completed ? -sequence.getBoundingClientRect().top : 0;
+  const entry = depth.offsetHeight;
+  // Scroll offsets can land on a fractional pixel at the end of the handoff.
+  const inStory = completed && travel >= entry - 1;
+  const progress = completed ? (inStory ? 1 : clamp(travel / entry)) : 0;
+  const blend = motion.matches ? Number(inStory) : ease(cue(progress, .12, 1));
+  const target = landing()?.setStoryProgress(blend, Math.max(0, (travel - entry) / experience.clientHeight));
+  stage.dataset.view = completed ? 'reveal' : 'pick';
+  stage.hidden = inStory;
+  story.hidden = !inStory;
+  preview.hidden = !fallback || completed;
+  revealPreview.hidden = !fallback || !completed || inStory;
+  revealPreview.style.opacity = 1 - blend;
+  reveal.hidden = next.hidden = !completed || inStory;
+  reveal.style.setProperty('--reveal-opacity', 1 - ease(cue(progress, .04, .64)));
+  next.style.opacity = 1 - ease(cue(progress, .05, .45));
+  next.inert = progress > .45;
+  if (inStory) {
+    if (borrowed) restoreLandingCard();
+    if (sectionFocus === story) {
+      story.querySelector('.chapters button').focus({ preventScroll: true });
+      sectionFocus = null;
+    } else if (sectionFocus === riverSection && riverSection.getBoundingClientRect().top <= 1) {
+      riverSection.focus({ preventScroll: true });
+      sectionFocus = null;
+    }
+    return;
+  }
 
   if (borrowed && scrollY <= 1) restoreLandingCard();
   if (!inView) return;
   if (completed) {
     grab.hidden = gesture.hidden = true;
-    const opened = Math.max(0, (progress - .06) / .94);
-    const position = motion.matches ? Number(inside) : opened;
-    scene?.drawInside(position);
+    if (scene && !borrowed && travel >= 0) borrowLandingCard(false);
+    scene?.drawStory(blend, target);
   } else {
     let position = drag?.position;
     if (returning) {
@@ -298,6 +286,7 @@ function wake() {
 
 function startScan(position = null) {
   if (playing || handoff || preparing || completed) return;
+  if (!position) sequence.scrollIntoView({ block: 'start', behavior: 'instant' });
   stopHint();
   attention = 0;
   hovered = false;
@@ -319,6 +308,12 @@ function startScan(position = null) {
 grab.addEventListener('click', event => {
   if (event.detail === 0 || fallback) startScan();
   else if (!playing && !completed && !returning) queueHint(150);
+});
+
+grab.addEventListener('keydown', event => {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  event.preventDefault();
+  if (!event.repeat) startScan();
 });
 
 grab.addEventListener('pointerenter', event => {
@@ -407,12 +402,12 @@ for (const type of ['pointercancel', 'lostpointercapture']) grab.addEventListene
 const entrance = document.querySelector('.copy .scan-link');
 const landing = () => window.RFIDLanding;
 
-function borrowLandingCard() {
+function borrowLandingCard(fromHero = true) {
   if (borrowed || !scene) return null;
   const source = landing();
-  const origin = source?.getPose(CARD);
-  if (!origin) return null;
-  const card = source.borrowCard();
+  const origin = fromHero ? source?.getPose(CARD) : null;
+  if (fromHero && !origin) return null;
+  const card = source?.borrowCard();
   if (!card) return null;
   borrowed = true;
   scene.showObject(CARD, card);
@@ -424,7 +419,7 @@ function restoreLandingCard() {
   scene.releaseObject();
   landing()?.returnCard();
   borrowed = false;
-  scene.showObject(CARD).then(wake);
+  return scene.showObject(CARD).then(wake);
 }
 
 function paintScrollHandoff() {
@@ -496,7 +491,7 @@ stage.querySelector('.scan-replay').addEventListener('click', () => {
   const origin = scene?.getDevicePose();
   completed = detected = false;
   hinted = false;
-  depth.hidden = insideAnchor.hidden = riverSection.hidden = true;
+  depth.hidden = track.hidden = riverSection.hidden = deep.hidden = true;
   sectionFocus = null;
   status.removeAttribute('data-success');
   status.textContent = fallback ? 'The 3D view is unavailable.' : '';
@@ -520,14 +515,15 @@ function linkSection(link, anchor, focus) {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
     sectionFocus = focus;
-    anchor.scrollIntoView({ behavior: motion.matches ? 'instant' : 'smooth' });
+    const offset = anchor === track ? experience.clientHeight : 0;
+    scrollTo({ top: scrollY + anchor.getBoundingClientRect().top - offset,
+      behavior: motion.matches ? 'instant' : 'smooth' });
     wake();
   });
 }
 
-linkSection(stage.querySelector('.scan-inside-link'), insideAnchor, anatomy);
-linkSection(anatomy.querySelector('.scan-link'), riverSection, riverSection);
-river.addEventListener('bit-river-card-layout', wake);
+linkSection(stage.querySelector('.scan-story-link'), track, story);
+linkSection(story.querySelector('a[href="#bit-river"]'), riverSection, riverSection);
 
 new IntersectionObserver(([entry]) => {
   inView = entry.isIntersecting;
@@ -535,7 +531,7 @@ new IntersectionObserver(([entry]) => {
     loadScene();
     wake();
   } else stopHint();
-}).observe(stage);
+}).observe(experience);
 new ResizeObserver(wake).observe(viewport);
 addEventListener('scroll', wake, { passive: true });
 document.addEventListener('visibilitychange', wake);

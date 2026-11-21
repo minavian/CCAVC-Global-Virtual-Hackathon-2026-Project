@@ -1,4 +1,4 @@
-/* Landing hero. One screen: three objects, one headline, one line. */
+/* The landing scene scrolls into a sticky frame shared by the scan and the film. */
 
 :root {
   --paper: #f5f2ec;
@@ -10,12 +10,16 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
-html, body { height: 100%; }
-
-html { background: var(--paper); }
+html {
+  background: var(--paper);
+  overflow-anchor: none;
+  scrollbar-width: thin;
+  scrollbar-color: #b9b1a5 var(--paper);
+}
 
 body {
   margin: 0;
+  overscroll-behavior: none;
   background: var(--paper);
   color: var(--ink);
   font-family: "Inter Tight", "Helvetica Neue", Helvetica, Arial, sans-serif;
@@ -50,19 +54,25 @@ body::after {
   white-space: nowrap;
 }
 
+/* The home slot keeps its height when the stage moves into the film. */
+.hero-home { height: 100vh; height: 100lvh; }
+
 /* Layout: objects on the left, words on the right. */
 .hero {
   position: relative;
   z-index: 1;
-  contain: paint;
+  width: 100%;
   height: 100vh;
-  height: 100svh;
+  height: 100lvh;              /* stable while a phone's toolbar shows and hides */
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
   grid-template-areas: ". copy";
   align-items: center;
   padding: 0 var(--gutter) 0 0;
 }
+
+.hero.is-film { position: absolute; inset: 0; height: 100%; padding: 0; }
+.hero.is-film .copy { visibility: hidden; pointer-events: none; }
 
 /* The stage spans the page behind the words, so objects are never clipped by a column.
    landing.js sets --region-* to the area the objects occupy. */
@@ -73,12 +83,15 @@ body::after {
   overflow: hidden;
   outline: none;
   cursor: grab;
-  touch-action: pan-y;
+  touch-action: pan-y;         /* sideways drags turn the objects, vertical swipes scroll */
   user-select: none;
   -webkit-user-select: none;
 }
 
 .stage.is-dragging { cursor: grabbing; }
+
+/* Once the story plays, the stage is only a picture: scrolling works everywhere. */
+.stage.is-story { pointer-events: none; cursor: auto; }
 
 .stage:focus-visible::after {
   content: "";
@@ -183,6 +196,313 @@ html[data-intro] #subline,
 html[data-intro] .stage-light { opacity: 0; }
 
 html[data-intro] .copy .scan-link { visibility: hidden; }
+/* ---------- The story ---------- */
+
+/* One scan-height offset makes the anchor land at the start of the film. */
+.track {
+  height: calc(var(--story-length, 10.8) * 100svh);
+  scroll-margin-top: 100svh;
+}
+
+.story {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+/* Labels on the open key fob, joined to their parts by hairlines. */
+.callout-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  stroke: var(--ink);
+  stroke-width: 1;
+  fill: var(--ink);
+}
+
+.callout-lines path { fill: none; stroke-opacity: .5; }
+
+.callouts { position: absolute; inset: 0; }
+
+.callout {
+  position: absolute;
+  left: 0;
+  top: 0;
+  max-width: 230px;
+  opacity: 0;
+}
+
+.callout b {
+  display: block;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -.01em;
+}
+
+.callout span {
+  display: block;
+  margin-top: 2px;
+  font-size: 13.5px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+/* The one sentence: top left, big, the same place in every scene, clear of the models.
+   Each new sentence fades in over the last. */
+.say {
+  position: absolute;
+  left: var(--gutter);
+  top: clamp(56px, 11vh, 120px);
+  width: min(42vw, 620px);
+  margin: 0;
+  font-weight: 800;
+  font-size: clamp(30px, min(3.4vw, 6.2vh), 64px);
+  line-height: 1.02;
+  letter-spacing: -.036em;
+  text-wrap: balance;
+}
+.say.is-new { animation: say-in .55s cubic-bezier(.16, 1, .3, 1); }
+@keyframes say-in { from { opacity: 0; transform: translateY(12px); filter: blur(4px); } }
+
+/* The battery's handle: a ring over the battery that invites a drag. */
+.battery-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 0;
+  border: 1.5px dashed rgba(13, 13, 12, .55);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .08);
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+  animation: handle 1.6s ease-in-out infinite;
+}
+.battery-handle.is-dragging { cursor: grabbing; animation: none; border-style: solid; }
+.battery-handle:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+@keyframes handle { 50% { box-shadow: 0 0 0 10px rgba(13, 13, 12, .06); } }
+
+/* ---------- The lab (scenes 4 and 5) ---------- */
+.lab {
+  --copper: #b8652a;
+  --green: #1f7a4a;
+  --red: #b3261e;
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .5s ease, visibility 0s linear .5s;
+}
+.lab.is-on { opacity: 1; visibility: visible; transition: opacity .5s ease; }
+.lab-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+/* The tag's handle: drag it up and down. Arrow keys move it too. */
+.lab-grab {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 140px;
+  height: 92px;
+  padding: 0;
+  border: 0;
+  border-radius: 18px;
+  background: none;
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+}
+.lab:not(.is-on) .lab-grab { pointer-events: none; }
+.lab-grab.is-dragging { cursor: grabbing; }
+.lab-grab:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+.lab-meter {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  width: 64px;
+  font-size: 10px;
+  text-align: center;
+  color: var(--muted);
+}
+.lab-meter div { position: relative; width: 10px; height: 96px; border-radius: 6px; background: rgba(13, 13, 12, .08); overflow: visible; }
+.lab-meter i { position: absolute; inset: 0; border-radius: 6px; background: rgba(13, 13, 12, .4); transform-origin: 50% 100%; transform: scaleY(0); }
+.lab-meter.is-awake i { background: var(--copper); }
+.lab-meter em { position: absolute; left: -6px; right: -6px; height: 1.5px; background: var(--ink); font-style: normal; font-size: 0; }
+.lab-meter em::after { content: "Wake"; position: absolute; left: 22px; top: -7px; font-size: 10px; color: var(--ink); }
+.lab-fine { position: absolute; right: var(--gutter); bottom: 56px; margin: 0; font-size: 11px; color: var(--muted); }
+.lab-meter span { font-size: 11px; font-weight: 600; color: var(--ink); }
+
+/* Under the reader: what it feels, and the ID it read. Both appear with the reply. */
+.lab-trace, .lab-id {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 300px;
+  margin: 0;
+  opacity: 0;
+  transition: opacity .5s ease;
+}
+.lab.is-replying .lab-trace, .lab.is-replying .lab-id { opacity: 1; }
+.lab-trace { display: grid; gap: 4px; justify-items: center; }
+.lab-trace span { font-size: 12px; font-weight: 600; color: var(--muted); }
+.lab-trace canvas { width: 300px; height: 52px; }
+.lab-id { display: flex; justify-content: center; align-items: baseline; gap: 10px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.lab-id b { font: 600 22px "JetBrains Mono", ui-monospace, monospace; letter-spacing: .04em; color: var(--ink); }
+.lab-id.is-ok b { color: var(--green); }
+.lab-id.is-ok b::after { content: " ✓"; }
+
+/* Break it: three plain buttons under the sentence. */
+.lab-buttons {
+  position: absolute;
+  left: var(--gutter);
+  top: calc(clamp(56px, 11vh, 120px) + clamp(30px, min(3.4vw, 6.2vh), 64px) * 2.4 + 20px);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .5s ease;
+}
+.lab.is-breaking .lab-buttons { opacity: 1; visibility: visible; pointer-events: auto; }
+.lab-buttons button {
+  padding: 11px 18px;
+  border: 1.5px solid var(--ink);
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background-color .2s ease, color .2s ease;
+}
+.lab-buttons button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.lab-buttons button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+
+/* The slow-down badge, and the ghost hand. */
+.lab-badge {
+  position: absolute;
+  right: var(--gutter);
+  top: clamp(56px, 11vh, 120px);
+  margin: 0;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(13, 13, 12, .06);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity .5s ease;
+}
+.lab-badge.is-on { opacity: 1; }
+.lab-hand {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 40px;
+  height: 46px;
+  fill: rgba(255, 255, 255, .7);
+  stroke: rgba(13, 13, 12, .45);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  opacity: 0;
+  transition: opacity .3s ease;
+  pointer-events: none;
+}
+.lab-hand.is-on { opacity: 1; }
+
+/* A quiet invitation to scroll, under the hero. */
+.scroll-cue {
+  position: absolute;
+  left: 50%;
+  bottom: 74px;
+  margin: 0;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .24em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: 0;
+  transform: translateX(-50%);
+}
+
+.scroll-cue i {
+  width: 1px;
+  height: 36px;
+  background: linear-gradient(var(--ink), var(--ink)) 0 0 / 1px 40% no-repeat, rgba(13, 13, 12, .14);
+  animation: cue 1.8s cubic-bezier(.65, 0, .35, 1) infinite;
+}
+
+@keyframes cue {
+  from { background-position: 0 -40%; }
+  to { background-position: 0 140%; }
+}
+
+/* Chapters, like a video's scrubber. */
+.chapters {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  display: flex;
+  gap: clamp(14px, 2.4vw, 34px);
+  padding-top: 12px;
+  transform: translateX(-50%);
+  pointer-events: auto;
+  transition: opacity .6s ease;
+}
+
+html[data-intro] .chapters { opacity: 0; pointer-events: none; }
+
+.chapters-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: rgba(13, 13, 12, .14);
+  overflow: hidden;
+}
+
+.chapters-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--ink);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+}
+
+.chapters :is(button, a) {
+  appearance: none;
+  display: inline-grid;
+  place-items: center;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--muted);
+  cursor: pointer;
+  text-decoration: none;
+  transition: color .3s ease;
+}
+
+.chapters :is(button, a):hover, .chapters button[aria-current] { color: var(--ink); }
+.chapters button[aria-current] { font-weight: 800; }
+.chapters :is(button, a):focus-visible { outline: 1.5px solid var(--ink); outline-offset: 4px; border-radius: 4px; }
 
 /* Phones and tall windows: words on top, objects below. */
 @media (max-aspect-ratio: 1/1), (max-width: 760px) {
@@ -205,10 +525,138 @@ html[data-intro] .copy .scan-link { visibility: hidden; }
     margin-top: clamp(12px, 2.2svh, 28px);
     font-size: clamp(16px, min(4.4vw, 2.5svh), 26px);
   }
+
+  .callout { max-width: 150px; }
+  .callout b { font-size: 12.5px; }
+  .callout span { display: none; }
+
+  .scroll-cue { bottom: 64px; }
+  .chapters { bottom: calc(env(safe-area-inset-bottom) + 6px); gap: clamp(4px, 1.3vw, 9px); width: max-content; max-width: calc(100% - 24px); }
+  .chapters :is(button, a) { min-width: 32px; font-size: 11px; letter-spacing: .015em; }
+
+  .lab-fine { display: none; }
+}
+
+@media (max-width: 365px) {
+  .chapters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); width: calc(100% - 24px); gap: 0 4px; }
+  .scroll-cue { bottom: 110px; }
+}
+
+/* ---------- Part 2: take it apart ---------- */
+/* The deeper experiments are ordinary document sections. */
+.deep {
+  --copper: #b8652a;
+  --green: #1f7a4a;
+  --red: #b3261e;
+  position: relative;
+  z-index: 11;
+  background: var(--paper);
+  padding: clamp(72px, 12vh, 140px) var(--gutter) 96px;
+  box-shadow: 0 -40px 80px rgba(245, 242, 236, .9);
+}
+.deep-head { max-width: 980px; margin: 0 auto clamp(56px, 9vh, 110px); }
+.deep-head h2 {
+  margin: 14px 0 0;
+  font-weight: 800;
+  font-size: clamp(36px, min(5.4vw, 9vh), 96px);
+  line-height: .96;
+  letter-spacing: -.042em;
+  text-wrap: balance;
+}
+.deep-head p:last-child { max-width: 58ch; margin: 20px 0 0; font-size: clamp(17px, 1.4vw, 21px); line-height: 1.5; color: var(--muted); }
+.deep-part {
+  max-width: 1180px;
+  margin: clamp(48px, 8vh, 96px) auto 24px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(13, 13, 12, .16);
+  font-weight: 800;
+  font-size: clamp(22px, 2.2vw, 34px);
+  letter-spacing: -.025em;
+}
+.deep-part span { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+
+.plate {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: clamp(28px, 5vh, 56px) 0;
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: clamp(24px, 4vw, 64px);
+  align-items: center;
+  border-bottom: 1px solid rgba(13, 13, 12, .08);
+}
+.plate-words { display: grid; gap: 12px; align-content: start; }
+.plate-num { margin: 0; font: 600 13px "JetBrains Mono", ui-monospace, monospace; color: var(--copper); }
+.plate h3 { margin: 0; font-weight: 800; font-size: clamp(26px, 2.4vw, 38px); line-height: 1.02; letter-spacing: -.03em; text-wrap: balance; }
+.plate-words > p { margin: 0; max-width: 46ch; font-size: clamp(15px, 1.15vw, 18px); line-height: 1.5; color: var(--muted); }
+.plate-gate { font-style: italic; color: var(--ink) !important; }
+.plate-controls { display: grid; gap: 12px; margin-top: 6px; font-size: 14px; font-weight: 600; }
+.plate-controls label { display: grid; grid-template-columns: auto 1fr; gap: 4px 6px; align-items: baseline; }
+.plate-controls label > input[type="range"], .plate-controls label > input[type="text"] { grid-column: 1 / -1; }
+.plate-controls output { font-weight: 500; color: var(--muted); }
+.plate-controls output::before { content: "· "; }
+.plate-controls input[type="range"] { width: 100%; accent-color: var(--ink); }
+.plate-controls input[type="text"] { width: 3.2em; padding: 6px 8px; border: 1px solid rgba(13, 13, 12, .3); border-radius: 8px; background: transparent; font: 600 18px "JetBrains Mono", monospace; text-align: center; }
+.plate-check, .plate-switch label { display: flex !important; align-items: center; gap: 8px; }
+.plate-switch { display: flex; flex-wrap: wrap; gap: 18px; }
+.plate-controls button {
+  justify-self: start;
+  padding: 9px 16px;
+  border: 1.5px solid var(--ink);
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+.plate-controls button:hover { background: var(--ink); color: var(--paper); }
+.plate-controls input:focus-visible, .plate-controls button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+.plate-readout { min-height: 3em; color: var(--ink) !important; font-weight: 600; }
+.plate-real { font-size: 13px !important; }
+/* A canvas's own pixel size must never widen its column (it is resized to fit every frame). */
+.plate > * { min-width: 0; }
+.plate-canvas { width: 100%; max-width: 100%; min-width: 0; height: clamp(300px, 46vh, 460px); display: block; }
+
+.plate-river { display: grid; gap: 14px; }
+.plate-river .plate-canvas { height: clamp(150px, 22vh, 220px); }
+.chat { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; max-height: 300px; overflow: auto; }
+.chat li { display: flex; }
+.chat button {
+  max-width: 78%;
+  display: grid;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 14px;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  animation: chat-in .35s ease;
+}
+.chat small { display: none; font: 500 11px "JetBrains Mono", monospace; opacity: .75; }
+.chat li.is-open small { display: block; }
+.chat-phone button { background: var(--ink); color: var(--paper); }
+.chat-card { justify-content: flex-end; }
+.chat-card button { background: #ead8c7; color: var(--ink); }
+.chat-app { justify-content: center; }
+.chat-app button { background: transparent; color: var(--muted); font-style: italic; }
+.chat li.is-stolen button { background: #f3d6d3; color: var(--red); }
+@keyframes chat-in { from { opacity: 0; transform: translateY(6px); } }
+
+.deep-end { max-width: 980px; margin: clamp(64px, 10vh, 120px) auto 0; }
+.deep-last { margin: 0 0 18px; font-weight: 800; font-size: clamp(30px, 3.6vw, 56px); line-height: 1; letter-spacing: -.035em; }
+.deep-end p { max-width: 62ch; color: var(--muted); line-height: 1.55; }
+.deep-end a { color: var(--ink); }
+.deep-fine { font-size: 13px; }
+
+@media (max-width: 860px) {
+  .plate { grid-template-columns: minmax(0, 1fr); }
+  .plate-canvas { height: 300px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
+  .story *, .story *::after { animation-duration: .01s !important; transition-duration: .01s !important; }
 }
 
 .scan-link {
@@ -243,15 +691,22 @@ html[data-local-file] .local-file-note { display: block; color: var(--muted); }
 html[data-local-file] .local-file-note a { color: var(--ink); }
 html[data-local-file] .copy .scan-link, html[data-local-file] .scan-sequence { display: none; }
 
-.scan-stage {
+.experience-frame {
   position: sticky;
   top: 0;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
   height: 100svh;
   isolation: isolate;
   overflow: clip;
   background: radial-gradient(ellipse at 50% 42%, #fbf9f4, var(--paper) 72%);
+}
+
+.scan-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  pointer-events: none;
   text-align: center;
 }
 
@@ -263,7 +718,7 @@ html[data-local-file] .copy .scan-link, html[data-local-file] .scan-sequence { d
   padding: clamp(20px, 5svh, 60px) 16px 0;
 }
 
-.scan-intro h2, .scan-anatomy h2 {
+.scan-intro h2 {
   margin: 0;
   font-size: clamp(1.75rem, 4.5vw, 3.5rem);
   font-weight: 800;
@@ -297,6 +752,15 @@ html[data-local-file] .copy .scan-link, html[data-local-file] .scan-sequence { d
 }
 
 .scan-preview img { width: min(35vw, 48svh, 360px); height: auto; object-fit: contain; }
+
+.scan-reveal-preview {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(73vw, 48svh, 390px);
+  height: auto;
+  transform: translate(-50%, -44%);
+}
 
 .scan-view.is-handoff {
   position: fixed;
@@ -337,6 +801,7 @@ html[data-local-file] .copy .scan-link, html[data-local-file] .scan-sequence { d
   color: var(--ink);
   touch-action: none;
   cursor: grab;
+  pointer-events: auto;
 }
 
 .scan-grab:active { cursor: grabbing; }
@@ -384,6 +849,7 @@ html[data-local-file] .copy .scan-link, html[data-local-file] .scan-sequence { d
   justify-content: center;
   gap: .55rem;
 }
+.scan-next:not([inert]) > * { pointer-events: auto; }
 
 .scan-intro, .scan-keyboard { opacity: var(--scan-chrome, 1); }
 .scan-keyboard {
@@ -432,37 +898,9 @@ html[data-local-file] .copy .scan-link, html[data-local-file] .scan-sequence { d
 
 .scan-next { column-gap: 1rem; }
 
-.scan-anatomy {
-  display: grid;
-  grid-column: 1;
-  grid-row: 1 / -1;
-  grid-template-rows: auto 1fr auto auto;
-  justify-items: center;
-  z-index: 2;
-  padding: clamp(20px, 5svh, 60px) 16px max(1rem, env(safe-area-inset-bottom));
-  pointer-events: none;
-  opacity: var(--inside-opacity, 0);
-}
-
-.scan-anatomy dl {
-  display: flex;
-  grid-row: 3;
-  gap: 1rem 2rem;
-  margin: 0;
-  text-align: left;
-}
-
-.scan-anatomy dl div { max-width: 24ch; }
-.scan-anatomy dt { margin: 0 0 .25rem; font-weight: 800; }
-.scan-anatomy dd { margin: 0; color: var(--muted); }
-.scan-anatomy .scan-link { grid-row: 4; pointer-events: auto; }
-
-.scan-stage [hidden] { display: none; }
-.scan-stage[data-view="reveal"] .scan-intro,
-.scan-stage[data-view="inside"] .scan-intro { visibility: hidden; }
-.scan-stage[data-view="inside"] .scan-controls { visibility: hidden; }
-.scan-depth { height: 70svh; }
-#scan-inside { scroll-margin-top: 100svh; }
+.scan-stage[hidden], .scan-stage [hidden] { display: none; }
+.scan-stage[data-view="reveal"] .scan-intro { visibility: hidden; }
+.scan-depth { height: 78svh; }
 
 rfid-bit-river:not(:defined) {
   display: block;
@@ -472,12 +910,84 @@ rfid-bit-river:not(:defined) {
 }
 
 @media (max-height: 560px) {
-  .scan-intro, .scan-anatomy { padding-top: 12px; }
+  .scan-intro { padding-top: 12px; }
   .scan-controls { padding-bottom: 10px; }
-  .scan-anatomy dd { font-size: .9rem; }
 }
 
 @media (max-width: 600px) and (min-height: 540px) {
   .scan-reveal { top: 30%; font-size: 19vw; }
   .scan-reveal span { display: block; }
+}
+
+/* ---------- The film's frame ----------
+   The film is laid out on one design frame, 1440 × 900 on wide screens and 390 × 844 on
+   phones, scaled by one factor to fit the window (landing.js sets --u, one design pixel, and
+   --fx, --fy, the frame's corner). Every size below is in design pixels, so each screen of the
+   same shape shows exactly the same picture. */
+.say {
+  left: calc(var(--fx, 0px) + 110 * var(--u, 1px));
+  top: calc(var(--fy, 0px) + 100 * var(--u, 1px));
+  width: calc(700 * var(--u, 1px));
+  font-size: calc(76 * var(--u, 1px));
+  line-height: 1;
+}
+.lab-buttons {
+  left: calc(var(--fx, 0px) + 110 * var(--u, 1px));
+  top: calc(var(--fy, 0px) + 300 * var(--u, 1px));
+  gap: calc(12 * var(--u, 1px));
+}
+.lab-buttons button {
+  padding: calc(14 * var(--u, 1px)) calc(24 * var(--u, 1px));
+  border-width: calc(2 * var(--u, 1px));
+  font-size: calc(21 * var(--u, 1px));
+}
+.lab-badge {
+  right: auto;
+  left: calc(var(--fx, 0px) + 1240 * var(--u, 1px));
+  top: calc(var(--fy, 0px) + 108 * var(--u, 1px));
+  padding: calc(7 * var(--u, 1px)) calc(14 * var(--u, 1px));
+  font-size: calc(16 * var(--u, 1px));
+}
+.lab-meter { width: calc(80 * var(--u, 1px)); gap: calc(6 * var(--u, 1px)); }
+.lab-meter div { width: calc(14 * var(--u, 1px)); height: calc(150 * var(--u, 1px)); border-radius: calc(8 * var(--u, 1px)); }
+.lab-meter i { border-radius: calc(8 * var(--u, 1px)); }
+.lab-meter em { left: calc(-8 * var(--u, 1px)); right: calc(-8 * var(--u, 1px)); height: calc(2 * var(--u, 1px)); }
+.lab-meter em::after { left: calc(30 * var(--u, 1px)); top: calc(-9 * var(--u, 1px)); font-size: calc(14 * var(--u, 1px)); }
+.lab-meter span { font-size: calc(16 * var(--u, 1px)); }
+.lab-trace, .lab-id { width: calc(420 * var(--u, 1px)); }
+.lab-trace { gap: calc(6 * var(--u, 1px)); }
+.lab-trace span { font-size: calc(17 * var(--u, 1px)); }
+.lab-trace canvas { width: calc(420 * var(--u, 1px)); height: calc(76 * var(--u, 1px)); }
+.lab-id { gap: calc(12 * var(--u, 1px)); font-size: calc(16 * var(--u, 1px)); }
+.lab-id b { font-size: calc(36 * var(--u, 1px)); }
+.lab-hand { width: calc(52 * var(--u, 1px)); height: calc(60 * var(--u, 1px)); }
+.lab-fine { right: auto; left: calc(var(--fx, 0px) + 1240 * var(--u, 1px)); bottom: auto; top: calc(var(--fy, 0px) + 150 * var(--u, 1px)); font-size: calc(13 * var(--u, 1px)); }
+.story .callout b { font-size: calc(20 * var(--u, 1px)); }
+.story .callout { max-width: calc(260 * var(--u, 1px)); }
+
+@media (max-aspect-ratio: 1/1), (max-width: 760px) {
+  .say {
+    left: calc(var(--fx, 0px) + 22 * var(--u, 1px));
+    top: calc(var(--fy, 0px) + 64 * var(--u, 1px));
+    width: calc(346 * var(--u, 1px));
+    font-size: calc(38 * var(--u, 1px));
+  }
+  .lab-buttons {
+    left: calc(var(--fx, 0px) + 22 * var(--u, 1px));
+    right: auto;
+    top: calc(var(--fy, 0px) + 712 * var(--u, 1px));
+    width: calc(346 * var(--u, 1px));
+    justify-content: center;
+  }
+  .lab-buttons button { padding: calc(11 * var(--u, 1px)) calc(16 * var(--u, 1px)); font-size: calc(16 * var(--u, 1px)); }
+  .lab-badge { left: calc(var(--fx, 0px) + 268 * var(--u, 1px)); top: calc(var(--fy, 0px) + 22 * var(--u, 1px)); font-size: calc(13 * var(--u, 1px)); }
+  .lab-meter { width: calc(64 * var(--u, 1px)); }
+  .lab-meter div { height: calc(110 * var(--u, 1px)); }
+  .lab-trace, .lab-id { width: calc(320 * var(--u, 1px)); }
+  .lab-trace canvas { width: calc(320 * var(--u, 1px)); height: calc(60 * var(--u, 1px)); }
+  .lab-trace span { font-size: calc(15 * var(--u, 1px)); }
+  .lab-id b { font-size: calc(30 * var(--u, 1px)); }
+  .lab-fine { display: none; }
+  .story .callout b { font-size: calc(15 * var(--u, 1px)); }
+  .story .callout { max-width: calc(150 * var(--u, 1px)); }
 }

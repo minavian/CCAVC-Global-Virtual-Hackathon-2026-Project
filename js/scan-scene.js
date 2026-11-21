@@ -7,7 +7,6 @@ import { SCAN_TIMING as time } from './scan-timing.js';
 
 const sizes = [3.6, 7.7, 6.05];
 const revealSizes = [6.5, 6.9, 5.6];
-const cutawaySizes = [5.1, 8.05, 9.5];
 const deviceAspects = [.56, .49, 1.58];
 const reach = new T.Vector3(3.2, 1.35, 2.6);
 const tap = new T.Vector3(-2.35, .05, 2.35);
@@ -370,43 +369,27 @@ export async function createScanScene(viewport, redraw) {
     readerShadow.position.x += readerSlide;
   }
 
-  function setInsidePose(push) {
+  function drawStory(progress, target) {
+    if (!current || !fitCamera(1, revealCameraY)) return;
     reader.body.visible = readerShadow.visible = false;
     if (hand) hand.group.visible = false;
     for (const wave of waves) wave.visible = false;
     device.position.copy(revealPosition);
-    device.position.x += .22 * push;
-    device.position.y += .8 * push;
-    device.rotation.set(revealRotation.x + push * .24, revealRotation.y - push * .55, T.MathUtils.lerp(revealRotation.z, -.08, push));
-    const size = T.MathUtils.lerp(revealSizes[index], cutawaySizes[index], push);
+    device.quaternion.copy(revealQuaternion);
+    let size = revealSizes[index];
+    if (target) {
+      device.position.lerp(toScenePoint(target, revealPosition.z), progress);
+      landingRotation.set(target.pitch, target.yaw, target.roll, 'YXZ');
+      device.quaternion.slerp(landingQuaternion.setFromEuler(landingRotation), progress);
+      size = T.MathUtils.lerp(size, target.size / pixelsPerUnit, progress);
+    }
     device.scale.setScalar(size / current.span);
     productShadow.visible = true;
     productShadow.position.copy(revealShadow);
-    productShadow.position.y -= push * 1.65;
-    productShadow.material.opacity = .48 - push * .18;
-  }
-
-  function drawInside(progress) {
-    const push = ease(progress);
-    if (!current || !fitCamera(1 + .12 * push, revealCameraY + .32 * push)) return;
-    setInsidePose(push);
-    openDevice(ease(cue(progress, .14, 1)));
+    productShadow.material.opacity = .48 * (1 - progress);
+    openDevice(0);
     renderer.render(scene, camera);
   }
 
-  function drawRiver(progress, target) {
-    const amount = ease(progress);
-    const cutaway = 1 - amount;
-    if (!current || !fitCamera(1 + .12 * cutaway, (revealCameraY + .32) * cutaway)) return;
-    setInsidePose(1);
-    openDevice(1 - ease(cue(progress, 0, .78)));
-    device.position.lerp(toScenePoint(target, revealPosition.z), amount);
-    landingRotation.set(target.pitch, target.yaw, target.roll, target.order ?? 'YXZ');
-    device.quaternion.slerp(landingQuaternion.setFromEuler(landingRotation), amount);
-    device.scale.setScalar(T.MathUtils.lerp(cutawaySizes[index], target.size / pixelsPerUnit, amount) / current.span);
-    productShadow.material.opacity *= cutaway;
-    renderer.render(scene, camera);
-  }
-
-  return { showObject, releaseObject, drawScan, drawInside, drawHandoff, drawRiver, getDevicePose, getTargets };
+  return { showObject, releaseObject, drawScan, drawStory, drawHandoff, getDevicePose, getTargets };
 }
