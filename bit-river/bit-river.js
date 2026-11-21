@@ -12,6 +12,8 @@ const packets = [
   { label: 'Auth', value: '8A 2F' },
   { label: 'Data', value: 'Gallery pass' }
 ];
+const startingPhases = [.22, .51, .80];
+const packetSpeed = .034;
 const sparks = Array.from({ length: 10 }, (_, i) =>
   `<i style="--angle:${i * 36}deg;--delay:${i % 3 * 35}ms"></i>`).join('');
 const icons = {
@@ -50,9 +52,10 @@ function mount(host, root, signal) {
           <div class="device reader" aria-hidden="true"><img src="${file('assets/reader.webp')}" alt=""></div>
           <span class="device-label tag-label">Card</span>
           <span class="device-label reader-label">Reader <span class="connected" hidden>Connected</span></span>
-          <div class="packets" role="group" aria-label="Simulated packets" hidden>
+          <div class="packets" role="group" aria-label="Simulated packets" inert>
             ${packets.map(p => `<button type="button" class="packet" aria-label="Inspect ${p.label} packet"
-                aria-pressed="false" aria-controls="reading" aria-keyshortcuts="Delete">
+                aria-pressed="false" aria-controls="reading" aria-keyshortcuts="Delete" style="opacity:0" inert>
+              <span class="packet-surface" aria-hidden="true"></span>
               <span class="packet-sparks" aria-hidden="true">${sparks}</span>
               <span class="packet-face"><i aria-hidden="true"></i>${p.label}</span>
               <span class="packet-value" aria-hidden="true">${p.value}</span>
@@ -81,11 +84,13 @@ function mount(host, root, signal) {
   const motion = matchMedia('(prefers-reduced-motion: reduce)');
   const fades = new Map();
   let reduced = motion.matches;
-  const phases = [.22, .51, .80];
+  const phases = [...startingPhases];
+  const arrivals = [0, 0, 0];
+  const glints = nodes.map(() => ({ x: 50, y: 50, targetX: 50, targetY: 50 }));
   let geometry, ink, bits, drawCard, audio, drag, replacement, returning, noticeTimer;
   let chapter = -1, selected = -1, missing = -1;
   let restored = false;
-  let progress = 0, clock = 0, lastTime, raf = 0;
+  let progress = 0, zoom = 0, clock = 0, lastTime, raf = 0;
   let visible = false, paused = false, sound = false, dirty = true, loadStarted = false, connected = false;
   const on = (target, event, fn, options = {}) => target.addEventListener(event, fn, { ...options, signal });
 
@@ -180,11 +185,11 @@ function mount(host, root, signal) {
     clearRestored();
     drag = returning = null;
     missing = selected = -1;
-    phases.splice(0, 3, .22, .51, .80);
-    for (const node of nodes) {
+    nodes.forEach((node, i) => {
       node.classList.remove('missing', 'selected', 'held', 'peek');
       node.setAttribute('aria-pressed', 'false');
-    }
+      glints[i].targetX = glints[i].targetY = 50;
+    });
     $('.announcement').textContent = '';
   }
   function setChapter(index) {
@@ -195,7 +200,7 @@ function mount(host, root, signal) {
     frame.toggleAttribute('data-inside', index >= 2);
     fadeText($('.copy h2'), chapters[index].title);
     fadeText($('.copy p'), chapters[index].copy ?? '');
-    $('.packets').hidden = index !== 3;
+    $('.packets').inert = index !== 3;
     stops.forEach((stop, i) => {
       if (i === index) stop.setAttribute('aria-current', 'step');
       else stop.removeAttribute('aria-current');
@@ -234,7 +239,7 @@ function mount(host, root, signal) {
       ink = sizeCanvas($('.field'), w, h, compact);
       bits = sizeCanvas($('.traffic'), w, h, compact);
     }
-    const zoom = motion.matches ? [0, .45, 1, 1][chapter] : ease(.03, .69, progress);
+    zoom = motion.matches ? [0, .45, 1, 1][chapter] : ease(.03, .69, progress);
     const push = motion.matches ? 0 : ease(.01, .22, progress) * (1 - ease(.26, .55, progress));
     geometry = riverGeometry(w, h, zoom, compact);
     const { reader, tag } = geometry;
@@ -246,12 +251,55 @@ function mount(host, root, signal) {
       plot.style.setProperty('--' + name + '-w', width + 'px');
     }
     if (drawCard) drawCard(zoom);
-    drawField(ink, geometry, zoom, progress);
   }
-  function positionPacket(i) {
-    const phase = geometry.compact ? .12 + phases[i] * .76 : phases[i];
-    const t = returning?.i === i ? phase * ease(0, 1.1, clock - returning.start) : phase;
-    return geometry.point(t, (i - 1) * .88);
+  function packetPhase(i) {
+    if (returning?.i !== i) return phases[i];
+    const elapsed = clock - returning.start;
+    return ((returning.phase + elapsed * packetSpeed) * ease(0, 1.1, elapsed)) % 1;
+  }
+  function positionPacket(i, phase = packetPhase(i)) {
+    const t = geometry.compact ? .12 + phase * .76 : phase;
+    return geometry.point(t, (i - 1) * .88, reduced ? 0 : clock);
+  }
+  function updateGlint(node, light, dt) {
+    const { x, y } = light;
+    const blend = 1 - Math.exp(-dt * 20);
+    const goalX = reduced ? 50 : light.targetX;
+    const goalY = reduced ? 50 : light.targetY;
+    light.x = reduced || Math.abs(goalX - x) < .25 ? goalX : x + (goalX - x) * blend;
+    light.y = reduced || Math.abs(goalY - y) < .25 ? goalY : y + (goalY - y) * blend;
+    if (x !== light.x || y !== light.y) {
+      node.style.setProperty('--glint-x', light.x.toFixed(1) + '%');
+      node.style.setProperty('--glint-y', light.y.toFixed(1) + '%');
+      node.style.setProperty('--pitch', ((50 - light.y) * .13).toFixed(2) + 'deg');
+      node.style.setProperty('--yaw', ((light.x - 50) * .15).toFixed(2) + 'deg');
+    }
+    return light.x !== goalX || light.y !== goalY;
+  }
+  function updatePackets(dt, moving) {
+    let settling = false;
+    const blend = 1 - Math.exp(-dt * 12);
+    nodes.forEach((node, i) => {
+      const focused = root.activeElement === node && node.matches(':focus-visible');
+      const held = drag?.i === i;
+      const target = missing === i ? 0 : ease(.63 + i * .021, .82 + i * .024, progress);
+      const difference = target - arrivals[i];
+      arrivals[i] = reduced || missing === i || Math.abs(difference) < .004
+        ? target : arrivals[i] + difference * blend;
+      if (progress < .58 && !arrivals[i]) phases[i] = startingPhases[i];
+      if (moving && progress > .63 && !focused) {
+        phases[i] = (phases[i] + dt * packetSpeed) % 1;
+      }
+      const phase = packetPhase(i);
+      const envelope = focused || held || reduced ? 1 : ease(.03, .17, phase) * (1 - ease(.86, .99, phase));
+      const presence = arrivals[i] * envelope;
+      node.style.opacity = presence.toFixed(3);
+      node.style.setProperty('--arrival', presence.toFixed(3));
+      node.inert = missing === i || (!focused && !held && presence < .18);
+      if (presence && !held) place(node, positionPacket(i, phase));
+      if (updateGlint(node, glints[i], dt) || arrivals[i] !== target) settling = true;
+    });
+    return settling;
   }
   function tick(now) {
     raf = 0;
@@ -260,20 +308,19 @@ function mount(host, root, signal) {
       dirty = true;
       lastTime = undefined;
     }
-    if (dirty) { dirty = false; layout(); }
+    const redraw = dirty;
+    if (redraw) { dirty = false; layout(); }
     if (!geometry || !visible || document.hidden) { lastTime = undefined; return; }
     const moving = !motion.matches && !paused && progress > .06;
     const dt = lastTime === undefined ? 0 : Math.min((now - lastTime) / 1000, .05);
-    lastTime = moving ? now : undefined;
     if (moving) clock += dt;
-    drawTraffic(bits, geometry, progress, clock);
-    if (returning && (clock - returning.start >= 1.1 || motion.matches)) returning = null;
-    if (chapter === 3) nodes.forEach((node, i) => {
-      if (drag?.i === i) return;
-      if (moving) phases[i] = (phases[i] + dt * .034) % 1;
-      place(node, positionPacket(i));
-    });
-    if (moving) wake();
+    const fieldClock = reduced ? 0 : clock;
+    if (redraw || (moving && replyFront(progress))) drawField(ink, geometry, zoom, progress, fieldClock);
+    if (redraw || moving) drawTraffic(bits, geometry, progress, fieldClock);
+    if (returning && (clock - returning.start >= 1.1 || reduced)) returning = null;
+    const settling = updatePackets(dt, moving);
+    lastTime = moving || settling ? now : undefined;
+    if (lastTime !== undefined) wake();
   }
   function place(node, { x, y }) {
     node.style.transform = `translate(${x}px,${y}px) translate(-50%,-50%)`;
@@ -310,7 +357,7 @@ function mount(host, root, signal) {
     import('./card.js').then(module => module.loadCard(model, signal)).then(render => {
       if (!render || signal.aborted) return;
       drawCard = render;
-      layout();
+      refresh();
       $('.card').classList.add('live');
     }).catch(() => { /* The stills show the same card when WebGL or the CDN is unavailable. */ });
   });
@@ -334,11 +381,12 @@ function mount(host, root, signal) {
     replacement = setTimeout(() => {
       missing = -1;
       // Rejoin the original slot so a replacement cannot drift on top of another packet forever.
-      if (!motion.matches && !paused && !restoreFocus) returning = { i, start: clock };
+      if (!motion.matches && !paused && !restoreFocus) returning = { i, start: clock, phase: phases[i] };
       nodes[i].classList.remove('missing');
       if (restoreFocus && root.activeElement === $('.readout')) {
         selected = i;
         nodes[i].classList.add('selected');
+        nodes[i].inert = false;
         nodes[i].focus({ preventScroll: true });
       }
       restored = true;
@@ -355,13 +403,26 @@ function mount(host, root, signal) {
   on($('.lift'), 'click', () => steal(selected));
   nodes.forEach((node, i) => {
     let dragged = false;
+    const light = glints[i];
+    function aimLight(event) {
+      if (event.pointerType !== 'mouse' || reduced || drag) return;
+      const rect = node.getBoundingClientRect();
+      light.targetX = clamp((event.clientX - rect.left) / rect.width) * 100;
+      light.targetY = clamp((event.clientY - rect.top) / rect.height) * 100;
+      wake();
+    }
     on(node, 'pointerenter', event => {
       if (event.pointerType === 'mouse' && !drag && missing < 0) {
         node.classList.add('peek');
+        aimLight(event);
         inspect(i);
       }
     });
-    on(node, 'pointerleave', () => node.classList.remove('peek'));
+    on(node, 'pointerleave', () => {
+      node.classList.remove('peek');
+      light.targetX = light.targetY = 50;
+      wake();
+    });
     on(node, 'focus', () => inspect(i));
     on(node, 'click', event => {
       if (missing >= 0 || (dragged && event.detail)) return;
@@ -380,7 +441,8 @@ function mount(host, root, signal) {
       node.setPointerCapture(event.pointerId);
     });
     on(node, 'pointermove', event => {
-      if (drag?.id !== event.pointerId || drag.i !== i) return;
+      if (!drag) { aimLight(event); return; }
+      if (drag.id !== event.pointerId || drag.i !== i) return;
       const dx = event.clientX - drag.startX, dy = event.clientY - drag.startY;
       if (Math.hypot(dx, dy) < 5 && !drag.position) return;
       drag.position = { x: drag.origin.x + dx, y: drag.origin.y + dy };
@@ -393,7 +455,7 @@ function mount(host, root, signal) {
       drag = null;
       dragged = Boolean(position);
       node.classList.remove('held');
-      if (event.type === 'pointerup' && position && !geometry.contains(position.x, position.y)) steal(i);
+      if (event.type === 'pointerup' && position && !geometry.contains(position.x, position.y, reduced ? 0 : clock)) steal(i);
       wake();
     }
     for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) on(node, event, release);

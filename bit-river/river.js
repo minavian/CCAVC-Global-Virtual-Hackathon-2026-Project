@@ -31,18 +31,21 @@ export function riverGeometry(w, h, zoom, compact) {
   const reader = { x: w * (compact ? .25 - .04 * zoom : .24 - .06 * zoom),
     y: h * (compact ? .77 + .01 * zoom : .76 + .005 * zoom) };
   const breadth = Math.min(h * .13, w * .09) * (.75 + zoom * .7);
-  function point(t, lane = 0) {
+  const sway = Math.min(h * .015, 9);
+  function point(t, lane = 0, clock = 0) {
     const swell = Math.sin(Math.PI * t);
     const bend = Math.sin(TAU * t) * h * (compact ? .055 : .13);
-    const twist = .78 + .40 * Math.sin(1.25 + TAU * t);
+    const current = TAU * (t * 1.28 - clock * .16);
+    const drift = swell * sway * (Math.sin(current) + .34 * Math.sin(current * .53 + 1.7));
+    const twist = .78 + .40 * Math.sin(1.25 + TAU * t) + .07 * Math.sin(current);
     const offset = breadth * swell * (lane * twist + .19 * Math.sin(lane * 3 + t * TAU));
     return { x: tag.x + (reader.x - tag.x) * t,
-      y: tag.y + (reader.y - tag.y) * t + bend + offset };
+      y: tag.y + (reader.y - tag.y) * t + bend + offset + drift };
   }
-  function contains(x, y) {
+  function contains(x, y, clock = 0) {
     const t = (x - tag.x) / (reader.x - tag.x);
     if (t < 0 || t > 1) return false;
-    return y >= point(t, -1).y - 20 && y <= point(t, 1).y + 20;
+    return y >= point(t, -1, clock).y - 20 && y <= point(t, 1, clock).y + 20;
   }
   return { w, h, tag, reader, point, contains, compact };
 }
@@ -58,10 +61,11 @@ export function sizeCanvas(canvas, w, h, compact) {
 
 // The pale loops show the source of power. The copper strands open into
 // separate lanes as the scroll moves the camera into the reply.
-export function drawField(ctx, geometry, zoom, progress) {
+export function drawField(ctx, geometry, zoom, progress, clock) {
   const { w, h, tag, reader, point, compact } = geometry;
   ctx.clearRect(0, 0, w, h);
   const dark = progress >= .55;
+  ctx.lineCap = ctx.lineJoin = 'round';
   ctx.lineWidth = .8;
   for (let i = 1; i <= 5; i++) {
     const radius = Math.min(w * .25, h * .54) * (.38 + i * .19);
@@ -103,7 +107,7 @@ export function drawField(ctx, geometry, zoom, progress) {
     ctx.moveTo(tag.x, tag.y);
     for (let j = 1; j <= segments; j++) {
       const t = end * j / segments;
-      const { x, y } = point(t, lane * spreadAt(front, t));
+      const { x, y } = point(t, lane * spreadAt(front, t), clock);
       ctx.lineTo(x, y);
     }
     ctx.stroke();
@@ -115,6 +119,7 @@ export function drawTraffic(ctx, geometry, progress, clock) {
   ctx.clearRect(0, 0, w, h);
   const dark = progress >= .55;
   const front = replyFront(progress);
+  ctx.lineCap = ctx.lineJoin = 'round';
   const charging = ease(.035, .15, progress) * (1 - ease(.29, .46, progress));
   if (charging) {
     const head = 1 - ease(.055, .34, progress);
@@ -139,6 +144,21 @@ export function drawTraffic(ctx, geometry, progress, clock) {
   trace(0, front, 0, Math.max(2, Math.ceil(288 * front)), t =>
     Math.sin(Math.PI * t) * amplitude * replySample(cellAt(t)));
 
+  for (let i = 0; i < (compact ? 2 : 3); i++) {
+    const lane = [-.64, .48, -.23][i];
+    const head = (i * .36 + clock * .092) % 1;
+    const tail = Math.max(0, head - .14);
+    if (head > front || head === tail) continue;
+    const light = ctx.createLinearGradient(point(tail).x, 0, point(head).x, 0);
+    light.addColorStop(0, 'transparent');
+    light.addColorStop(.78, dark ? '#ffc593' : '#bb6944');
+    light.addColorStop(1, 'transparent');
+    ctx.strokeStyle = light;
+    ctx.lineWidth = compact ? 1.35 : 1.75;
+    ctx.globalAlpha = .67 * ease(0, .12, head) * ease(0, .11, front - head);
+    trace(tail, head, lane, 15);
+  }
+
   // A few moving glints leave enough open space to distinguish the modulation.
   const lanes = compact ? 2 : 4, count = compact ? 8 : 12;
   ctx.textAlign = 'center';
@@ -152,7 +172,7 @@ export function drawTraffic(ctx, geometry, progress, clock) {
     for (let j = 0; j < count; j++) {
       const t = (j / count + i * .057 + clock * .064) % 1;
       if (t > front) continue;
-      const { x, y } = point(t, lane * spreadAt(front, t));
+      const { x, y } = point(t, lane * spreadAt(front, t), clock);
       ctx.globalAlpha = ease(0, .08, t) * ease(0, .08, 1 - t) * ease(0, .06, front - t);
       if ((i + j) % 3 === 0) ctx.fillText(replyBit(cellAt(t)), x, y);
       else {
@@ -167,9 +187,10 @@ export function drawTraffic(ctx, geometry, progress, clock) {
     ctx.beginPath();
     for (let j = 0; j <= steps; j++) {
       const t = start + (end - start) * j / steps;
-      const { x, y } = point(t, lane ? lane * spreadAt(front, t) : 0);
-      if (j) ctx.lineTo(x, y + (wave ? wave(t) : 0));
-      else ctx.moveTo(x, y + (wave ? wave(t) : 0));
+      const { x, y } = point(t, lane ? lane * spreadAt(front, t) : 0, clock);
+      const height = y + (wave ? wave(t) : 0);
+      if (j) ctx.lineTo(x, height);
+      else ctx.moveTo(x, height);
     }
     ctx.stroke();
   }

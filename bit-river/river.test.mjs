@@ -23,11 +23,13 @@ test('the card, reader and draggable packets share the river at every zoom', () 
       assert.deepEqual(river.point(0), river.tag);
       assert.ok(Math.abs(river.point(1).x - river.reader.x) < .001);
       assert.ok(Math.abs(river.point(1).y - river.reader.y) < .001);
-      for (let step = 1; step < 100; step++) {
-        for (const lane of [-.88, 0, .88]) {
-          const { x, y } = river.point(step / 100, lane);
-          assert.ok(river.contains(x, y), 'a packet in its lane can be dropped back safely');
-          assert.ok(!river.contains(x, -h), 'dragging clear of the stream triggers the Easter egg');
+      for (const clock of [0, 1.25, 7.5]) {
+        for (let step = 1; step < 100; step++) {
+          for (const lane of [-.88, 0, .88]) {
+            const { x, y } = river.point(step / 100, lane, clock);
+            assert.ok(river.contains(x, y, clock), 'a packet in its lane can be dropped back safely');
+            assert.ok(!river.contains(x, -h, clock), 'dragging clear of the stream triggers the Easter egg');
+          }
         }
       }
       assert.ok(!river.contains(river.tag.x + 1, river.tag.y));
