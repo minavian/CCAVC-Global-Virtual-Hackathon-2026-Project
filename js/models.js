@@ -11,9 +11,9 @@
  *     activate the visitor tapped it (or pressed Enter) while it is at the front
  *     present  it is leaving the front
  *
- * loadObject(THREE, loader, reduceMotion, index) loads a separate copy for the scan story.
- * Pass an existing GLTFLoader and the carousel index. The returned object also has
- * open(progress), which scrubs the built-in Explode clip from closed (0) to open (1).
+ * The carousel's card also exposes open(progress) for the scan story. If the carousel
+ * hasn't loaded, loadObject(THREE, loader, reduceMotion, index) provides a fallback model.
+ * open(progress) scrubs the built-in Explode clip from closed (0) to open (1).
  */
 (function () {
   'use strict';
@@ -23,7 +23,8 @@
     ['Phone', 'models/oppo-find-x9-ultra.glb', phone],
     ['Contactless card', 'models/contactless-card.glb', card]
   ];
-  // The carousel drops these sealed parts to avoid drawing geometry it never shows.
+  const CARD_INDEX = 2;
+  // The carousel drops sealed parts except on the card that opens later in the scan.
   const SEALED = {
     'Key fob': ['rfid-chip', 'antenna-coil', 'protective-encapsulation', 'key-mat-pins-and-guide-mount',
       'indicator-light-pipe-foot', 'inner-guide-rib-1', 'inner-stop-1', 'inner-guide-rib-2', 'inner-stop-2',
@@ -36,7 +37,7 @@
 
   function load(T, GLTFLoader, reduceMotion) {
     const loader = new GLTFLoader();
-    return Promise.all(FILES.map((_, index) => loadModel(T, loader, reduceMotion, index, false)));
+    return Promise.all(FILES.map((_, index) => loadModel(T, loader, reduceMotion, index, index === CARD_INDEX)));
   }
 
   function loadObject(T, loader, reduceMotion, index) {

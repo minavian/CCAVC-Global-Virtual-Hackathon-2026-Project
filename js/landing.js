@@ -36,6 +36,7 @@
   const DRIFT_BACK_AFTER = 6;    // idle seconds before the carousel returns to the key fob
   const DRIFT_DURATION = 1.7;
   const NAMES = ['Key fob', 'Phone', 'Contactless card'];
+  const CARD_INDEX = 2;
   const BASE_PITCH = [.16, -.09, .11];
   const BASE_YAW = [-.42, .38, -.24];
   const BASE_ROLL = [-.31, -.19, .14];
@@ -115,6 +116,8 @@
   let lastNow = null, frameId = 0;
   let stageVisible = true;
   let hiddenIndex = -1;
+  let restoreCard = null;
+  let cardFeature = null;
   let skipPointer = null, skipEvent = null;
   const poses = [0, 1, 2].map(() => ({ x: 0, y: 0, baseY: 0, size: 0, depth: 0, side: 0, roll: 0, leanX: 0, leanY: 0 }));
 
@@ -400,7 +403,7 @@
       if (flight && !drag) advanceFlight(dt);
       else if (!flight && !drag) {
         idle += dt;
-        if (focus !== 0 && idle > DRIFT_BACK_AFTER) bringToFront(0, DRIFT_DURATION);
+        if (!cardFeature && focus !== 0 && idle > DRIFT_BACK_AFTER) bringToFront(0, DRIFT_DURATION);
       }
     }
     updateFocus();
@@ -432,6 +435,11 @@
     lastNow = now;
     step(dt);
     render(dt);
+    if (cardFeature && !gl) releaseFeature();
+    else if (cardFeature && !cardFeature.ready && focus === CARD_INDEX && !flight && entrance >= .999 && gl.shown >= .999) {
+      cardFeature.ready = true;
+      cardFeature.resolve(true);
+    }
     gl?.tune(raw);
     frameId = requestAnimationFrame(frame);
   }
@@ -456,6 +464,7 @@
     const r = stage.getBoundingClientRect(), x = clientX - r.left, y = clientY - r.top;
     let best = -1, bestScore = Infinity;
     poses.forEach((p, i) => {
+      if (i === hiddenIndex) return;
       const score = Math.hypot(x - p.x, y - p.y) / (p.size * .5) + p.depth * .35;
       if (score < bestScore) { bestScore = score; best = i; }
     });
@@ -463,7 +472,7 @@
   }
 
   stage.addEventListener('pointerdown', e => {
-    if (!e.isPrimary || e.button !== 0 || !started || intro !== null || e.pointerId === skipPointer) return;
+    if (!e.isPrimary || e.button !== 0 || !started || intro !== null || cardFeature || e.pointerId === skipPointer) return;
     try { stage.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
     drag = { id: e.pointerId, x: e.clientX, y: e.clientY, from: phase, moved: false, time: performance.now(), v: 0 };
     flight = null;   // catch the carousel where it is
@@ -508,7 +517,7 @@
   addEventListener('pointerup', e => { if (e.pointerId === skipPointer) skipPointer = null; });
 
   stage.addEventListener('keydown', e => {
-    if (e === skipEvent || intro !== null || !started || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e === skipEvent || intro !== null || !started || cardFeature || e.altKey || e.ctrlKey || e.metaKey) return;
     const direction = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 }[e.key];
     if (direction) { e.preventDefault(); stepCarousel(direction); return; }
     if (e.target === stage && (e.key === 'Enter' || e.key === ' ')) {
@@ -528,12 +537,14 @@
   const stageObserver = new IntersectionObserver(([entry]) => {
     stageVisible = entry.intersectionRatio > 0;
     if (!stageVisible && intro !== null) finishIntro(false);
+    if (!stageVisible) releaseFeature();
     wake();
   });
   stageObserver.observe(stage);
   reduced.addEventListener('change', () => {
     calm = reduced.matches;
     if (calm) { finishIntro(false); flight = null; phase = Math.round(phase); velocity = twist = 0; }
+    if (cardFeature) bringToFront(CARD_INDEX, .62);
   });
   addEventListener('resize', measure);
   const resized = new ResizeObserver(() => measure());
@@ -741,6 +752,7 @@
     function draw(dt, fade) {
       if (!wide || !high) return;
       objects.forEach((o, i) => {
+        if (i === hiddenIndex) return;
         const p = poses[i], g = stands[i], sway = calm ? 0 : Math.sin(elapsed * .27 + i * 1.3);
         g.position.set(p.x - left, high - (p.y - top), -325 * p.depth);
         g.scale.setScalar(p.size / o.span);
@@ -787,7 +799,10 @@
     const actionClock = () => {
       for (let k = pending.length - 1; k >= 0; k--) {
         const { i, at, kind } = pending[k];
-        if (clock >= at) { objects[i].action[kind]?.(clock); pending.splice(k, 1); }
+        if (clock >= at) {
+          if (i !== hiddenIndex) objects[i].action[kind]?.(clock);
+          pending.splice(k, 1);
+        }
       }
     };
     const baseDraw = draw;
@@ -808,11 +823,25 @@
         const pose = poses[index];
         const stand = stands[index];
         const bounds = stage.getBoundingClientRect();
-        // Keep the visible turn, relative to the fresh copy that the scan scene loads.
+        // Include the current flip so the scan can start with the model at its rest rotation.
         const rotation = stand.quaternion.clone().multiply(objects[index].model.quaternion)
           .multiply(inverseRestRotations[index]);
         const { x: pitch, y: yaw, z: roll } = new T.Euler().setFromQuaternion(rotation, 'YXZ');
         return { index, x: bounds.left + pose.x, y: bounds.top + pose.y, size: pose.size, pitch, yaw, roll };
+      },
+      takeCard() {
+        const card = objects[CARD_INDEX];
+        const rotation = card.model.quaternion.clone();
+        card.model.removeFromParent();
+        card.model.quaternion.copy(inverseRestRotations[CARD_INDEX]).invert();
+        return {
+          card,
+          restore() {
+            card.open(0);
+            card.model.quaternion.copy(rotation);
+            stands[CARD_INDEX].add(card.model);
+          }
+        };
       },
       setHidden(index) {
         stands.forEach((stand, i) => { stand.visible = i !== index; });
@@ -837,7 +866,7 @@
       draw(dt, fade) { actionClock(); baseDraw(dt, fade); },
       arrive(i, at) { queue(i, at, 'arrive'); },
       activate(i, at) { queue(i, at, 'activate'); },
-      present(i) { objects[i].action.present?.(); }
+      present(i) { if (i !== hiddenIndex) objects[i].action.present?.(); }
     };
   }
 
@@ -883,10 +912,47 @@
     if (gl && stageVisible && !document.hidden) render(0);
   }
 
+  function releaseFeature() {
+    if (cardFeature && !cardFeature.ready) cardFeature.resolve(false);
+    cardFeature = null;
+  }
+
   window.RFIDLanding = {
     getPose(index = focus) {
-      if (!stageVisible || !gl?.shown || entrance <= .01 || !poses[index]?.size) return null;
+      if (index === hiddenIndex || !stageVisible || !gl?.shown || entrance <= .01 || !poses[index]?.size) return null;
       return gl.getPose(index);
+    },
+    featureCard() {
+      if (cardFeature) return cardFeature.promise;
+      if (!started || !stageVisible || !gl || restoreCard) return Promise.resolve(false);
+      if (drag) {
+        const { id } = drag;
+        drag = null;
+        stage.classList.remove('is-dragging');
+        if (stage.hasPointerCapture(id)) stage.releasePointerCapture(id);
+      }
+      const request = {};
+      request.promise = new Promise(resolve => { request.resolve = resolve; });
+      cardFeature = request;
+      finishIntro(false);
+      bringToFront(CARD_INDEX, .62);
+      wake();
+      return request.promise;
+    },
+    borrowCard() {
+      if (!gl || restoreCard) return null;
+      const { card, restore } = gl.takeCard();
+      restoreCard = restore;
+      releaseFeature();
+      setHiddenObject(CARD_INDEX);
+      return card;
+    },
+    releaseFeature,
+    returnCard() {
+      if (!restoreCard) return;
+      restoreCard();
+      restoreCard = null;
+      setHiddenObject(-1);
     },
     hideObject: setHiddenObject,
     showObject: () => setHiddenObject(-1)

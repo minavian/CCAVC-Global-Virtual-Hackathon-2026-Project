@@ -4,5 +4,6 @@ export const SCAN_TIMING = {
   grasp: 1.02,
   contact: 1.86,
   burst: 2.34,
-  end: 3.16
+  reveal: 2.84,
+  end: 3.66
 };

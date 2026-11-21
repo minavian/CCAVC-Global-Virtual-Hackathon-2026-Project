@@ -1,4 +1,4 @@
-import { clamp, ease, replyFront, riverGeometry, sizeCanvas, drawField, drawTraffic } from './river.js';
+import { CARD_MODEL_WIDTH, CARD_VIEW_WIDTH, cardPose, clamp, ease, replyFront, riverGeometry, sizeCanvas, drawField, drawTraffic } from './river.js';
 
 const file = name => new URL(name, import.meta.url).href;
 const chapters = [
@@ -183,31 +183,58 @@ function mount(host, root, signal) {
     wake();
   });
 
-  function layout() {
+  function scrollProgress() {
     const travel = Math.max(1, host.offsetHeight - frame.offsetHeight);
-    progress = clamp(-host.getBoundingClientRect().top / travel);
-    $('.pause').hidden = !replyFront(progress) || motion.matches;
-    setChapter(chapters.findLastIndex(c => progress >= c.at));
+    return clamp(-host.getBoundingClientRect().top / travel);
+  }
+
+  function measure(scroll, step = chapters.findLastIndex(c => scroll >= c.at)) {
     const w = plot.clientWidth, h = plot.clientHeight;
-    if (!w || !h) return;
+    if (!w || !h) return null;
     const compact = w <= 520 || (w <= 680 && frame.clientHeight > 450);
+    const zoom = motion.matches ? [0, .45, 1, 1][step] : ease(.03, .69, scroll);
+    const push = motion.matches ? 0 : ease(.01, .22, scroll) * (1 - ease(.26, .55, scroll));
+    const cardWidth = Math.min(w * (compact ? .62 : .39), h * (compact ? .99 : .95), 640) * (1 - .40 * zoom + push * .42);
+    return { geometry: riverGeometry(w, h, zoom, compact), zoom, cardWidth };
+  }
+
+  function getCardTarget({ atEntry = false } = {}) {
+    const view = measure(atEntry ? 0 : scrollProgress());
+    if (!view) return null;
+    const { tag } = view.geometry;
+    const { left, top, right, bottom } = plot.getBoundingClientRect();
+    const offset = atEntry ? frame.getBoundingClientRect().top : 0;
+    return {
+      x: left + tag.x, y: top + tag.y - offset,
+      size: view.cardWidth * CARD_MODEL_WIDTH / CARD_VIEW_WIDTH,
+      ...cardPose(view.zoom),
+      clip: { left, top: top - offset, right, bottom: bottom - offset }
+    };
+  }
+
+  function layout() {
+    progress = scrollProgress();
+    const step = chapters.findLastIndex(c => progress >= c.at);
+    $('.pause').hidden = !replyFront(progress) || motion.matches;
+    setChapter(step);
+    const view = measure(progress, step);
+    if (!view) return;
+    const { w, h, compact, reader, tag } = view.geometry;
     if (!geometry || w !== geometry.w || h !== geometry.h || compact !== geometry.compact) {
       ink = sizeCanvas($('.field'), w, h, compact);
       bits = sizeCanvas($('.traffic'), w, h, compact);
     }
-    const zoom = motion.matches ? [0, .45, 1, 1][chapter] : ease(.03, .69, progress);
-    const push = motion.matches ? 0 : ease(.01, .22, progress) * (1 - ease(.26, .55, progress));
-    geometry = riverGeometry(w, h, zoom, compact);
-    const { reader, tag } = geometry;
-    const cardWidth = Math.min(w * (compact ? .62 : .39), h * (compact ? .99 : .95), 640) * (1 - .40 * zoom + push * .42);
+    const { zoom, cardWidth } = view;
+    geometry = view.geometry;
     const readerWidth = Math.min(w * (compact ? .36 : .245), h * .56, 350) * (1 - .24 * zoom);
     for (const [name, center, width] of [['tag', tag, cardWidth], ['reader', reader, readerWidth]]) {
       plot.style.setProperty('--' + name + '-x', center.x + 'px');
       plot.style.setProperty('--' + name + '-y', center.y + 'px');
       plot.style.setProperty('--' + name + '-w', width + 'px');
     }
-    if (drawCard) drawCard(zoom);
+    if (drawCard && !host.hasAttribute('data-external-card')) drawCard(zoom);
     drawField(ink, geometry, zoom, progress);
+    if (host.hasAttribute('data-external-card')) host.dispatchEvent(new Event('bit-river-card-layout'));
   }
   function positionPacket(i) {
     const phase = geometry.compact ? .12 + phases[i] * .76 : phases[i];
@@ -248,18 +275,27 @@ function mount(host, root, signal) {
   const resize = new ResizeObserver(refresh);
   resize.observe(plot);
   resize.observe(host);
-  const view = new IntersectionObserver(([entry]) => {
-    visible = entry.isIntersecting;
-    lastTime = undefined;
-    refresh();
-    if (!visible || loadStarted) return;
+  function loadCardVisual() {
+    if (!visible || loadStarted || host.hasAttribute('data-external-card')) return;
     loadStarted = true;
-    import('./card.js').then(module => module.loadCard(model, signal)).then(render => {
+    import('./card.js').then(module => {
+      if (host.hasAttribute('data-external-card')) {
+        loadStarted = false;
+        return;
+      }
+      return module.loadCard(model, signal);
+    }).then(render => {
       if (!render || signal.aborted) return;
       drawCard = render;
       layout();
       $('.card').classList.add('live');
     }).catch(() => { /* The stills show the same card when WebGL or the CDN is unavailable. */ });
+  }
+  const view = new IntersectionObserver(([entry]) => {
+    visible = entry.isIntersecting;
+    lastTime = undefined;
+    refresh();
+    loadCardVisual();
   });
   view.observe(host);
   on(model, 'webglcontextlost', () => { drawCard = null; $('.card').classList.remove('live'); });
@@ -344,13 +380,19 @@ function mount(host, root, signal) {
     audio?.close();
   }, { once: true });
   setChapter(0);
+  return { getCardTarget, updateCardMode() { refresh(); loadCardVisual(); } };
 }
 
 class RFIDBitRiver extends HTMLElement {
   connectedCallback() {
     this.controller = new AbortController();
-    mount(this, this.shadowRoot || this.attachShadow({ mode: 'open' }), this.controller.signal);
+    this.cardView = mount(this, this.shadowRoot || this.attachShadow({ mode: 'open' }), this.controller.signal);
   }
-  disconnectedCallback() { this.controller.abort(); }
+  disconnectedCallback() { this.controller.abort(); this.cardView = null; }
+  getCardTarget(options) { return this.cardView?.getCardTarget(options) ?? null; }
+  setExternalCard(active) {
+    this.toggleAttribute('data-external-card', active);
+    this.cardView?.updateCardMode();
+  }
 }
 customElements.define('rfid-bit-river', RFIDBitRiver);

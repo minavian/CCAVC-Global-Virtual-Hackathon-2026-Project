@@ -226,6 +226,7 @@ html[data-intro] .copy .scan-link { visibility: hidden; }
   z-index: 7;
   margin-top: .85rem;
 }
+.copy .scan-link[aria-busy="true"] { cursor: progress; }
 
 .scan-stage {
   position: sticky;
@@ -277,6 +278,28 @@ html[data-intro] .copy .scan-link { visibility: hidden; }
   z-index: 11;
 }
 
+.scan-gesture {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  width: 24px;
+  height: 24px;
+  border: 1px solid #f9f6ef;
+  border-radius: 50%;
+  background: #413a31;
+  box-shadow: 0 3px 9px #31281c60, 0 0 0 5px #f5f2ecb3;
+  pointer-events: none;
+}
+
+.scan-gesture::after {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border-radius: 50%;
+  background: #fffaf1;
+}
+
 .scan-grab {
   position: absolute;
   z-index: 2;
@@ -306,17 +329,19 @@ html[data-intro] .copy .scan-link { visibility: hidden; }
 }
 
 .scan-reveal {
-  grid-column: 1;
-  grid-row: 1 / -1;
-  align-self: center;
+  position: absolute;
+  top: 38%;
+  inset-inline: 0;
+  transform: translateY(-50%);
   margin: 0;
   padding: 0 12px;
-  font-size: clamp(2.75rem, 13vw, 16rem);
+  font-size: min(15vw, 19rem);
   font-weight: 800;
   line-height: .9;
   letter-spacing: -.04em;
-  opacity: var(--reveal-opacity, 1);
+  opacity: var(--reveal-opacity, 0);
 }
+.scan-reveal span { white-space: nowrap; }
 
 .scan-controls {
   grid-row: 3;
@@ -326,12 +351,25 @@ html[data-intro] .copy .scan-link { visibility: hidden; }
   padding: 0 16px max(1.25rem, env(safe-area-inset-bottom));
 }
 
-.scan-choices, .scan-next {
+.scan-next {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
   gap: .55rem;
+}
+
+.scan-intro, .scan-keyboard { opacity: var(--scan-chrome, 1); }
+.scan-keyboard {
+  margin: 0;
+  color: var(--muted);
+  font-size: .9rem;
+  opacity: 0;
+}
+
+.scan-stage:has(.scan-grab:focus-visible) .scan-keyboard { opacity: var(--scan-chrome, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .scan-gesture { display: none; }
 }
 
 .scan-status {
@@ -340,7 +378,7 @@ html[data-intro] .copy .scan-link { visibility: hidden; }
   color: var(--muted);
 }
 
-.scan-status[data-success] { color: #126044; font-weight: 700; }
+.scan-status[data-success] { color: #126044; font-weight: 700; opacity: var(--scan-chrome, 1); }
 
 .scan-controls button {
   min-height: 44px;
@@ -354,13 +392,11 @@ html[data-intro] .copy .scan-link { visibility: hidden; }
   cursor: pointer;
 }
 
-.scan-controls button:hover, .scan-controls button[aria-pressed="true"] {
+.scan-controls button:hover {
   border-color: var(--ink);
   background: var(--ink);
   color: var(--paper);
 }
-
-.scan-controls button[aria-disabled="true"] { cursor: wait; }
 
 .scan-link:focus-visible, .scan-controls button:focus-visible, .scan-grab:focus-visible,
 .scan-stage h2:focus-visible {
@@ -379,6 +415,7 @@ html[data-intro] .copy .scan-link { visibility: hidden; }
   z-index: 2;
   padding: clamp(20px, 5svh, 60px) 16px max(1rem, env(safe-area-inset-bottom));
   pointer-events: none;
+  opacity: var(--inside-opacity, 0);
 }
 
 .scan-anatomy dl {
@@ -414,7 +451,7 @@ rfid-bit-river:not(:defined) {
   .scan-anatomy dd { font-size: .9rem; }
 }
 
-@media (max-width: 380px) {
-  .scan-choices { gap: .35rem; }
-  .scan-choices button { padding-inline: .7em; }
+@media (max-width: 600px) and (min-height: 540px) {
+  .scan-reveal { top: 30%; font-size: 19vw; }
+  .scan-reveal span { display: block; }
 }

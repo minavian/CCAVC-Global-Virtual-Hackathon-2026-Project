@@ -1,4 +1,11 @@
 const TAU = 2 * Math.PI;
+export const CARD_VIEW_WIDTH = .1;
+export const CARD_MODEL_WIDTH = .0856;
+
+export function cardPose(zoom) {
+  return { pitch: -.82 + zoom * .16, yaw: -.20 + zoom * .09, roll: .21 - zoom * .08, order: 'ZXY' };
+}
+
 export const clamp = value => Math.max(0, Math.min(1, value));
 export function ease(start, end, value) {
   const t = clamp((value - start) / (end - start));

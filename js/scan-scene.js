@@ -5,13 +5,18 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { createScanHand } from './scan-hand.js';
 import { SCAN_TIMING as time } from './scan-timing.js';
 
-const sizes = [3.6, 7.7, 5.3];
+const sizes = [3.6, 7.7, 6.05];
 const revealSizes = [6.5, 6.9, 5.6];
 const cutawaySizes = [5.1, 8.05, 9.5];
 const deviceAspects = [.56, .49, 1.58];
-const reach = new T.Vector3(2.75, 1.9, 2.6);
-const tap = new T.Vector3(-2.25, .35, 2.35);
-const contact = new T.Vector3(-3.25, -.7, 1.7);
+const reach = new T.Vector3(3.2, 1.35, 2.6);
+const tap = new T.Vector3(-2.35, .05, 2.35);
+const contact = new T.Vector3(-3.56, -.35, 8);
+const revealPosition = new T.Vector3(0, .05, 1.9);
+const revealRotation = new T.Euler(.13, -.26, .25);
+const revealQuaternion = new T.Quaternion().setFromEuler(revealRotation);
+const revealShadow = new T.Vector3(.3, -2.75, -.5);
+const revealCameraY = -.1;
 const gripAnchor = new T.Vector3(11.4, 3.15, -4.7);
 const clamp = value => T.MathUtils.clamp(value, 0, 1);
 const cue = (seconds, start, end) => clamp((seconds - start) / (end - start));
@@ -29,8 +34,8 @@ function paintedTexture(width, height, paint) {
 
 function makeReader() {
   const body = new T.Group();
-  body.position.set(-3.65, -1.05, .1);
-  body.rotation.set(-.28, .32, -.13);
+  body.position.set(-3.65, -.53, .1);
+  body.rotation.set(-.26, .25, -.1);
 
   function caseLayer(width, height, thickness, radius, z, surface) {
     const geometry = new RoundedBoxGeometry(width, height, thickness, 4, radius);
@@ -42,16 +47,20 @@ function makeReader() {
   caseLayer(4.39, 6.19, .36, .16, .37, { color: 0x151a1d, metalness: .22, roughness: .28 });
   caseLayer(3.92, 4.7, .11, .055, .54, { color: 0x202828, metalness: .24, roughness: .3 });
 
-  const print = paintedTexture(384, 460, (ctx, width, height) => {
+  function paintContactless(ctx, width, height) {
     ctx.translate(width / 2, height * .52);
     ctx.lineCap = 'round';
     ctx.lineWidth = 4;
-    ctx.strokeStyle = '#d6e0da';
     for (let ring = 1; ring <= 4; ring++) {
       ctx.beginPath();
       ctx.arc(-30, 0, ring * 18 + 5, -.57, .57);
       ctx.stroke();
     }
+  }
+
+  const print = paintedTexture(384, 460, (ctx, width, height) => {
+    ctx.strokeStyle = '#aab8b3';
+    paintContactless(ctx, width, height);
     ctx.textAlign = 'center';
     ctx.font = '16px sans-serif';
     ctx.fillStyle = '#a7b6af';
@@ -61,30 +70,44 @@ function makeReader() {
   face.position.z = .6;
   body.add(face);
 
+  const glow = new T.MeshBasicMaterial({
+    map: paintedTexture(384, 460, (ctx, width, height) => {
+      ctx.strokeStyle = ctx.shadowColor = '#ffe6c4';
+      ctx.shadowBlur = 10;
+      paintContactless(ctx, width, height);
+    }),
+    blending: T.AdditiveBlending, transparent: true, opacity: 0, depthWrite: false, toneMapped: false
+  });
+  const illumination = new T.Mesh(face.geometry, glow);
+  illumination.position.z = .603;
+  body.add(illumination);
+
   const indicator = new T.MeshBasicMaterial({ color: 0x767e77, toneMapped: false });
   const lamp = new T.Mesh(new RoundedBoxGeometry(.63, .095, .08, 3, .04), indicator);
   lamp.position.set(-1.3, -2.62, .56);
   body.add(lamp);
-  return { body, indicator };
+  return { body, glow, indicator, idleLight: new T.Color(0x767e77), readyLight: new T.Color(0xffd99f) };
 }
 
 export async function createScanScene(viewport, redraw) {
   const renderer = new T.WebGLRenderer({ alpha: true, antialias: true });
   renderer.setPixelRatio(Math.min(1.75, devicePixelRatio || 1));
   renderer.toneMapping = T.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.14;
+  renderer.toneMappingExposure = .82;
 
   const scene = new T.Scene();
   const room = new RoomEnvironment();
   const studio = new T.PMREMGenerator(renderer);
   scene.environment = studio.fromScene(room, .04).texture;
-  scene.environmentIntensity = .75;
+  scene.environmentIntensity = .95;
   studio.dispose();
   room.dispose();
-  scene.add(new T.HemisphereLight(0xfff5e5, 0x9d9f96, 1.2));
-  const key = new T.DirectionalLight(0xfff6ec, 2.35);
-  key.position.set(-5, 8, 12);
-  scene.add(key);
+  scene.add(new T.HemisphereLight(0xfffcf6, 0x928f86, .95));
+  for (const [x, y, z, intensity] of [[-4, 6, 5, 1.85], [4, 3, -3, 1.4]]) {
+    const light = new T.DirectionalLight(0xfffaf0, intensity);
+    light.position.set(x, y, z);
+    scene.add(light);
+  }
 
   const camera = new T.OrthographicCamera(0, 0, 0, 0, .1, 100);
   camera.position.z = 42;
@@ -103,7 +126,7 @@ export async function createScanScene(viewport, redraw) {
     ctx.fillRect(0, 0, width, width);
   });
   const readerShadow = new T.Sprite(new T.SpriteMaterial({ map: shadowMap, depthWrite: false, opacity: .76 }));
-  readerShadow.position.set(-3.4, -4.32, -.7);
+  readerShadow.position.set(-3.4, -3.82, -.7);
   readerShadow.scale.set(6.1, 1.15, 1);
   scene.add(readerShadow);
   const productShadow = new T.Sprite(new T.SpriteMaterial({ map: shadowMap, depthWrite: false, opacity: .48 }));
@@ -114,7 +137,7 @@ export async function createScanScene(viewport, redraw) {
     const ring = new T.Mesh(new T.RingGeometry(i ? .985 : .954, 1, 100), new T.MeshBasicMaterial({
       color: i ? 0x69cda1 : 0x25aa77, transparent: true, depthWrite: false, depthTest: false, toneMapped: false
     }));
-    ring.position.set(-3.53, -.89, 8);
+    ring.position.copy(contact);
     ring.rotation.set(-.31, .17, 0);
     ring.renderOrder = 2;
     scene.add(ring);
@@ -122,12 +145,13 @@ export async function createScanScene(viewport, redraw) {
   });
 
   const loader = new GLTFLoader();
-  const hand = await createScanHand(T, loader).catch(error => {
-    renderer.dispose();
-    throw error;
-  });
-  hand.group.scale.setScalar(.55);
-  scene.add(hand.group);
+  let hand;
+  createScanHand(T, loader).then(model => {
+    hand = model;
+    hand.group.visible = false;
+    hand.group.scale.setScalar(.55);
+    scene.add(hand.group);
+  }).catch(() => { /* The card can still follow the keyboard scan without the hand. */ });
   viewport.append(renderer.domElement);
   renderer.domElement.addEventListener('webglcontextlost', event => {
     event.preventDefault();
@@ -144,12 +168,15 @@ export async function createScanScene(viewport, redraw) {
   const pointer = new T.Vector3();
   const landingRotation = new T.Euler(0, 0, 0, 'YXZ');
   const landingQuaternion = new T.Quaternion();
+  const readerOrigin = reader.body.position.clone();
+  const readerShadowOrigin = readerShadow.position.clone();
+  const readerRoll = reader.body.rotation.z;
   let current, index, width, height;
-  let pixelsPerUnit;
+  let pixelsPerUnit, openProgress = 0;
 
-  async function showObject(nextIndex) {
-    if (index === nextIndex) return;
-    let model = models.get(nextIndex);
+  async function showObject(nextIndex, sharedObject) {
+    if (index === nextIndex && (!sharedObject || sharedObject === current)) return;
+    let model = sharedObject || models.get(nextIndex);
     if (!model) {
       model = await window.RFIDModels.loadObject(T, loader, { matches: true }, nextIndex);
       models.set(nextIndex, model);
@@ -158,6 +185,15 @@ export async function createScanScene(viewport, redraw) {
     index = nextIndex;
     device.clear();
     device.add(current.model);
+  }
+
+  function releaseObject() {
+    if (!current) return null;
+    const model = current;
+    if (models.get(index) === model) models.delete(index);
+    device.remove(model.model);
+    current = index = undefined;
+    return model;
   }
 
   function fitCamera(zoom = 1, y = 0) {
@@ -194,6 +230,19 @@ export async function createScanScene(viewport, redraw) {
     };
   }
 
+  function getDevicePose() {
+    if (!current || !pixelsPerUnit) return null;
+    const bounds = viewport.getBoundingClientRect();
+    const { x, y } = screenBounds(device.position, 0, 0);
+    const { x: pitch, y: yaw, z: roll } = landingRotation.setFromQuaternion(device.quaternion, 'YXZ');
+    return { x: bounds.left + x, y: bounds.top + y, size: device.scale.x * current.span * pixelsPerUnit, pitch, yaw, roll, open: openProgress };
+  }
+
+  function openDevice(progress) {
+    current.open(progress);
+    openProgress = progress;
+  }
+
   function getTargets() {
     if (!current || !pixelsPerUnit) return null;
     const size = device.scale.x * current.span;
@@ -213,67 +262,101 @@ export async function createScanScene(viewport, redraw) {
     };
   }
 
-  function updateScan(seconds, reduced, dragPosition, manual) {
+  function updateScan(seconds, reduced, dragPosition, manual, sweep = 0, guidance) {
     const scanComplete = seconds >= time.contact;
-    const departure = reduced ? 0 : cue(seconds, time.burst, time.end) ** 1.35;
     const acquisition = reduced ? Number(scanComplete) : ease(cue(seconds, time.grasp, time.contact));
     const approach = ease(cue(seconds, 0, time.reach));
     const closing = reduced ? Number(scanComplete) : ease(cue(seconds, time.reach, time.grasp));
 
-    current.open(0);
     device.position.copy(reach).lerp(tap, acquisition);
     device.position.y += .65 * Math.sin(Math.PI * acquisition);
     device.position.z += .75 * Math.sin(Math.PI * acquisition);
-    device.position.lerp(contact, acquisition * .22);
+    device.position.x = T.MathUtils.lerp(device.position.x, contact.x, acquisition * .22);
     if (dragPosition) {
       const settle = scanComplete ? (reduced ? 1 : ease(cue(seconds, time.contact, time.contact + .22))) : 0;
       device.position.lerp(toScenePoint(dragPosition, reach.z), 1 - settle);
     }
-    device.position.x += departure * 38;
-    device.position.y -= departure * 9;
     const tilt = dragPosition && !reduced
       ? ease(cue(seconds, time.contact, time.contact + .22))
       : acquisition;
-    device.rotation.set(.14 - .25 * tilt, -.21 + .52 * tilt + departure, -.3 + .27 * tilt - departure);
-    device.scale.setScalar(sizes[index] / current.span);
-    productShadow.visible = !departure;
-    productShadow.material.opacity = .48;
+    device.rotation.set(.14 - .25 * tilt, -.21 + .52 * tilt, -.3 + .27 * tilt);
+    const { attention = 0, proximity = 0, inviting = 0, hoverX = 0, hoverY = 0, hoverWave = 0 } = guidance ?? {};
+    const poised = !reduced && seconds === 0 ? clamp(attention) : 0;
+    const lean = !reduced && seconds === 0 ? clamp(inviting) : 0;
+    device.position.z += .52 * poised + .12 * lean;
+    device.rotation.x += (.12 - .13 * hoverY + .025 * hoverWave) * poised;
+    device.rotation.y += (.17 * hoverX - .10) * poised - .12 * lean;
+    device.rotation.z += .035 * hoverWave * poised - .025 * lean;
+    productShadow.visible = true;
+    productShadow.material.opacity = .48 - .10 * poised - .04 * lean;
     productShadow.position.set(device.position.x, device.position.y - (index === 1 ? 3.8 : 2.5), -.5);
 
-    hand.group.visible = seconds > 0 && !manual;
-    if (hand.group.visible) {
+    const readerExit = reduced ? 0 : ease(cue(seconds, time.burst + .025, time.reveal - .035));
+    const handExit = reduced ? 0 : ease(cue(seconds, time.burst, time.reveal - .02));
+    const edge = width / (pixelsPerUnit * 2);
+    if (hand) hand.group.visible = seconds > 0 && !manual && handExit < 1;
+    if (hand?.group.visible) {
       hand.grip(closing);
-      hand.group.rotation.set(-.24 + .32 * acquisition, .16 * acquisition, 2.48 + acquisition * .24 - departure * .62);
+      hand.group.rotation.set(-.24 + .32 * acquisition, .16 * acquisition, 2.48 + acquisition * .24 - handExit * .45);
       handOffset.copy(gripAnchor).multiplyScalar(hand.group.scale.x).applyEuler(hand.group.rotation);
       offset.set(index === 2 ? 1.65 : index === 1 ? 1.45 : .76, index === 1 ? -1.9 : -.5, .13).applyEuler(device.rotation);
       hand.group.position.copy(device.position).add(offset).sub(handOffset);
       hand.group.position.x += (1 - approach) * 18;
       hand.group.position.y -= (1 - approach) * 12;
+      hand.group.position.x += (edge + 16) * handExit;
+      hand.group.position.y -= 9 * handExit;
     }
 
-    reader.body.visible = readerShadow.visible = true;
-    reader.indicator.color.setHex(scanComplete ? 0x4af9a1 : 0x767e77);
+    // The wave carries the card towards the center while it pushes the reader offscreen.
+    const carry = ease(sweep);
+    const lift = 4 * carry * (1 - carry);
+    device.position.lerp(revealPosition, carry);
+    device.position.x += .62 * lift;
+    device.position.y += 1.16 * lift;
+    device.position.z += .45 * lift;
+    device.quaternion.slerp(revealQuaternion, carry);
+    device.scale.setScalar(T.MathUtils.lerp(sizes[index], revealSizes[index], carry) / current.span);
+    productShadow.position.lerp(revealShadow, carry);
+    reader.body.visible = readerShadow.visible = readerExit < 1;
+    reader.body.position.copy(readerOrigin);
+    readerShadow.position.copy(readerShadowOrigin);
+    reader.body.position.x -= (edge + 5) * readerExit;
+    reader.body.position.y -= 5 * readerExit;
+    readerShadow.position.x -= (edge + 5) * readerExit;
+    readerShadow.position.y -= 5 * readerExit;
+    reader.body.rotation.z = readerRoll + .42 * readerExit;
+    readerShadow.material.opacity = .76 * (1 - readerExit);
+    const ready = clamp(Math.max(proximity, inviting * .26));
+    const lit = scanComplete && dragPosition ? 1 - readerExit : ready;
+    reader.glow.opacity = .9 * lit;
+    reader.glow.visible = lit > 0;
+    if (scanComplete) reader.indicator.color.setHex(0x4af9a1);
+    else reader.indicator.color.lerpColors(reader.idleLight, reader.readyLight, ready);
+    const sweepRadius = Math.hypot(edge + Math.abs(contact.x), camera.top + Math.abs(contact.y)) + 4;
     waves.forEach((ring, i) => {
       const start = time.burst + i * .075;
       const p = cue(seconds, start, time.end);
       ring.visible = !reduced && seconds > start && p < 1;
       if (!ring.visible) return;
-      ring.scale.setScalar(.5 + (1 - (1 - p) ** 2) * 39);
+      ring.scale.setScalar(.5 + (1 - (1 - p) ** 1.6) * sweepRadius);
       ring.material.opacity = (i ? .55 : .9) * (1 - p) ** 1.7;
     });
   }
 
-  function drawScan(seconds, reduced, dragPosition, manual = false) {
-    if (!current || !fitCamera()) return;
-    updateScan(seconds, reduced, dragPosition, manual);
+  function drawScan(seconds, reduced, dragPosition, manual = false, guidance) {
+    const sweep = reduced ? 0 : cue(seconds, time.burst, time.end);
+    if (!current || !fitCamera(1, revealCameraY * ease(sweep))) return;
+    openDevice(0);
+    updateScan(seconds, reduced, dragPosition, manual, sweep, guidance);
     renderer.render(scene, camera);
   }
 
   function drawHandoff(origin, progress) {
     if (!current || !fitCamera()) return;
+    openDevice((origin.open ?? 0) * (1 - progress));
     updateScan(0, false);
     device.position.lerp(toScenePoint(origin, reach.z), 1 - progress);
-    landingRotation.set(origin.pitch, origin.yaw, origin.roll);
+    landingRotation.set(origin.pitch, origin.yaw, origin.roll, 'YXZ');
     device.quaternion.slerp(landingQuaternion.setFromEuler(landingRotation), 1 - progress);
     const size = T.MathUtils.lerp(origin.size / pixelsPerUnit, sizes[index], progress);
     device.scale.setScalar(size / current.span);
@@ -287,21 +370,43 @@ export async function createScanScene(viewport, redraw) {
     readerShadow.position.x += readerSlide;
   }
 
-  function drawInside(progress) {
-    if (!current) return;
-    const push = ease(progress);
-    reader.body.visible = readerShadow.visible = hand.group.visible = false;
+  function setInsidePose(push) {
+    reader.body.visible = readerShadow.visible = false;
+    if (hand) hand.group.visible = false;
     for (const wave of waves) wave.visible = false;
-    current.open(ease(cue(progress, .14, 1)));
-    device.position.set(.14 + .22 * push, .14 + .8 * push, 1.9);
-    device.rotation.set(.13 + push * .24, -.26 - push * .55, T.MathUtils.lerp(.34, -.08, push));
+    device.position.copy(revealPosition);
+    device.position.x += .22 * push;
+    device.position.y += .8 * push;
+    device.rotation.set(revealRotation.x + push * .24, revealRotation.y - push * .55, T.MathUtils.lerp(revealRotation.z, -.08, push));
     const size = T.MathUtils.lerp(revealSizes[index], cutawaySizes[index], push);
     device.scale.setScalar(size / current.span);
     productShadow.visible = true;
-    productShadow.position.set(.6, -2.9 - push * 1.65, -.5);
+    productShadow.position.copy(revealShadow);
+    productShadow.position.y -= push * 1.65;
     productShadow.material.opacity = .48 - push * .18;
-    if (fitCamera(1 + .12 * push, -.1 + .32 * push)) renderer.render(scene, camera);
   }
 
-  return { showObject, drawScan, drawInside, drawHandoff, getTargets };
+  function drawInside(progress) {
+    const push = ease(progress);
+    if (!current || !fitCamera(1 + .12 * push, revealCameraY + .32 * push)) return;
+    setInsidePose(push);
+    openDevice(ease(cue(progress, .14, 1)));
+    renderer.render(scene, camera);
+  }
+
+  function drawRiver(progress, target) {
+    const amount = ease(progress);
+    const cutaway = 1 - amount;
+    if (!current || !fitCamera(1 + .12 * cutaway, (revealCameraY + .32) * cutaway)) return;
+    setInsidePose(1);
+    openDevice(1 - ease(cue(progress, 0, .78)));
+    device.position.lerp(toScenePoint(target, revealPosition.z), amount);
+    landingRotation.set(target.pitch, target.yaw, target.roll, target.order ?? 'YXZ');
+    device.quaternion.slerp(landingQuaternion.setFromEuler(landingRotation), amount);
+    device.scale.setScalar(T.MathUtils.lerp(cutawaySizes[index], target.size / pixelsPerUnit, amount) / current.span);
+    productShadow.material.opacity *= cutaway;
+    renderer.render(scene, camera);
+  }
+
+  return { showObject, releaseObject, drawScan, drawInside, drawHandoff, drawRiver, getDevicePose, getTargets };
 }

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { CARD_VIEW_WIDTH, cardPose } from './river.js';
 
 // This scene needs only the card from the landing carousel.
 export async function loadCard(canvas, signal) {
@@ -47,7 +48,8 @@ export async function loadCard(canvas, signal) {
       part.material.polygonOffsetUnits = -2;
     }
   });
-  const camera = new THREE.OrthographicCamera(-.05, .05, .04, -.04, .01, 2);
+  const halfWidth = CARD_VIEW_WIDTH / 2;
+  const camera = new THREE.OrthographicCamera(-halfWidth, halfWidth, halfWidth * .8, -halfWidth * .8, .01, 2);
   camera.position.z = .5;
   signal.addEventListener('abort', () => {
     lighting.dispose();
@@ -58,7 +60,8 @@ export async function loadCard(canvas, signal) {
   return view => {
     if (lastView === view) return;
     lastView = view;
-    scene.rotation.set(-.82 + view * .16, -.20 + view * .09, .21 - view * .08, 'ZXY');
+    const { pitch, yaw, roll, order } = cardPose(view);
+    scene.rotation.set(pitch, yaw, roll, order);
     renderer.render(world, camera);
   };
 }
