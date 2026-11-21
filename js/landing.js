@@ -213,14 +213,15 @@
   // Positions in the film are in design pixels on the frame (see designFrame()).
   function rowPose(i, n) {
     const f = designFrame(), at = (x, y) => [f.x + x * f.u, f.y + y * f.u];
-    const [x, y] = f.tall ? at(195 + (i - (n - 1) / 2) * 122, 520) : at(720 + (i - (n - 1) / 2) * 400, 580);
-    return { x, y, size: (f.tall ? 112 : 330) * f.u, pitch: .05, yaw: -(i - (n - 1) / 2) * .28, roll: 0 };
+    const [x, y] = f.tall ? at(195 + (i - (n - 1) / 2) * 124, 520) : at(720 + (i - (n - 1) / 2) * 440, 590);
+    return { x, y, size: (f.tall ? 122 : 420) * f.u, pitch: .05, yaw: -(i - (n - 1) / 2) * .28, roll: 0 };
   }
 
-  // The area the featured object fills: the right side, or the top on phones.
+  // The area the opened key fills: everything beside and below the sentence. The opened key
+  // spreads its parts sideways, so it needs the width.
   function featureRect() {
     const f = designFrame(), box = (x, y, w, h) => ({ x: f.x + x * f.u, y: f.y + y * f.u, w: w * f.u, h: h * f.u });
-    return f.tall ? box(16, 230, 358, 440) : box(780, 120, 600, 700);
+    return f.tall ? box(4, 200, 382, 540) : box(330, 250, 1090, 620);
   }
 
   // The film is laid out on one design frame, 1440 × 900 on wide screens and 390 × 844 on
@@ -242,10 +243,17 @@
   // The lab: where the reader pad sits on screen, how many pixels a meter is, and how far
   // the camera looks down onto it (radians). Room above the pad for the key at its farthest,
   // and below it for what the reader feels and the ID.
-  function labGeometry() {
-    const f = designFrame();
-    if (f.tall) return { padX: f.x + 195 * f.u, padY: f.y + 470 * f.u, k: 2500 * f.u, tilt: .5, u: f.u, tall: true };
-    return { padX: f.x + 1030 * f.u, padY: f.y + 500 * f.u, k: 4600 * f.u, tilt: .5, u: f.u, tall: false };
+  // The zoom (design pixels per meter) depends on the tag: the key is small, so the camera
+  // comes in close; for the card it eases back out. The camera looks down 36°, enough to see
+  // the tag's face and its coil.
+  const LAB_ZOOM = { wide: { key: 8000, card: 5600 }, tall: { key: 4200, card: 2700 } };
+  let labZoom = null;
+  function labGeometry(dt = 0) {
+    const f = designFrame(), zooms = f.tall ? LAB_ZOOM.tall : LAB_ZOOM.wide;
+    const target = zooms[labState?.tag === 'card' ? 'card' : 'key'];
+    labZoom = labZoom === null || calm ? target : labZoom + (target - labZoom) * (1 - Math.exp(-4 * dt));
+    if (f.tall) return { padX: f.x + 195 * f.u, padY: f.y + 470 * f.u, k: labZoom * f.u, tilt: .62, u: f.u, tall: true };
+    return { padX: f.x + 1050 * f.u, padY: f.y + 500 * f.u, k: labZoom * f.u, tilt: .62, u: f.u, tall: false };
   }
 
   // A fall: speeding up under gravity, then one small bounce.
@@ -325,7 +333,9 @@
       const swap = ls.tag === 'card' ? 1 : 0;
       // The reader pad.
       const pad = poses[READER];
-      Object.assign(pad, { x: g.padX, y: g.padY + (1 - r) * h * .45, size: g.k * .094, pitch: g.tilt, yaw: 0, roll: 0,
+      // The pad is drawn at the true size of the reader in use: a small start-button reader
+      // for the key, a payment terminal for the card (its copper ring matches the coil).
+      Object.assign(pad, { x: g.padX, y: g.padY + (1 - r) * h * .45, size: g.k * .094 * (ls.padScale || 1), pitch: g.tilt, yaw: 0, roll: 0,
         depth: 0, lift: 300, shade: 1, visible: r > 0 });
       looks[READER] = { glow: r * ls.readerGlow };
       // The tag: above the pad, its long side across the screen.
@@ -566,7 +576,7 @@
       measure();
     }
     storyState = story ? story.timeline(scrollNow) : null;
-    labState = lab && layout ? lab.update(dt, storyOn ? storyState : null, labGeometry()) : null;
+    labState = lab && layout ? lab.update(dt, storyOn ? storyState : null, labGeometry(dt)) : null;
 
     if (intro !== null) {
       intro = frozenAt !== null ? frozenAt : intro + dt;

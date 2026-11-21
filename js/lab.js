@@ -32,14 +32,16 @@
   const now = () => performance.now() / 1000;
 
   const APPROACH = [6.45, 7.4];             // scrolling lowers the key from far to close
-  const FAR = .095, NEAR = .025;            // meters: 2.5 cm reads, and is near enough to the
+  const FAR = .056, NEAR = .025;            // meters: 2.5 cm reads, and is near enough to the
                                             // edge that metal or a turn breaks it
-  const REACH = .072;                       // beyond this, "Move the key to the reader."
+  const REACH = .052;                       // beyond this, "Move the key to the reader."
   const METAL_GAP = .004;                   // the plate sits 4 mm behind the key's coil
   const TURNED = 80 * Math.PI / 180;
   const BIT_SECONDS = .07;                  // slowed down: one of the key's bits (512 µs) takes this long
   const CARD_SECONDS = 7;                   // one whole card conversation (about 2.3 ms) takes this long
   const NOISE = .0025;                      // the reader's own noise, as a fraction of its signal
+  // The 3D pad is drawn for a 3.5 cm coil; this scales it to the reader in use.
+  const padScale = readerKey => physics.READERS[readerKey].radius / .035;
 
   function create() {
     const $ = s => document.querySelector(s);
@@ -328,7 +330,8 @@
         chip: solved.awake ? 1 : 0,
         glow: replying && solved.awake ? (closed ? 1 : .35) : glow,
         readerGlow: .55 + .45 * Math.abs(Math.sin(clock * 3.1)),
-        say: state.say, awake: solved.awake, idOk: idOk && solved.awake
+        say: state.say, awake: solved.awake, idOk: idOk && solved.awake,
+        padScale: padScale(readerKey)
       };
     }
 
@@ -391,8 +394,9 @@
       meterWake.style.bottom = '50%';
       meter.classList.toggle('is-awake', solved.awake);
       const keyHalf = (state.tag === 'card' ? .043 : .03) * k;
-      const meterX = geo.tall ? Math.max(padX - .047 * k - meter.offsetWidth - 20 * u, padX - 186 * u) : padX - .047 * k - meter.offsetWidth - 20 * u;
-      meter.style.transform = `translate(${meterX.toFixed(1)}px, ${(yTag - meter.offsetHeight / 2).toFixed(1)}px)`;
+      const padR = .047 * padScale(readerKey) * k;
+      const meterX = geo.tall ? Math.max(padX - padR - meter.offsetWidth - 20 * u, padX - 186 * u) : padX - Math.max(padR, keyHalf) - meter.offsetWidth - 20 * u;
+      meter.style.transform = `translate(${meterX.toFixed(1)}px, ${(geo.tall ? yTag - meter.offsetHeight - 12 * u : yTag - meter.offsetHeight / 2).toFixed(1)}px)`;
       grab.style.transform = `translate(${(padX - keyHalf).toFixed(1)}px, ${(yTag - 40 * u).toFixed(1)}px)`;
       grab.style.width = (2 * keyHalf).toFixed(1) + 'px';
       grab.style.height = (80 * u).toFixed(1) + 'px';
@@ -401,7 +405,7 @@
       hand.style.transform = `translate(${(padX + keyHalf * .4).toFixed(1)}px, ${(yTag - 12 * u).toFixed(1)}px)`;
 
       // Under the reader: what it feels, then the ID it read.
-      const below = padY + .047 * k * Math.sin(tilt) + 30 * u;
+      const below = padY + padR * Math.sin(tilt) + 30 * u;
       trace.style.transform = `translate(${(padX - trace.offsetWidth / 2).toFixed(1)}px, ${below.toFixed(1)}px)`;
       idBox.style.transform = `translate(${(padX - idBox.offsetWidth / 2).toFixed(1)}px, ${(below + trace.offsetHeight + 14 * u).toFixed(1)}px)`;
       drawTrace(solved);

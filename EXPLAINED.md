@@ -240,6 +240,7 @@ Owner: Mina Vian · 2026-11-21, updated 2026-11-21 · Issue #19
 - **What broke** (`reasonFor`) is the one change that would fix the read: metal first, then the turn, then the distance.
 - **Timings people see** (how long a sentence stays, idle time) use real seconds. The simulation uses the frame clock.
 - **Sizes** come from the design frame (`geo.u`), like the rest of the film.
+- **The reader pad is drawn at the true size of the reader in use** (`padScale`): a small start-button reader (a 1.6 cm coil) for the key, and a payment terminal (a 3.5 cm coil) for the card. Its copper ring always matches the coil the field lines come from. The camera zooms in close on the key (8000 design pixels per meter) and eases out for the card (5600), so the tag always fills the view.
 
 **Why it is built this way.** The first hands-on part should teach by doing. Each sentence only appears when the thing it says is really happening in the simulation.
 

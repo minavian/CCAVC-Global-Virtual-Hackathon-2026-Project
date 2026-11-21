@@ -64,7 +64,7 @@
       { object, part: 'coil', frame: '*', aim: COIL_AIM[object], side: 'top', narrowSide: 'top', title: 'Coil', when: ['Inside each one: a coil and a chip.'] },
       { object, part: 'chip', frame: '*', aim: [0, 0], side: 'bottom', narrowSide: 'bottom', title: 'Chip', when: ['Inside each one: a coil and a chip.'] }
     ]),
-    { object: 0, part: 'coin-battery', frame: '*', aim: [0, .2], side: 'left', narrowSide: 'bottom', title: 'Battery', when: ['The key has a battery.', 'Pull it out.'] },
+    { object: 0, part: 'coin-battery', frame: 'coin-battery', aim: [0, .6], side: 'bottom', narrowSide: 'bottom', title: 'Battery', when: ['The key has a battery.', 'Pull it out.'] },
     { object: 0, part: 'lock-button', frame: '*', aim: [0, 0], side: 'left', narrowSide: 'top', title: 'Buttons', when: ['The buttons stop working.'] },
     { object: 0, part: 'coil', frame: 'coil', aim: [.96, -.2], side: 'top', narrowSide: 'top', title: 'Coil', when: ['The coil and chip don’t need it.'] },
     { object: 0, part: 'chip', frame: 'rfid-chip', aim: [0, 0], side: 'bottom', narrowSide: 'bottom', title: 'Chip', when: ['The coil and chip don’t need it.'] },

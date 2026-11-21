@@ -670,8 +670,8 @@ html[data-intro] .chapters { opacity: 0; pointer-events: none; }
 }
 .lab-badge {
   right: auto;
-  left: calc(var(--fx, 0px) + 1240 * var(--u, 1px));
-  top: calc(var(--fy, 0px) + 108 * var(--u, 1px));
+  left: calc(var(--fx, 0px) + 110 * var(--u, 1px));
+  top: calc(var(--fy, 0px) + 782 * var(--u, 1px));
   padding: calc(7 * var(--u, 1px)) calc(14 * var(--u, 1px));
   font-size: calc(16 * var(--u, 1px));
 }
@@ -688,7 +688,7 @@ html[data-intro] .chapters { opacity: 0; pointer-events: none; }
 .lab-id { gap: calc(12 * var(--u, 1px)); font-size: calc(16 * var(--u, 1px)); }
 .lab-id b { font-size: calc(36 * var(--u, 1px)); }
 .lab-hand { width: calc(52 * var(--u, 1px)); height: calc(60 * var(--u, 1px)); }
-.lab-fine { right: auto; left: calc(var(--fx, 0px) + 1240 * var(--u, 1px)); bottom: auto; top: calc(var(--fy, 0px) + 150 * var(--u, 1px)); font-size: calc(13 * var(--u, 1px)); }
+.lab-fine { right: auto; left: calc(var(--fx, 0px) + 112 * var(--u, 1px)); bottom: auto; top: calc(var(--fy, 0px) + 832 * var(--u, 1px)); font-size: calc(13 * var(--u, 1px)); }
 .story .callout b { font-size: calc(20 * var(--u, 1px)); }
 .story .callout { max-width: calc(260 * var(--u, 1px)); }
 
@@ -702,7 +702,7 @@ html[data-intro] .chapters { opacity: 0; pointer-events: none; }
   .lab-buttons {
     left: calc(var(--fx, 0px) + 22 * var(--u, 1px));
     right: auto;
-    top: calc(var(--fy, 0px) + 712 * var(--u, 1px));
+    top: calc(var(--fy, 0px) + 752 * var(--u, 1px));
     width: calc(346 * var(--u, 1px));
     justify-content: center;
   }
