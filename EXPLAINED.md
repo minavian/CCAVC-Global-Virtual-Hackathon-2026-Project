@@ -148,16 +148,15 @@ Written by Claude (Claude Code) for Mina Vian · 2026-11-20 · Issue #5
 ### Bit River transmission (`bit-river/`)
 Written by OpenAI Codex for Akris Luno · 2026-11-21 · Issue #12
 
-**What it does.** Scroll through an example of how a passive NFC card answers a reader. The reader's 13.56 MHz magnetic field powers the card through inductive coupling. The card changes the load on its coil, which the reader can detect. The 3D scene illustrates the exchange at a human scale. The 2D trace shows how the signal carries bits.
+**What it does.** Scroll from the team's contactless card into a river of bits. The reader's field supplies energy to the card. The chip varies the load on its antenna, and the reader detects those changes as a reply. The river, packet labels and replacement trick are illustrations. [NXP antenna guide, section 2.1](https://www.nxp.com/docs/en/application-note/AN12549.pdf)
 
 **How it works.**
 
-- `index.html` is the demo. The reusable `<rfid-bit-river>` element in `bit-river.js` measures normal document scroll. This position controls the chapter, field and camera in either direction. `interface.js` and `bit-river.css` define the sticky viewport and controls inside the element's shadow root.
-- `scene.js` renders the complete card, reader, field and capsules with a single Three.js camera. `loadCard()` in `card.js` loads the team's `models/contactless-card.glb` and attaches the antenna highlight and signal origin. `replyFront()` and `riverPoint()` in `river.js` extend the reply and widen its cross section. Strands, particles and packets share these coordinates.
-- `createWaveform()` in `waveform.js` shows a slowed carrier trace and then the isolated reply subcarrier. This example uses Type A at 106 kbit/s. The 847.5 kHz subcarrier is enabled for the first half of a 1 and the second half of a 0. Each active half has four cycles. The trace uses the simulated byte `A2`, least significant bit first. [NXP PN512 data sheet](https://www.nxp.com/docs/en/data-sheet/PN512.pdf)
-- `linkAt()` gives the scene and trace the same illustrative coupling and noise values. Compare coupling cycles through greater distance, an edge-on card and interference. The first two reduce magnetic coupling. Interference leaves the coupling intact and makes the reply harder to distinguish. The thresholds are for this demo and do not predict a real reader's range.
-- `createCapsules()` in `capsules.js` draws glass shells around simulated binary data. Hover, tap or keyboard focus can open a shell. Dragging away or pressing Delete triggers a local ripple and sends a replacement. The field keeps moving during inspection and removal.
-- The animation loop sleeps outside the viewport and lowers rendering cost on small screens and when frames slow down. Reduced motion keeps the scene responsive to scroll and interaction while stopping ambient motion. If WebGL cannot run, the stills and 2D trace carry the story. The experience is silent.
+- `index.html` is the standalone demo. The reusable part is the `<rfid-bit-river>` element in `bit-river.js`. Its `layout()` function measures how far the visitor has scrolled through the element. That position sets the chapter and camera view. The buttons move to positions on the same scroll track.
+- `loadCard()` in `card.js` opens the existing `models/contactless-card.glb`. It tilts the complete card as the view moves toward the air gap. The still in `assets/card.webp` is rendered from that model and covers loading time or loss of 3D support. The reader image is a studio render of a small tabletop reader made for this demo.
+- `riverGeometry()` in `river.js` maps positions along the curve to the screen. `drawTraffic()` shows the reader field reaching the card, followed by the copper reply. `replyFront()` uses scroll progress to extend the reply toward the reader. Inner strands appear first, and the bundle widens as outer strands catch up. When the reply reaches the reader, the connection indicator appears.
+- `replySample()` shapes the center line with a slowed example of the card's load modulation. The example uses byte `7B` from the simulated ID, least significant bit first. Type A at 106 kbit/s switches the 847.5 kHz subcarrier on for the first half of a one and the second half of a zero. The bright strands illustrate signal activity. The animation loop sleeps outside the viewport and draws fewer details on phones. [NXP PN512 data sheet](https://www.nxp.com/docs/en/data-sheet/PN512.pdf)
+- `inspect()` shows fictional sample values. Hover makes the packet translucent and scatters copper particles around it. Tap or click pins the reveal. Keyboard focus also reveals the value. The river and other packets keep moving while one is held or missing. `steal()` announces a packet dropped outside the stream and replaces it after 1.5 seconds. Reduced motion disables the particle burst and continuous movement. Scroll back to clear the interaction. Sound starts after the visitor enables it.
 
 **Why it is built this way.** The scene owns its markup, styles and input handlers inside a shadow root. That keeps the landing carousel and the river independent. Both use the project's existing Three.js import map and static file server.
 
@@ -176,9 +175,9 @@ body { height: auto; overflow: visible; }
 .stage { touch-action: pan-y; }
 ```
 
-**How to check it.** Serve the repository root and open `/bit-river/`. Scroll down and back through the carrier, antenna response, data trace and reader. Use **Compare coupling** to check distance, alignment, interference and recovery. Hover, tap or Tab to a capsule. Drag it away or press Delete while it has focus. The warning should clear and the packet should return. Run `node --test bit-river/river.test.mjs` with Node 22.7 or newer to check the reveal, curve, coupling and bit timing.
+**How to check it.** Serve the repository root and open `/bit-river/`. Scroll down and back to see the reader pulse, gradual copper reveal and moving packets. Enable sound before the reply reaches the reader for the chime. Hover, tap or Tab to a packet to inspect it. Drag it away, use **Lift this packet**, or press Delete while it has focus. The warning should clear and the packet should return. Replay takes you back to the card. Run `node --test bit-river/river.test.mjs` with Node 22.7 or newer to check the reveal, drag boundaries and encoded bit timing.
 
 **Likely questions.**
 
-- Q: Does the demo read a real card? A: The values in `capsules.js` are fictional, including the authentication reply. No secrets or real NFC reads are involved.
+- Q: Does the demo read a real card? A: Every value comes from the small `packets` array. It runs entirely in the browser.
 - Q: Does RFID send a replacement when someone takes a packet? A: That sequence is a game mechanic. Real card communication uses protocol-specific commands and responses.

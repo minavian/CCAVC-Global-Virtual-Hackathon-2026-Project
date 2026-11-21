@@ -1,171 +1,357 @@
-import { renderInterface } from './interface.js';
-import { clamp, ease, linkAt, linkConditions } from './river.js';
-import { createWaveform } from './waveform.js';
+import { clamp, ease, replyFront, riverGeometry, sizeCanvas, drawField, drawTraffic } from './river.js';
 
+const file = name => new URL(name, import.meta.url).href;
 const chapters = [
-  { at: 0, title: 'The Invisible Current', caption: 'An RFID transmission' },
-  { at: .135, title: 'The reader calls.', caption: 'The reader’s magnetic field powers the card.' },
-  { at: .30, title: 'The antenna answers.', caption: 'The chip switches the load on its coil.' },
-  { at: .57, title: 'A river of signals.', caption: 'The timing of the changes encodes each bit.' },
-  { at: .86, title: 'The reply arrives.', caption: 'A simulated RFID exchange.' }
+  { name: 'Approach', at: 0, title: 'Inside a tap.', copy: 'The reader powers the card.' },
+  { name: 'Reveal', at: .22, title: 'Look closer.', copy: '' },
+  { name: 'Connect', at: .55, title: 'A quiet reply.', copy: 'The card changes its antenna load.' },
+  { name: 'Transmit', at: .77, title: 'Read the river.', copy: '' }
 ];
+const packets = [
+  { label: 'ID', value: '04 7B 21 9E', meaning: 'Tag identifier' },
+  { label: 'Auth', value: '8A 2F', meaning: 'Example response' },
+  { label: 'Data', value: 'Gallery pass', meaning: 'Example payload' }
+];
+const sparks = Array.from({ length: 10 }, (_, i) =>
+  `<i style="--angle:${i * 36}deg;--delay:${i % 3 * 35}ms"></i>`).join('');
+const icons = {
+  brand: '<path d="M2 19C10 19 8 5 16 5s6 18 16 18M2 14C9 14 9 2 16 2s9 16 16 16M2 24c10 0 8-14 14-14s5 18 16 18"/>',
+  sound: '<path d="M4 9h3l5-4v14l-5-4H4z"/><path class="mute" d="m16 9 5 6m0-6-5 6"/><path class="waves" d="M15.5 8a6 6 0 0 1 0 8m2-11a10 10 0 0 1 0 14"/>',
+  down: '<path d="M12 4v15m-6-6 6 6 6-6"/>',
+  replay: '<path d="M5 10a7 7 0 1 1 1 7m-1-7V5m0 5h5"/>',
+  pause: '<path d="M9 5v14m6-14v14"/>',
+  play: '<path d="m8 5 11 7-11 7z"/>',
+  arrow: '<path d="M3 12h17m-6-6 6 6-6 6"/>'
+};
+function icon(name) {
+  return `<svg aria-hidden="true" viewBox="0 0 ${name === 'brand' ? '34 30' : '24 24'}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${icons[name]}</svg>`;
+}
 
 function mount(host, root, signal) {
-  renderInterface(root);
-  const $ = selector => root.querySelector(selector);
-  const scene = $('.scene'), canvas = $('.world'), advance = $('.advance'), pause = $('.flow-toggle');
-  const compare = $('.link-toggle'), title = $('.headline'), caption = $('.caption'), scopeLabel = $('.scope-label');
-  const drawScope = createWaveform($('.scope'));
-  const preference = matchMedia('(prefers-reduced-motion: reduce)');
-  const graphics = new AbortController();
-  let world, visible = false, loading = false, paused = false;
-  let raf = 0, lastTime, progress, target = 0, chapter = -1;
-  let measurements = true, scrolled = true, width = 0, height = 0;
-  let mode = 0, linkBlend = 1, compared = false, time = 0, detectedAt = -10;
-  let currentLink = linkConditions[0], previousLink = currentLink;
-  const on = (node, event, handler, options) => node.addEventListener(event, handler, { ...options, signal });
+  root.innerHTML = `
+    <link rel="stylesheet" href="${file('bit-river.css')}">
+    <section class="frame" aria-label="Bit River interactive RFID transmission">
+      <header class="mast">
+        <div class="identity">${icon('brand')}<strong>Bit River</strong><span>RFID field guide</span></div>
+        <div class="tools">
+          <button class="pause" type="button" hidden>${icon('pause')}<span>Pause flow</span></button>
+          <button class="sound" type="button" aria-pressed="false">${icon('sound')}<span>Sound off</span></button>
+        </div>
+      </header>
+      <div class="scene">
+        <div class="copy" aria-live="polite" aria-atomic="true"><h2></h2><p></p></div>
+        <div class="plot">
+          <canvas class="field" aria-hidden="true"></canvas>
+          <canvas class="traffic" aria-hidden="true"></canvas>
+          <div class="device card" aria-hidden="true">
+            <img class="poster" src="${file('assets/card.webp')}" alt="">
+            <canvas class="model"></canvas>
+          </div>
+          <div class="device reader" aria-hidden="true"><img src="${file('assets/reader.webp')}" alt=""></div>
+          <span class="device-label tag-label">Passive tag</span>
+          <span class="device-label reader-label">RFID reader <span class="connected" hidden>Connected</span></span>
+          <div class="packets" role="group" aria-label="Simulated packets" hidden>
+            ${packets.map(p => `<button type="button" class="packet" aria-label="Inspect ${p.label} packet"
+                aria-pressed="false" aria-controls="reading" aria-keyshortcuts="Delete">
+              <span class="packet-sparks" aria-hidden="true">${sparks}</span>
+              <span class="packet-face"><i aria-hidden="true"></i>${p.label}</span>
+              <span class="packet-value" aria-hidden="true">${p.value}</span>
+            </button>`).join('')}
+          </div>
+        </div>
+        <aside class="readout" id="reading" tabindex="-1">
+          <div class="direction"><span class="legend-stroke" aria-hidden="true"></span><span class="legend-name"></span></div>
+          <div class="route"></div>
+          <p class="help" hidden></p>
+          <button class="lift" type="button" hidden>Lift this packet</button>
+        </aside>
+        <span class="sr announcement" role="status"></span>
+      </div>
+      <footer class="navigation">
+        <nav aria-label="Transmission chapters">
+          ${chapters.map((c, i) => `<button type="button" data-chapter="${i}"><span>0${i + 1}</span><b>${c.name}</b></button>`).join('')}
+        </nav>
+        <button type="button" class="advance"></button>
+      </footer>
+    </section>`;
 
-  function wake() {
-    if (visible && !document.hidden && !raf) raf = requestAnimationFrame(tick);
+  const $ = s => root.querySelector(s);
+  const frame = $('.frame'), plot = $('.plot'), model = $('.model');
+  const nodes = [...root.querySelectorAll('.packet')];
+  const stops = [...root.querySelectorAll('[data-chapter]')];
+  const motion = matchMedia('(prefers-reduced-motion: reduce)');
+  let reduced = motion.matches;
+  const phases = [.22, .51, .80];
+  let geometry, ink, bits, drawCard, audio, drag, replacement, returning;
+  let chapter = -1, selected = -1, missing = -1;
+  let progress = 0, clock = 0, lastTime, raf = 0;
+  let visible = false, paused = false, sound = false, dirty = true, loadStarted = false, connected = false;
+  const on = (target, event, fn, options = {}) => target.addEventListener(event, fn, { ...options, signal });
+
+  function tone(frequency, end, seconds) {
+    if (!sound || audio?.state !== 'running') return;
+    const oscillator = audio.createOscillator(), gain = audio.createGain(), now = audio.currentTime;
+    oscillator.frequency.setValueAtTime(frequency, now);
+    oscillator.frequency.exponentialRampToValueAtTime(end, now + seconds);
+    gain.gain.setValueAtTime(.065, now);
+    gain.gain.exponentialRampToValueAtTime(.0001, now + seconds);
+    oscillator.connect(gain).connect(audio.destination);
+    oscillator.start(now);
+    oscillator.stop(now + seconds);
   }
+  on($('.sound'), 'click', async () => {
+    sound = !sound;
+    if (sound) {
+      try {
+        audio ??= new (window.AudioContext || window.webkitAudioContext)();
+        await audio.resume();
+      } catch { sound = false; }
+    }
+    if (signal.aborted) return;
+    $('.sound').setAttribute('aria-pressed', String(sound));
+    $('.sound span').textContent = sound ? 'Sound on' : 'Sound off';
+    if (connected && sound) tone(1100, 1600, .24);
+  });
 
+  function showReading() {
+    const packet = packets[selected];
+    const inspecting = chapter === 3 && packet && missing < 0;
+    $('.readout').classList.toggle('warning', missing >= 0);
+    $('.lift').hidden = !inspecting;
+    $('.help').hidden = !inspecting && missing < 0;
+    if (missing >= 0) {
+      $('.legend-name').textContent = 'Packet lost';
+      $('.route').textContent = 'DATA PACKET MISSING! 🚨';
+      $('.help').textContent = 'Sending a replacement…';
+    } else if (inspecting) {
+      $('.legend-name').textContent = packet.label + ' · Simulated';
+      $('.route').textContent = packet.value;
+      $('.help').textContent = packet.meaning;
+    } else {
+      $('.legend-name').textContent = ['Power field', 'Inductive coupling', 'Load modulation', 'Simulated data'][chapter];
+      $('.route').textContent = ['Reader → tag', 'Antenna coil', 'Tag → reader', 'Inspect a packet'][chapter];
+    }
+  }
+  function inspect(index) {
+    if (missing >= 0 || selected === index) return;
+    selected = index;
+    nodes.forEach((n, i) => n.classList.toggle('selected', i === index));
+    showReading();
+    $('.announcement').textContent = packets[index].label + '. ' + packets[index].value + '. ' + packets[index].meaning;
+  }
+  function resetPackets() {
+    clearTimeout(replacement);
+    drag = returning = null;
+    missing = selected = -1;
+    phases.splice(0, 3, .22, .51, .80);
+    for (const node of nodes) {
+      node.classList.remove('missing', 'selected', 'held', 'peek');
+      node.setAttribute('aria-pressed', 'false');
+    }
+    $('.announcement').textContent = '';
+  }
+  function setChapter(index) {
+    if (chapter === index) return;
+    if (chapter === 3) resetPackets();
+    chapter = index;
+    frame.dataset.chapter = index;
+    frame.toggleAttribute('data-inside', index >= 2);
+    $('.copy h2').textContent = chapters[index].title;
+    $('.copy p').textContent = chapters[index].copy;
+    $('.packets').hidden = index !== 3;
+    stops.forEach((stop, i) => {
+      if (i === index) stop.setAttribute('aria-current', 'step');
+      else stop.removeAttribute('aria-current');
+    });
+    const last = index === chapters.length - 1;
+    const label = last ? 'Replay' : index === 0 ? 'Scroll to explore' : 'Next chapter';
+    const shortLabel = last ? 'Replay' : index === 0 ? 'Explore' : 'Next';
+    $('.advance').innerHTML = `<span class="advance-full">${label}</span><span class="advance-short">${shortLabel}</span>` + icon(last ? 'replay' : 'down');
+    showReading();
+  }
+  function go(index) {
+    const travel = host.offsetHeight - frame.offsetHeight;
+    const top = window.scrollY + host.getBoundingClientRect().top + travel * (chapters[index].at + (index ? .025 : 0));
+    window.scrollTo({ top, behavior: motion.matches ? 'instant' : 'smooth' });
+  }
+  stops.forEach((stop, i) => on(stop, 'click', () => go(i)));
+  on($('.advance'), 'click', () => go((chapter + 1) % chapters.length));
+  on($('.pause'), 'click', () => {
+    paused = !paused;
+    $('.pause').innerHTML = icon(paused ? 'play' : 'pause') + '<span>' + (paused ? 'Resume flow' : 'Pause flow') + '</span>';
+    wake();
+  });
+
+  function layout() {
+    const travel = Math.max(1, host.offsetHeight - frame.offsetHeight);
+    progress = clamp(-host.getBoundingClientRect().top / travel);
+    $('.pause').hidden = progress <= .06 || motion.matches;
+    setChapter(chapters.findLastIndex(c => progress >= c.at));
+    const received = replyFront(progress) === 1;
+    if (received && !connected) tone(1100, 1600, .34);
+    connected = received;
+    $('.connected').hidden = !connected;
+    const w = plot.clientWidth, h = plot.clientHeight;
+    if (!w || !h) return;
+    const compact = w <= 520 || (w <= 680 && frame.clientHeight > 450);
+    if (!geometry || w !== geometry.w || h !== geometry.h || compact !== geometry.compact) {
+      ink = sizeCanvas($('.field'), w, h, compact);
+      bits = sizeCanvas($('.traffic'), w, h, compact);
+    }
+    const zoom = motion.matches ? [0, .45, 1, 1][chapter] : ease(.03, .69, progress);
+    const push = motion.matches ? 0 : ease(.01, .22, progress) * (1 - ease(.26, .55, progress));
+    geometry = riverGeometry(w, h, zoom, compact);
+    const { reader, tag } = geometry;
+    const cardWidth = Math.min(w * (compact ? .62 : .39), h * (compact ? .99 : .95), 640) * (1 - .40 * zoom + push * .42);
+    const readerWidth = Math.min(w * (compact ? .36 : .245), h * .56, 350) * (1 - .24 * zoom);
+    for (const [name, center, width] of [['tag', tag, cardWidth], ['reader', reader, readerWidth]]) {
+      plot.style.setProperty('--' + name + '-x', center.x + 'px');
+      plot.style.setProperty('--' + name + '-y', center.y + 'px');
+      plot.style.setProperty('--' + name + '-w', width + 'px');
+    }
+    if (drawCard) drawCard(zoom);
+    drawField(ink, geometry, zoom, progress);
+  }
+  function positionPacket(i) {
+    const phase = geometry.compact ? .12 + phases[i] * .76 : phases[i];
+    const t = returning?.i === i ? phase * ease(0, 1.1, clock - returning.start) : phase;
+    return geometry.point(t, (i - 1) * .88);
+  }
   function tick(now) {
     raf = 0;
-    if (measurements) {
-      width = scene.clientWidth;
-      height = scene.clientHeight;
-      measurements = false;
+    if (motion.matches !== reduced) {
+      reduced = motion.matches;
+      dirty = true;
+      lastTime = undefined;
     }
-    if (!width || !height || !visible || document.hidden) return;
-    if (scrolled) {
-      target = clamp(-host.getBoundingClientRect().top / Math.max(1, host.offsetHeight - height));
-      scrolled = false;
-    }
-    const dt = lastTime === undefined ? 0 : Math.min(.06, (now - lastTime) / 1000);
-    lastTime = now;
-    const reduced = preference.matches;
-    const previous = progress;
-    progress = progress === undefined || reduced ? target : progress + (target - progress) * (1 - Math.exp(-16 * Math.max(dt, .016)));
-    const settling = Math.abs(target - progress) > .0006;
-    if (!settling) progress = target;
-
-    const next = chapters.findLastIndex(step => progress >= step.at);
-    if (next !== chapter) {
-      chapter = next;
-      scene.dataset.chapter = chapter;
-      const last = chapter === chapters.length - 1;
-      advance.dataset.replay = String(last);
-      $('[data-advance-label]').textContent = last ? 'Replay' : chapter === 0 ? 'Scroll to follow' : 'Continue';
-      scopeLabel.textContent = chapter < 2 ? 'Reader carrier · 13.56 MHz' : 'Load modulation · 847.5 kHz subcarrier';
-      compare.hidden = !last;
-      if (!last) {
-        $('.live-status').textContent = '';
-        if (mode) {
-          previousLink = currentLink;
-          linkBlend = 0;
-        }
-        mode = 0;
-        compared = false;
-      }
-    }
-    if (progress !== previous) {
-      scene.style.setProperty('--progress', progress.toFixed(4));
-      scene.style.setProperty('--depth', ease(.20, .75, progress).toFixed(4));
-    }
-    const motion = !reduced && !paused;
-    if (motion) time += dt;
-    linkBlend = reduced ? 1 : Math.min(1, linkBlend + Math.max(dt, .016) * 3.2);
-    const link = currentLink = linkAt(progress, mode, ease(0, 1, linkBlend), previousLink);
-    const stage = chapters[chapter];
-    const comparing = chapter === 4 && compared;
-    const sceneTitle = comparing && !link.readable ? 'The reader misses.' : stage.title;
-    const sceneCaption = comparing ? linkConditions[mode].name + (linkBlend < 1 ? '' : link.readable ? ' · Readable' : ' · No read') : stage.caption;
-    if (title.textContent !== sceneTitle) title.textContent = sceneTitle;
-    if (caption.textContent !== sceneCaption) caption.textContent = sceneCaption;
-    pause.hidden = reduced || (!world && !chapter);
-    const received = chapter === 4 && link.readable
-      ? Math.max(ease(.86, .95, progress) * .62, 1 - ease(0, .8, time - detectedAt)) : 0;
-    if (!world) {
-      scene.style.setProperty('--gap', link.gap - .48);
-      scene.style.setProperty('--foreshortening', Math.cos(link.tilt));
-      scene.style.setProperty('--coupling', link.strength);
-    }
-    if (chapter > 0) drawScope({ progress, time, strength: link.strength, noise: link.noise, received, reduced });
-    const needsFrame = world?.frame({ width, height, progress, dt, motion, reduced, link });
-    if (world && scene.dataset.ready !== 'true') scene.dataset.ready = 'true';
-    if (settling || linkBlend < 1 || needsFrame || (motion && (world || chapter > 0))) wake();
-    else lastTime = undefined;
+    if (dirty) { dirty = false; layout(); }
+    if (!geometry || !visible || document.hidden) { lastTime = undefined; return; }
+    const moving = !motion.matches && !paused && progress > .06;
+    const dt = lastTime === undefined ? 0 : Math.min((now - lastTime) / 1000, .05);
+    lastTime = moving ? now : undefined;
+    if (moving) clock += dt;
+    drawTraffic(bits, geometry, progress, clock);
+    if (returning && (clock - returning.start >= 1.1 || motion.matches)) returning = null;
+    if (chapter === 3) nodes.forEach((node, i) => {
+      if (drag?.i === i) return;
+      if (moving) phases[i] = (phases[i] + dt * .034) % 1;
+      place(node, positionPacket(i));
+    });
+    if (moving) wake();
   }
-
-  on(advance, 'click', () => {
-    const next = chapter < 0 ? 1 : (chapter + 1) % chapters.length;
-    const travel = host.offsetHeight - scene.clientHeight;
-    const top = window.scrollY + host.getBoundingClientRect().top + travel * (chapters[next].at + (next ? .045 : 0));
-    window.scrollTo({ top, behavior: preference.matches ? 'instant' : 'smooth' });
-  });
-  on(pause, 'click', () => {
-    paused = !paused;
-    pause.setAttribute('aria-pressed', String(paused));
-    $('[data-flow-label]').textContent = paused ? 'Resume flow' : 'Pause flow';
-    wake();
-  });
-  on(compare, 'click', () => {
-    previousLink = currentLink;
-    mode = (mode + 1) % linkConditions.length;
-    linkBlend = 0;
-    compared = true;
-    wake();
-  });
-  function onScroll() { scrolled = true; wake(); }
-  on(window, 'scroll', onScroll, { passive: true });
-  on(preference, 'change', wake);
-  on(document, 'visibilitychange', () => { lastTime = undefined; wake(); });
-  on(root, 'keydown', event => {
-    if (event.key.startsWith('Arrow')) event.stopPropagation();
-  });
-  function fallback() {
-    graphics.abort();
-    world = null;
-    delete scene.dataset.ready;
-    $('.inspection').hidden = true;
-    $('.notice').textContent = '';
-    for (const button of root.querySelectorAll('.packet')) button.hidden = true;
-    wake();
+  function place(node, { x, y }) {
+    node.style.transform = `translate(${x}px,${y}px) translate(-50%,-50%)`;
   }
-  on(canvas, 'webglcontextlost', fallback);
-
-  const size = new ResizeObserver(() => { measurements = true; onScroll(); });
-  size.observe(scene);
-  const observer = new IntersectionObserver(([entry]) => {
+  function wake() {
+    if (!raf && visible && !document.hidden) raf = requestAnimationFrame(tick);
+  }
+  function refresh() { dirty = true; wake(); }
+  on(window, 'scroll', refresh, { passive: true });
+  // The existing hero listens for arrow keys on window. Keep native scrolling
+  // available when a visitor has moved focus into this chapter.
+  on(root, 'keydown', event => { if (event.key.startsWith('Arrow')) event.stopPropagation(); });
+  on(document, 'visibilitychange', () => { lastTime = undefined; refresh(); });
+  on(motion, 'change', refresh);
+  on(window, 'focus', refresh);
+  const resize = new ResizeObserver(refresh);
+  resize.observe(plot);
+  resize.observe(host);
+  const view = new IntersectionObserver(([entry]) => {
     visible = entry.isIntersecting;
     lastTime = undefined;
-    wake();
-    if (!visible || loading) return;
-    loading = true;
-    import('./scene.js').then(({ createScene }) => createScene({
-      canvas, surface: scene,
-      controls: $('.packets'), notice: $('.notice'), readout: $('.inspection'),
-      signal: graphics.signal, wake,
-      onArrival() {
-        detectedAt = time;
-        if (chapter === 4) $('.live-status').textContent = 'Reader confirmed the simulated reply.';
-      }
-    })).then(result => {
-      if (!result || graphics.signal.aborted) return;
-      world = result;
+    refresh();
+    if (!visible || loadStarted) return;
+    loadStarted = true;
+    import('./card.js').then(module => module.loadCard(model, signal)).then(render => {
+      if (!render || signal.aborted) return;
+      drawCard = render;
+      layout();
+      $('.card').classList.add('live');
+    }).catch(() => { /* The stills show the same card when WebGL or the CDN is unavailable. */ });
+  });
+  view.observe(host);
+  on(model, 'webglcontextlost', () => { drawCard = null; $('.card').classList.remove('live'); });
+
+  function steal(i) {
+    if (chapter !== 3 || missing >= 0 || i < 0) return;
+    const restoreFocus = (root.activeElement === nodes[i] || root.activeElement === $('.lift')) &&
+      root.activeElement.matches(':focus-visible');
+    if (restoreFocus) $('.readout').focus({ preventScroll: true });
+    missing = i;
+    selected = -1;
+    nodes[i].classList.remove('selected', 'peek');
+    nodes[i].setAttribute('aria-pressed', 'false');
+    nodes[i].classList.add('missing');
+    showReading();
+    $('.announcement').textContent = 'WARNING: Data packet missing! The tag is sending a replacement.';
+    tone(420, 180, .23);
+    replacement = setTimeout(() => {
+      missing = -1;
+      // Rejoin the original slot so a replacement cannot drift on top of another packet forever.
+      if (!motion.matches && !paused && !restoreFocus) returning = { i, start: clock };
+      nodes[i].classList.remove('missing');
+      showReading();
+      $('.route').textContent = 'Transmission restored';
+      if (restoreFocus && root.activeElement === $('.readout')) nodes[i].focus({ preventScroll: true });
+      $('.announcement').textContent = packets[i].label + ' packet replaced. Transmission restored.';
       wake();
-    }).catch(error => {
-      if (!graphics.signal.aborted) console.warn('Bit River is using its still scene.', error);
-      fallback();
+    }, 1500);
+    wake();
+  }
+  on($('.lift'), 'click', () => steal(selected));
+  nodes.forEach((node, i) => {
+    let dragged = false;
+    on(node, 'pointerenter', event => {
+      if (event.pointerType === 'mouse' && !drag && missing < 0) {
+        node.classList.add('peek');
+        inspect(i);
+      }
     });
-  }, { rootMargin: '0px 0px 180px' });
-  observer.observe(host);
+    on(node, 'pointerleave', () => node.classList.remove('peek'));
+    on(node, 'focus', () => inspect(i));
+    on(node, 'click', event => {
+      if (missing >= 0 || (dragged && event.detail)) return;
+      const pin = node.getAttribute('aria-pressed') === 'false';
+      nodes.forEach((packet, index) => packet.setAttribute('aria-pressed', String(pin && index === i)));
+      inspect(i);
+    });
+    on(node, 'keydown', event => {
+      if (event.key === 'Delete') { event.preventDefault(); steal(i); }
+    });
+    on(node, 'pointerdown', event => {
+      if (!event.isPrimary || event.button !== 0 || missing >= 0 || drag) return;
+      dragged = false;
+      inspect(i);
+      drag = { i, id: event.pointerId, startX: event.clientX, startY: event.clientY, origin: positionPacket(i) };
+      node.setPointerCapture(event.pointerId);
+    });
+    on(node, 'pointermove', event => {
+      if (drag?.id !== event.pointerId || drag.i !== i) return;
+      const dx = event.clientX - drag.startX, dy = event.clientY - drag.startY;
+      if (Math.hypot(dx, dy) < 5 && !drag.position) return;
+      drag.position = { x: drag.origin.x + dx, y: drag.origin.y + dy };
+      node.classList.add('held');
+      place(node, drag.position);
+    });
+    function release(event) {
+      if (drag?.id !== event.pointerId || drag.i !== i) return;
+      const { position } = drag;
+      drag = null;
+      dragged = Boolean(position);
+      node.classList.remove('held');
+      if (event.type === 'pointerup' && position && !geometry.contains(position.x, position.y)) steal(i);
+      wake();
+    }
+    for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) on(node, event, release);
+  });
   signal.addEventListener('abort', () => {
     cancelAnimationFrame(raf);
-    graphics.abort();
-    size.disconnect();
-    observer.disconnect();
+    clearTimeout(replacement);
+    view.disconnect();
+    resize.disconnect();
+    audio?.close();
   }, { once: true });
+  setChapter(0);
 }
 
 class RFIDBitRiver extends HTMLElement {
@@ -173,10 +359,6 @@ class RFIDBitRiver extends HTMLElement {
     this.controller = new AbortController();
     mount(this, this.shadowRoot || this.attachShadow({ mode: 'open' }), this.controller.signal);
   }
-
-  disconnectedCallback() {
-    this.controller.abort();
-  }
+  disconnectedCallback() { this.controller.abort(); }
 }
-
 customElements.define('rfid-bit-river', RFIDBitRiver);
