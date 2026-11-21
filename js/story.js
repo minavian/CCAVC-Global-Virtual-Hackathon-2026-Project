@@ -19,7 +19,7 @@
 
   const LENGTH = 10.8;                      // screens of scrolling after the hero
   const TIME = {
-    drop: { start: .06, stagger: .1, span: .55 },
+    drop: { start: .04, stagger: .06, span: .50 },
     glass: [1.22, 1.52],                    // all three turn to glass
     feature: [1.95, 2.55],                  // the key comes forward, the others step aside
     open: [2.55, 3.1],                      // the key opens
@@ -37,7 +37,7 @@
 
   // The sentences that only depend on the scroll: [from, to, sentence].
   const SAY = [
-    [.82, TIME.glass[0], 'They all use RFID.'],
+    [0, TIME.glass[0], 'They all use RFID.'],
     [TIME.glass[0], 1.9, 'Inside each one: a coil and a chip.'],
     [2.55, 3.0, 'The key has a battery.'],
     [6.0, 6.45, 'This is a reader.'],

@@ -79,6 +79,7 @@ Owner: Mina Vian · 2026-11-20 · Issues #3, #5
 - **Word pops** use `pop()`, a damped spring (it overshoots about 3% and settles).
 - **The glide** lays the headline out at its large size and scales it down to its final place (`placeHeadline`), so the text is never blurry. A hidden copy (`slot`) holds the final position so nothing reflows when it lands.
 - **The carousel** is a small physics model: a position `phase` (0 = key fob in front, 1 = phone, 2 = card) and a `velocity`. Each object's screen position comes from its angle on a tilted circle (`computePoses`): the front object is large and sharp; the other two sit behind it, bottom-left and top-right.
+- OpenAI Codex for the project team spaced the carousel across the area beside the headline, or below it on phones. The support slots have lighter depth blur so the phone and card read clearly. The next heading fades in as the reader scene approaches.
 - **Moves** use a Hermite curve (`travel`, `advanceFlight`) that starts at the current position *and speed*, so a new input never makes anything jump.
 - **Interrupting the opening** (`finishIntro(true)`): any click, key, wheel or touch freezes every element where it is and blends it to its final state. The headline's blend starts at the speed it was already moving (its easing curve is computed from that speed), and the spinning carousel lands on the key fob from its current speed.
 - **Dragging** follows the diagonal between the back objects; releasing with speed flings it on (`release`). The left and right arrow keys turn it (up and down are left for scrolling). Once the story starts playing, the carousel stops taking input.
@@ -169,7 +170,7 @@ Written by OpenAI Codex for Akris Luno · 2026-11-21 · Issue #16
 - The carousel supplies the card’s screen position, size and rotation through `getPose()`. `borrowCard()` moves that same Three.js object from the landing scene to the scan scene. `drawHandoff()` starts with its rendered pose and blends it into the scan while the page scrolls.
 - `scan.js` projects the card and reader into screen coordinates. `paintGuidance()` moves a gesture cue toward the reader and passes pointer position, attention and distance to `drawScan()`. The card tilts with the pointer and gently rocks while hovered. The reader light responds as the card approaches. The card follows a captured mouse or touch pointer and returns to rest if released too far away. The simulated read unlocks the film and the deeper experiments. Reduced motion keeps the instruction and light feedback while removing the gesture and tilt.
 - `drawScan()` follows the card from contact through the expanding wave to the centered reveal. The keyboard path places the hand around a point on the card so the grip moves with it. `SCAN_TIMING` aligns the chime, reader indicator, wave and heading fade.
-- OpenAI Codex for the project team · 2026-11-21. The scan and the film share a sticky viewport. `setStoryProgress()` moves the landing stage into that viewport and gives `drawStory()` the card's next screen position, size and rotation. The card is already at that pose when it returns to the landing stage. Scrolling backwards reverses the handoff.
+- OpenAI Codex for the project team · 2026-11-21. The scan and the film share a sticky viewport. The reveal leaves space above the card for the complete title. `setStoryProgress()` moves the landing stage into that viewport and gives `drawStory()` the card's next screen position, size and rotation. The card and its shadow travel into position as the key, phone and first film caption fade into the frame. The chapter buttons become interactive once the card is back on the landing stage. Scrolling backwards reverses the handoff.
 - If 3D setup fails, `scan.js` shows stills of the reader and card from Bit River. The **Scan card** button advances to the title and the chapters.
 
 **Why it is built this way.** Visitors control the distance to the reader before the scan succeeds. Preserving one model lets each transition start at the previous scene’s pose. A scan button and the text explanation remain available if 3D fails to load. Reduced motion uses still poses for the landing flight, wave and scroll transitions.
@@ -227,7 +228,7 @@ Written by OpenAI Codex for Akris Luno · 2026-11-21 · Issue #12. Embedded in t
 Owner: Mina Vian · 2026-11-21, updated 2026-11-21 · Issues #9, #19
 
 **What it does.** After the scan reveal, scrolling plays the first two minutes of `SCRIPT.md`. One plain sentence is on screen at a time, always top left, and a part is labelled while the sentence names it.
-- **Intro:** The camera holds on the overlapping key, phone and card arrangement. The models then spread into a line.
+- **Intro:** The three objects fill the frame in a staggered row under “They all use RFID.” The models glide into alignment before the shells turn to glass.
 - **Inside:** "They all use RFID." Then the objects turn to glass: "Inside each one: a coil and a chip." Each object gets `Coil` and `Chip` labels.
 - **No battery:**
   - "The key has a battery." and "Pull it out.": the visitor drags the battery (or scrolling pulls it).

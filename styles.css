@@ -815,12 +815,15 @@ html[data-local-file] .copy .scan-link, html[data-local-file] .scan-sequence { d
 
 .scan-reveal {
   position: absolute;
-  top: 38%;
-  inset-inline: 0;
-  transform: translateY(-50%);
+  top: 28%;
+  left: 50%;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  transform: translate(-50%, -50%);
   margin: 0;
-  padding: 0 12px;
-  font-size: min(15vw, 19rem);
+  padding: .03em .05em;
+  border-radius: .04em;
+  font-size: min(14.5vw, 21svh, 18rem);
   font-weight: 800;
   line-height: .9;
   letter-spacing: -.04em;
@@ -834,6 +837,7 @@ html[data-local-file] .copy .scan-link, html[data-local-file] .scan-sequence { d
   z-index: 2;
   min-width: 0;
   padding: 0 16px max(1.25rem, env(safe-area-inset-bottom));
+  opacity: var(--scan-controls-opacity, 1);
 }
 
 .scan-next {
@@ -845,7 +849,7 @@ html[data-local-file] .copy .scan-link, html[data-local-file] .scan-sequence { d
 }
 .scan-next:not([inert]) > * { pointer-events: auto; }
 
-.scan-intro, .scan-keyboard { opacity: var(--scan-chrome, 1); }
+.scan-intro { opacity: calc(var(--scan-chrome, 1) * var(--scan-arrival, 1)); }
 .scan-keyboard {
   margin: 0;
   color: var(--muted);
@@ -894,7 +898,7 @@ html[data-local-file] .copy .scan-link, html[data-local-file] .scan-sequence { d
 
 .scan-stage[hidden], .scan-stage [hidden] { display: none; }
 .scan-stage[data-view="reveal"] .scan-intro { visibility: hidden; }
-.scan-depth { height: 78svh; }
+.scan-depth { height: 55svh; }
 
 @media (max-height: 560px) {
   .scan-intro { padding-top: 12px; }
@@ -902,7 +906,7 @@ html[data-local-file] .copy .scan-link, html[data-local-file] .scan-sequence { d
 }
 
 @media (max-width: 600px) and (min-height: 540px) {
-  .scan-reveal { top: 30%; font-size: 19vw; }
+  .scan-reveal { top: 26%; font-size: min(18vw, 12svh); }
   .scan-reveal span { display: block; }
 }
 

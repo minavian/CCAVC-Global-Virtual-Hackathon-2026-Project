@@ -11,10 +11,10 @@ const deviceAspects = [.56, .49, 1.58];
 const reach = new T.Vector3(3.2, 1.35, 2.6);
 const tap = new T.Vector3(-2.35, .05, 2.35);
 const contact = new T.Vector3(-3.56, -.35, 8);
-const revealPosition = new T.Vector3(0, .05, 1.9);
+const revealPosition = new T.Vector3(0, -.45, 1.9);
 const revealRotation = new T.Euler(.13, -.26, .25);
 const revealQuaternion = new T.Quaternion().setFromEuler(revealRotation);
-const revealShadow = new T.Vector3(.3, -2.75, -.5);
+const revealShadow = new T.Vector3(.22, -3.08, -.5);
 const revealCameraY = -.1;
 const gripAnchor = new T.Vector3(11.4, 3.15, -4.7);
 const clamp = value => T.MathUtils.clamp(value, 0, 1);
@@ -386,7 +386,12 @@ export async function createScanScene(viewport, redraw) {
     device.scale.setScalar(size / current.span);
     productShadow.visible = true;
     productShadow.position.copy(revealShadow);
-    productShadow.material.opacity = .48 * (1 - progress);
+    if (target) {
+      // The landing stage draws the final shadow at forty percent of the card's size.
+      const ground = toScenePoint({ x: target.x, y: target.y + target.size * .4 }, revealShadow.z);
+      productShadow.position.lerp(ground, progress);
+    }
+    productShadow.material.opacity = T.MathUtils.lerp(.48, .32, progress);
     openDevice(0);
     renderer.render(scene, camera);
   }

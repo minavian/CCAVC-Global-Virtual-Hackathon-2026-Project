@@ -39,7 +39,7 @@
   const CARD_INDEX = 2;
   const BASE_PITCH = [.16, -.09, .11];
   const BASE_YAW = [-.42, .38, -.24];
-  const BASE_ROLL = [-.31, -.19, .14];
+  const BASE_ROLL = [-.23, -.14, .10];
   const SHADOW = [[.46, .55], [.5, .57], [.74, .4]];   // [width, drop] as fractions of pose size
   const TAU = Math.PI * 2;
 
@@ -151,10 +151,10 @@
       ? { x: 0, y: copy.bottom - rect.top + h * .02, w, h: 0 }
       : { x: 0, y: 0, w: Math.max(1, copy.left - rect.left), h };
     if (narrow) region.h = Math.max(1, h - region.y);
-    // The front object is large and the other two tuck in close behind it.
+    // Give the front object room while keeping the two flanking objects readable.
     const r = narrow
-      ? { cx: .5, cy: .5, ax: .3, ay: .2, dz: .02, size: Math.min(region.w * .75, region.h * .6) }
-      : { cx: .5, cy: .48, ax: .29, ay: .27, dz: .02, size: Math.min(region.w * .7, region.h * .62) };
+      ? { cx: .5, cy: .48, ax: .34, ay: .27, dz: .01, size: Math.min(region.w * .62, region.h * .54) }
+      : { cx: .49, cy: .49, ax: .37, ay: .235, dz: .01, size: Math.min(region.w * .61, region.h * .54) };
     layout = {
       w, h, size: r.size,
       cx: (region.x + region.w * r.cx) / w, cy: (region.y + region.h * r.cy) / h,
@@ -203,10 +203,10 @@
       p.baseY = L.h * (L.cy + L.ay * side + L.dz * depth);
       p.y = p.baseY + float * L.size * .016 + leanY * near * 10;
       p.size = L.size * (1 - .56 * depth) * (.84 + .16 * entrance) * (1 + settle);
-      p.depth = depth; p.side = side; p.float = float;
+      p.depth = depth * .53; p.side = side; p.float = float;
       const sway = calm ? 0 : Math.sin(elapsed * .27 + i * 1.3);
       p.pitch = BASE_PITCH[i] + sway * .044 + leanY * near * .1;
-      p.yaw = BASE_YAW[i] + side * .49 + twist * TAU / 3 + sway * .115 + leanX * near * .15;
+      p.yaw = BASE_YAW[i] + side * .36 + twist * TAU / 3 + sway * .115 + leanX * near * .15;
       p.roll = BASE_ROLL[i] + side * .2 + float * .027 + Math.tanh(velocity * .28) * .13;
       p.lift = 0; p.shade = 1; p.visible = true;
     }
@@ -228,10 +228,10 @@
   function introPose(i) {
     const f = designFrame();
     const [x, y, size] = (f.tall
-      ? [[173, 454, 265], [98, 573, 181], [268, 288, 163]]
-      : [[365, 471, 429], [242, 615, 315], [568, 237, 300]])[i];
-    return { x: f.x + x * f.u, y: f.y + y * f.u, size: size * f.u, depth: [0, .34, .29][i],
-      pitch: [.15, -.09, -.14][i], yaw: [-.22, .25, -.22][i], roll: [-.33, .18, -.08][i] };
+      ? [[76, 479, 119], [188, 449, 114], [306, 421, 124]]
+      : [[315, 574, 318], [691, 528, 300], [1090, 473, 352]])[i];
+    return { x: f.x + x * f.u, y: f.y + y * f.u, size: size * f.u, depth: [0, .07, 0][i],
+      pitch: [.10, -.04, -.10][i], yaw: [.19, .10, -.18][i], roll: [-.15, .05, .13][i] };
   }
 
   // The area the featured object fills: the right side, or the top on phones.
@@ -265,31 +265,25 @@
     return { padX: f.x + 1030 * f.u, padY: f.y + 500 * f.u, k: 4600 * f.u, tilt: .5, u: f.u, tall: false };
   }
 
-  // A fall: speeding up under gravity, then one small bounce.
-  const fall = d => d < .78 ? (d / .78) ** 2 : 1 - Math.sin(Math.PI * (d - .78) / .22) * .045;
-
   function storyPoses(st) {
     const n = 3, { w, h } = layout;
-    // 1. Each object drops out of the carousel into the line.
+    // The two supporting devices drift in within the frame as the card takes its place.
     for (let i = 0; i < n; i++) {
       const p = poses[i], d = st.drop[i];
-      const start = introPose(i), enter = calm ? 1 : smoothstep(storyBlend);
-      const offset = i === CARD ? 0 : (1 - enter) * (h + start.size * .55 - start.y);
-      Object.assign(p, start, { y: start.y + offset, baseY: start.y + offset, float: 0,
-        visible: i === CARD || enter > .02, shade: i === CARD ? 1 : enter });
+      const start = introPose(i);
+      const offset = i === CARD ? 0 : 1 - storyBlend;
+      const x = start.x + (i === FEATURED ? -.055 : .025) * w * offset;
+      const y = start.y + (i === FEATURED ? .026 : -.06) * h * offset;
+      Object.assign(p, start, { x, y, baseY: y, float: 0, visible: true, shade: 1 });
       if (d <= 0) continue;
-      const row = rowPose(i, n), move = easeInOutCubic(d), turn = easeOutCubic(d);
-      const down = row.y >= p.y ? fall(d) : move;
-      const tumble = calm ? 0 : Math.sin(Math.PI * d) * .22 * (i % 2 ? 1 : -1);
+      const row = rowPose(i, n), move = smoothstep(d);
       p.x = lerp(p.x, row.x, move);
-      p.y = lerp(p.y, row.y, down);
-      p.baseY = lerp(p.baseY, row.y, down);
+      p.y = p.baseY = lerp(p.y, row.y, move);
       p.size = lerp(p.size, row.size, move);
-      p.depth = lerp(p.depth, 0, turn);
-      p.float = lerp(p.float, 0, turn);
-      p.pitch = lerp(p.pitch, row.pitch, turn);
-      p.yaw = lerp(p.yaw, row.yaw, turn);
-      p.roll = lerp(p.roll, row.roll, turn) + tumble;
+      p.depth = lerp(p.depth, 0, move);
+      p.pitch = lerp(p.pitch, row.pitch, move);
+      p.yaw = lerp(p.yaw, row.yaw, move);
+      p.roll = lerp(p.roll, row.roll, move);
     }
 
     // Scene 2: all three turn to glass, with their coils and chips glowing.
@@ -606,8 +600,8 @@
 
   function render(dt) {
     computePoses();
-    const fade = entrance;
-    light.style.opacity = fade;
+    const fade = storyOn ? storyBlend : entrance;
+    light.style.opacity = entrance;
     // Shadows wait for the models, which stream in as GLB files.
     const shown = fade * (gl?.shown ?? 0);
     shadows.forEach((el, i) => {
@@ -622,7 +616,7 @@
     if (!heroPreview.hidden && storyOn) {
       const { x, y, size, visible, roll } = poses[CARD];
       Object.assign(heroPreview.style, { left: x + 'px', top: y + 'px', width: size * 1.19 + 'px',
-        transform: `translate(-50%, -50%) rotate(${-roll}rad)`, visibility: visible && hiddenIndex !== CARD ? '' : 'hidden' });
+        transform: `translate(-50%, -50%) rotate(${-roll}rad)`, visibility: visible && storyBlend === 1 ? '' : 'hidden' });
     }
     gl?.draw(dt, fade);
     paintStory();
@@ -1203,7 +1197,7 @@
   window.RFIDLanding = {
     setStoryProgress(blend, screens) {
       const active = blend > 0;
-      storyBlend = blend;
+      storyBlend = smoothstep(clamp01((blend - .22) / .78));
       scrollGoal = story ? clamp(screens, 0, story.length) : 0;
       if (active !== storyOn) {
         storyOn = active;

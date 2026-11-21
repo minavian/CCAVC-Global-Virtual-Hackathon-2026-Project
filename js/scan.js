@@ -164,7 +164,7 @@ function finishScan() {
   keyboardHint.hidden = true;
   paint();
   if (moveFocus) {
-    (story.hidden ? reveal : story.querySelector('.chapters button')).focus({ preventScroll: true });
+    (story.inert ? reveal : story.querySelector('.chapters button')).focus({ preventScroll: true });
   }
 }
 
@@ -187,6 +187,8 @@ function paint(now = performance.now()) {
     finishHandoff();
   }
 
+  const arrival = 1 - sequence.getBoundingClientRect().top / experience.clientHeight;
+  stage.style.setProperty('--scan-arrival', motion.matches ? Number(arrival >= .86) : ease(cue(arrival, .48, .92)));
   if (paintScrollHandoff()) return;
 
   if (playing) {
@@ -225,17 +227,20 @@ function paint(now = performance.now()) {
   // Scroll offsets can land on a fractional pixel at the end of the handoff.
   const inStory = completed && travel >= entry - 1;
   const progress = completed ? (inStory ? 1 : clamp(travel / entry)) : 0;
-  const blend = motion.matches ? Number(inStory) : ease(cue(progress, .12, 1));
+  const blend = motion.matches ? Number(inStory) : ease(cue(progress, .24, 1));
   const target = landing()?.setStoryProgress(blend, Math.max(0, (travel - entry) / experience.clientHeight));
+  const filmOpacity = motion.matches ? Number(inStory) : ease(cue(progress, .50, .96));
   stage.dataset.view = completed ? 'reveal' : 'pick';
   stage.hidden = inStory;
-  story.hidden = !inStory;
+  story.hidden = filmOpacity === 0;
+  story.inert = !inStory;
+  story.style.opacity = filmOpacity;
   preview.hidden = !fallback || completed;
   revealPreview.hidden = !fallback || !completed || inStory;
   revealPreview.style.opacity = 1 - blend;
   reveal.hidden = next.hidden = !completed || inStory;
-  reveal.style.setProperty('--reveal-opacity', 1 - ease(cue(progress, .04, .64)));
-  next.style.opacity = 1 - ease(cue(progress, .05, .45));
+  reveal.style.setProperty('--reveal-opacity', 1 - ease(cue(progress, .08, .46)));
+  stage.style.setProperty('--scan-controls-opacity', 1 - ease(cue(progress, .05, .40)));
   next.inert = progress > .45;
   if (inStory) {
     if (borrowed) restoreLandingCard();
