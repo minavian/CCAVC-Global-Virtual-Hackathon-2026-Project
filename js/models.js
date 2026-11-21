@@ -10,6 +10,10 @@
  *     arrive   the object has settled at the front
  *     activate the visitor tapped it (or pressed Enter) while it is at the front
  *     present  it is leaving the front
+ *
+ * loadObject(THREE, loader, reduceMotion, index) loads a separate copy for the scan story.
+ * Pass an existing GLTFLoader and the carousel index. The returned object also has
+ * open(progress), which scrubs the built-in Explode clip from closed (0) to open (1).
  */
 (function () {
   'use strict';
@@ -19,8 +23,7 @@
     ['Phone', 'models/oppo-find-x9-ultra.glb', phone],
     ['Contactless card', 'models/contactless-card.glb', card]
   ];
-  // Parts sealed inside each object. The landing page never opens the objects, so these
-  // are dropped at load: about half the triangles and draw calls, none of them visible.
+  // The carousel drops these sealed parts to avoid drawing geometry it never shows.
   const SEALED = {
     'Key fob': ['rfid-chip', 'antenna-coil', 'protective-encapsulation', 'key-mat-pins-and-guide-mount',
       'indicator-light-pipe-foot', 'inner-guide-rib-1', 'inner-stop-1', 'inner-guide-rib-2', 'inner-stop-2',
@@ -33,23 +36,62 @@
 
   function load(T, GLTFLoader, reduceMotion) {
     const loader = new GLTFLoader();
-    return Promise.all(FILES.map(async ([name, url, behave]) => {
-      const gltf = await loader.loadAsync(url);
-      const model = new T.Group(), shell = gltf.scene;
-      for (const part of SEALED[name].map(n => shell.getObjectByName(n)).filter(Boolean)) {
-        part.removeFromParent();
-        part.traverse(piece => piece.geometry?.dispose());
+    return Promise.all(FILES.map((_, index) => loadModel(T, loader, reduceMotion, index, false)));
+  }
+
+  function loadObject(T, loader, reduceMotion, index) {
+    return loadModel(T, loader, reduceMotion, index, true);
+  }
+
+  async function loadModel(T, loader, reduceMotion, index, canOpen) {
+    const [name, url, behave] = FILES[index];
+    const gltf = await loader.loadAsync(url);
+    const model = new T.Group(), shell = gltf.scene;
+    const sealed = SEALED[name].map(part => shell.getObjectByName(part)).filter(Boolean);
+    const parents = sealed.map(part => part.parent);
+    for (const part of sealed) {
+      part.removeFromParent();
+      if (!canOpen) part.traverse(piece => piece.geometry?.dispose());
+    }
+    // Size the closed shell before restoring the hidden parts. Box3 includes hidden meshes.
+    const box = new T.Box3().setFromObject(shell);
+    if (canOpen) {
+      sealed.forEach((part, i) => {
+        part.visible = false;
+        parents[i].add(part);
+      });
+    }
+    liftDecals(T, shell);
+    shell.position.sub(box.getCenter(new T.Vector3()));
+    const size = box.getSize(new T.Vector3());
+    model.add(shell);
+    // Static meshes keep their matrices until a behavior or an Explode keyframe moves them.
+    shell.traverse(part => { part.updateMatrix(); part.matrixAutoUpdate = false; });
+    const object = { name, model, span: Math.max(size.x, size.y), action: behave(T, shell, model, reduceMotion) };
+    if (canOpen) object.open = opener(gltf.animations.find(clip => clip.name === 'Explode'), shell, sealed);
+    return object;
+  }
+
+  function opener(clip, shell, sealed) {
+    const tracks = (clip?.tracks || []).map(track => {
+      const dot = track.name.lastIndexOf('.');
+      const node = shell.getObjectByName(track.name.slice(0, dot));
+      const target = node?.[track.name.slice(dot + 1)];
+      return target && { node, target, sample: track.createInterpolant(), closed: target.toArray() };
+    }).filter(Boolean);
+    // The fob's transparent resin obscures the actual chip in the cutaway.
+    const revealed = sealed.filter(part => part.name !== 'protective-encapsulation');
+    let lastProgress = 0;
+    return progress => {
+      progress = clamp01(progress);
+      if (progress === lastProgress || !tracks.length) return;
+      lastProgress = progress;
+      for (const { node, target, sample, closed } of tracks) {
+        target.fromArray(progress ? sample.evaluate(progress * clip.duration) : closed);
+        node.updateMatrix();
       }
-      liftDecals(T, shell);
-      const box = new T.Box3().setFromObject(shell);
-      shell.position.sub(box.getCenter(new T.Vector3()));
-      const size = box.getSize(new T.Vector3());
-      model.add(shell);
-      // Nothing inside the model moves on its own except what the behaviours below animate,
-      // so skip recomputing those transforms every frame.
-      shell.traverse(part => { part.updateMatrix(); part.matrixAutoUpdate = false; });
-      return { name, model, span: Math.max(size.x, size.y), action: behave(T, shell, model, reduceMotion) };
-    }));
+      for (const part of revealed) part.visible = progress > 0;
+    };
   }
 
   // Printed artwork and contact pads are flat sheets lying exactly on another surface
@@ -298,5 +340,5 @@
     };
   }
 
-  window.RFIDModels = { load };
+  window.RFIDModels = { load, loadObject };
 })();

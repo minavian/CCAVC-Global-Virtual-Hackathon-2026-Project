@@ -35,6 +35,9 @@ Written by <who> · <date> · Issue #<n>
 - [3D rendering pipeline](#3d-rendering-pipeline-jslandingjs-createscene)
 - [The three 3D objects](#the-three-3d-objects-jsmodelsjs-models)
 - [The phone's lock screen](#the-phones-lock-screen-jslockscreenjs)
+- [The RFID scan and cutaway](#the-rfid-scan-and-cutaway-jsscanjs-jsscan-scenejs-jsscan-timingjs)
+- [The 3D hand](#the-3d-hand-jsscan-handjs-modelsscan-handglb)
+- [Bit River transmission](#bit-river-transmission-bit-river)
 
 ---
 
@@ -47,6 +50,7 @@ Written by Claude (Claude Code) for Mina Vian · 2026-11-20 · Issues #3, #5
 - `index.html` holds the words as real text (an `h1` and a `p`), an empty `#stage` for the 3D canvas, and loads three scripts: `js/lockscreen.js`, `js/models.js`, `js/landing.js`. Three.js 0.170 comes from the jsDelivr CDN through an import map; the fonts (Inter Tight, and Antonio for the phone's clock) come from Google Fonts.
 - A tiny script in `<head>` adds `data-intro` to the page before anything is drawn, so the opening can start from a blank state without a flash. If the visitor prefers reduced motion, it is not added and the page simply appears finished.
 - `styles.css` uses a two-column grid on wide screens and a stacked layout when the window is taller than wide or narrower than 760 px. The stage covers the whole page behind the words, so objects are never cut off by a column edge. A faint SVG noise texture over everything gives a printed-paper feel.
+- Codex for Akris Luno · 2026-11-21 · Issue #16. The link below the headline carries the focused carousel device into the scan. The carousel only captures arrow keys while focused and stops rendering when it leaves the viewport.
 
 **Why it is built this way.** The words are real HTML (not drawn in 3D) so they are sharp, selectable and readable by screen readers. No build step, so anyone can open the folder and serve it.
 
@@ -118,6 +122,7 @@ Models by nduchuy348-art (`models/*.glb`, branch `create-new-model`); loading co
 - **Flicker fix** (`liftDecals`): flat printed layers (the card's artwork, its chip contacts) sit at exactly the same depth as the plastic underneath, which made the GPU flicker between them. Those flat sheets are nudged toward the camera in depth only.
 - **Phone back** (`refineBack`, `deepenCover`): the faint brushed swirl and logo in the back's texture are strengthened (fine detail amplified, broad shading kept). The flash gets a drawn frosted lens with two LEDs (`flashFace`).
 - **The H** (`redrawH`): the H on the camera island is replaced with an outline traced from a photo of the real phone (`H_PHOTO`). The island's printed layer shows its texture upside down, so the H is drawn flipped.
+- Codex for Akris Luno · 2026-11-21 · Issue #16. `loadObject()` creates a separate copy for the scan. That copy holds on to hidden internal parts and lets `open(progress)` scrub the model's existing `Explode` clip. This uses the keyframe interpolation approach from `feat/9-fob-story`. At progress zero, the original closed transforms are restored. The carousel still drops geometry it never draws.
 
 **Why it is built this way.** The teammate's models are kept untouched on disk; every change happens when they load, so a newer model can be dropped in.
 
@@ -141,3 +146,62 @@ Written by Claude (Claude Code) for Mina Vian · 2026-11-20 · Issue #5
 
 **Likely questions.**
 - Q: Is the lock screen copied from a real phone? A: It is drawn in code and modelled on a ColorOS lock screen; no personal details are shown.
+
+---
+
+### The RFID scan and cutaway (`js/scan.js`, `js/scan-scene.js`, `js/scan-timing.js`)
+Written by OpenAI Codex for Akris Luno · 2026-11-21 · Issue #16
+
+**What it does.** The active device slides from the carousel into the scan. Choose the card, key fob or phone, then drag it to the reader. Keyboard visitors can focus the device and press Enter to have the hand carry it. A green light, status message, chime and shockwave confirm the simulated scan. The chosen device returns in front of “How It Works?” and opens as you scroll toward Bit River.
+
+**How it works.**
+
+- The landing carousel supplies the selected model's screen position, size and rotation through `getPose()`. `drawHandoff()` starts the scan copy at that same pose and moves it while the page scrolls. The source mesh stays hidden until the copy reaches its resting pose beside the reader.
+- `scan.js` moves the device's center with the captured mouse or touch pointer. It starts the scan as soon as the center enters the reader's projected face, or returns the device to its starting pose if released too far away. The shape of the read area is an approximation for the demo.
+- `drawScan()` settles the device at the reader, then expands three rings from the reader and moves the device in the same outward direction. The keyboard animation places the hand around a point on the device so the grip moves with it. `SCAN_TIMING` keeps the chime, status, reader indicator and 3D action on the same timeline.
+- `drawInside()` uses the visitor's scroll position to move the camera and reveal the selected model's internals. The real HTML heading sits behind the transparent 3D canvas. The antenna and chip descriptions change with the device. “Look inside” jumps to the cutaway and “Follow the signal” leads to Bit River.
+
+**Why it is built this way.** Visitors control the distance to the reader before the scan succeeds. The carousel and scan share the model files, and one scan canvas carries the reader, hand and device through the transition and cutaway. A scan button and the text explanation remain available if the 3D scene fails to load. Reduced motion skips the landing flight and shows the contact and cutaway poses as still views.
+
+**How to check it.** Serve the repo with `python -m http.server`. From the landing page, follow “Try an RFID scan.” Drag a device away from the reader and release it to watch it return. Pull it to the reader and check for a burst and success status. Try focusing a device and pressing Enter, then scroll through the cutaway and replay.
+
+**Likely questions.**
+
+- Q: Is a real reader involved? A: The browser plays a simulated successful read. The wave marks that moment. A real scan uses an electromagnetic field and the three devices can use different frequencies and protocols.
+- Q: Why does the phone have a mainboard in the cutaway? A: The model includes the NFC antenna and mainboard. Its NFC controller is part of the mainboard and has no separate mesh.
+
+---
+
+### The 3D hand (`js/scan-hand.js`, `models/scan-hand.glb`)
+Integration by OpenAI Codex for Akris Luno · 2026-11-21 · Issue #16
+
+**What it does.** A right hand reaches in and closes its fingers around the item.
+
+**How it works.** `createScanHand()` loads the hand, converts it from meters to centimeters around the wrist, and adds a cuff. `grip()` bends three joints in each finger and rotates the thumb toward the fingers. Each pose starts from the same saved rest angles, so replay resets cleanly. [CC0 Innerscene hand based on MakeHuman](https://www.innerscene.com/tools/library/3d-parts/posable-anatomical-right-hand-f6098b4f)
+
+**Why it is built this way.** The mesh bends continuously at the knuckles because each vertex is attached to nearby bones. The scan scene can pose it with a single value from zero to one.
+
+**How to check it.** Run the scan and watch the fingers close before the wrist moves toward the reader.
+
+**Likely questions.**
+
+- Q: Does the hand track a camera feed? A: Its motion is scripted. Each device uses a grip point set for its dimensions.
+
+---
+
+### Bit River transmission (`bit-river/`)
+Written by OpenAI Codex for Akris Luno · 2026-11-21 · Issue #12. Embedded in the scan story for Issue #16.
+
+**What it does.** Follow a passive card's simulated reply to the reader and inspect example packets.
+
+**How it works.** `bit-river.js` registers `<rfid-bit-river>`. The element's scroll position selects a chapter, and the chapter buttons jump to those same positions. `card.js` renders the team's card. `river.js` assigns positions to the field strands and data packets on canvas. The sample values are fictional. The reader detects the passive card's reply as changes in the load on its antenna.
+
+The warm paper backdrop and copper signal stay the same throughout the chapters. Packet controls fade and slide into place as the transmission begins. On phones the inspector reserves space so the plot stays the same height. The live card crossfades in over its poster.
+
+**Why it is built this way.** The element contains its own styles and controls so the same component works after the cutaway and at `/bit-river/`.
+
+**How to check it.** Scroll past the cutaway or follow “Follow the signal.” Choose “Transmit,” then inspect or lift a packet. Run `node --test bit-river/river.test.mjs` to check the path and chapter geometry.
+
+**Likely questions.**
+
+- Q: Why does Bit River show a card after I scanned a phone or key fob? A: It uses the contactless card as a concrete example of how a passive tag replies.

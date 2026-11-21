@@ -113,6 +113,8 @@
   let slot = null, dock = null;   // placeholder that holds the headline's docked place
   let gl = null;
   let lastNow = null, frameId = 0;
+  let stageVisible = true;
+  let hiddenIndex = -1;
   let skipPointer = null, skipEvent = null;
   const poses = [0, 1, 2].map(() => ({ x: 0, y: 0, baseY: 0, size: 0, depth: 0, side: 0, roll: 0, leanX: 0, leanY: 0 }));
 
@@ -416,14 +418,14 @@
       const width = p.size * sw * lift, height = p.size * .075 * lift;
       const y = p.baseY + p.size * drop;
       el.style.transform = `translate(${(p.x - 50).toFixed(1)}px, ${(y - 50).toFixed(1)}px) scale(${(width / 100).toFixed(3)}, ${(height / 100).toFixed(3)})`;
-      el.style.opacity = (shown * (1 - p.depth) ** 2 * .85).toFixed(3);
+      el.style.opacity = i === hiddenIndex ? '0' : (shown * (1 - p.depth) ** 2 * .85).toFixed(3);
     });
     gl?.draw(dt, fade);
   }
 
   function frame(now) {
     frameId = 0;
-    if (document.hidden) { lastNow = null; return; }
+    if (document.hidden || !stageVisible) { lastNow = null; return; }
     const raw = lastNow === null ? 0 : Math.max(0, (now - lastNow) / 1000);
     // Clamp the step so a hitch slows the motion down instead of skipping it.
     const dt = Math.min(.1, raw);
@@ -435,7 +437,7 @@
   }
 
   function wake() {
-    if (!frameId && started && !document.hidden) frameId = requestAnimationFrame(frame);
+    if (!frameId && started && stageVisible && !document.hidden) frameId = requestAnimationFrame(frame);
   }
 
   // ---------- Input ----------
@@ -505,7 +507,7 @@
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) stage.addEventListener(type, release);
   addEventListener('pointerup', e => { if (e.pointerId === skipPointer) skipPointer = null; });
 
-  addEventListener('keydown', e => {
+  stage.addEventListener('keydown', e => {
     if (e === skipEvent || intro !== null || !started || e.altKey || e.ctrlKey || e.metaKey) return;
     const direction = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 }[e.key];
     if (direction) { e.preventDefault(); stepCarousel(direction); return; }
@@ -523,6 +525,12 @@
   document.addEventListener('pointerleave', () => { aimX = aimY = 0; });
 
   document.addEventListener('visibilitychange', () => { lastNow = null; wake(); });
+  const stageObserver = new IntersectionObserver(([entry]) => {
+    stageVisible = entry.intersectionRatio > 0;
+    if (!stageVisible && intro !== null) finishIntro(false);
+    wake();
+  });
+  stageObserver.observe(stage);
   reduced.addEventListener('change', () => {
     calm = reduced.matches;
     if (calm) { finishIntro(false); flight = null; phase = Math.round(phase); velocity = twist = 0; }
@@ -581,6 +589,7 @@
       scene.add(lamp);
     }
     const stands = objects.map(o => { const g = new T.Group(); g.add(o.model); scene.add(g); return g; });
+    const inverseRestRotations = objects.map(o => o.model.quaternion.clone().invert());
     if (params.has('debug')) window.__three = { scene, renderer };
     renderer.info.autoReset = false;
     const stats = { calls: 0, triangles: 0 };
@@ -795,6 +804,20 @@
       get ratio() { return ratio; },
       tune,
       warm,
+      getPose(index) {
+        const pose = poses[index];
+        const stand = stands[index];
+        const bounds = stage.getBoundingClientRect();
+        // Keep the visible turn, relative to the fresh copy that the scan scene loads.
+        const rotation = stand.quaternion.clone().multiply(objects[index].model.quaternion)
+          .multiply(inverseRestRotations[index]);
+        const { x: pitch, y: yaw, z: roll } = new T.Euler().setFromQuaternion(rotation, 'YXZ');
+        return { index, x: bounds.left + pose.x, y: bounds.top + pose.y, size: pose.size, pitch, yaw, roll };
+      },
+      setHidden(index) {
+        stands.forEach((stand, i) => { stand.visible = i !== index; });
+        trailing = false;
+      },
       // Dev aid (?debug): average milliseconds per fully finished frame, independent of
       // requestAnimationFrame throttling, plus the scene's draw calls and triangles.
       bench(frames = 60) {
@@ -830,7 +853,7 @@
     window.__heroStarted = true;
     const scene = loadScene();
     await fontsReady();
-    const playing = root.hasAttribute('data-intro') && !calm;
+    const playing = root.hasAttribute('data-intro') && !calm && stageVisible;
     if (playing) {
       slot = document.createElement('div');
       slot.className = 'headline-slot';
@@ -851,6 +874,23 @@
     wake();
     await scene;
   }
+
+  function setHiddenObject(index) {
+    if (index === hiddenIndex) return;
+    hiddenIndex = index;
+    gl?.setHidden(index);
+    // Clear the source on this frame, when the scan copy takes over.
+    if (gl && stageVisible && !document.hidden) render(0);
+  }
+
+  window.RFIDLanding = {
+    getPose(index = focus) {
+      if (!stageVisible || !gl?.shown || entrance <= .01 || !poses[index]?.size) return null;
+      return gl.getPose(index);
+    },
+    hideObject: setHiddenObject,
+    showObject: () => setHiddenObject(-1)
+  };
 
   begin();
 

@@ -31,23 +31,70 @@
   <script src="js/lockscreen.js" defer></script>
   <script src="js/models.js" defer></script>
   <script src="js/landing.js" defer></script>
+  <script type="module" src="js/scan.js"></script>
+  <script type="module" src="bit-river/bit-river.js"></script>
 </head>
 <body>
-  <main class="hero">
-    <div class="stage" id="stage" tabindex="0" role="group" aria-roledescription="carousel"
-      aria-label="Three everyday things that use RFID: a key fob, a phone and a contactless card. Use the left and right arrow keys to turn them.">
-      <div class="stage-light" aria-hidden="true"></div>
-      <div class="shadows" aria-hidden="true"><i></i><i></i><i></i></div>
-      <p class="visually-hidden" id="focus-name" aria-live="polite"></p>
+  <main>
+    <div class="hero">
+      <div class="stage" id="stage" tabindex="0" role="group" aria-roledescription="carousel"
+        aria-label="Three everyday things that use RFID: a key fob, a phone and a contactless card. Use the left and right arrow keys to turn them.">
+        <div class="stage-light" aria-hidden="true"></div>
+        <div class="shadows" aria-hidden="true"><i></i><i></i><i></i></div>
+        <p class="visually-hidden" id="focus-name" aria-live="polite"></p>
+      </div>
+      <div class="copy">
+        <h1 id="headline" aria-label="Those are the things you use every day.">
+          <span class="line"><span class="word">Those</span> <span class="word">are</span> <span class="word">the</span></span>
+          <span class="line"><span class="word">things</span> <span class="word">you</span> <span class="word">use</span></span>
+          <span class="line"><span class="word">every</span> <span class="word">day.</span></span>
+        </h1>
+        <p id="subline">and almost nobody knows how it works<span class="dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></p>
+        <a class="scan-link" href="#scan-lab">Try an RFID scan</a>
+      </div>
     </div>
-    <div class="copy">
-      <h1 id="headline" aria-label="Those are the things you use every day.">
-        <span class="line"><span class="word">Those</span> <span class="word">are</span> <span class="word">the</span></span>
-        <span class="line"><span class="word">things</span> <span class="word">you</span> <span class="word">use</span></span>
-        <span class="line"><span class="word">every</span> <span class="word">day.</span></span>
-      </h1>
-      <p id="subline">and almost nobody knows how it works<span class="dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></p>
-    </div>
+
+    <section class="scan-sequence" id="scan-lab" aria-labelledby="scan-title">
+      <div class="scan-stage" data-view="pick">
+        <header class="scan-intro">
+          <h2 id="scan-title" tabindex="-1">Try an RFID scan.</h2>
+          <p>Drag the device to the reader.</p>
+        </header>
+        <h2 class="scan-reveal" id="scan-reveal" tabindex="-1" hidden>How It Works?</h2>
+        <div class="scan-view" aria-hidden="true"></div>
+        <button class="scan-grab" type="button" hidden><span>Scan device</span></button>
+        <footer class="scan-controls">
+          <p class="scan-status" role="status" aria-live="polite"></p>
+          <div class="scan-choices" role="group" aria-label="Choose a device">
+            <button type="button" data-device="2" aria-pressed="true">Contactless card</button>
+            <button type="button" data-device="0" aria-pressed="false">Key fob</button>
+            <button type="button" data-device="1" aria-pressed="false">Phone</button>
+          </div>
+          <div class="scan-next" hidden>
+            <a class="scan-link scan-inside-link" href="#scan-inside">Look inside</a>
+            <button type="button" class="scan-replay">Scan another device</button>
+          </div>
+          <noscript><p>Enable JavaScript to play the simulated scan.</p></noscript>
+        </footer>
+        <div class="scan-anatomy" hidden>
+          <h2 tabindex="-1">What's inside?</h2>
+          <dl>
+            <div><dt>Antenna coil</dt><dd></dd></div>
+            <div><dt>Chip</dt><dd></dd></div>
+          </dl>
+          <a class="scan-link" href="#bit-river">Follow the signal</a>
+        </div>
+      </div>
+      <div class="scan-depth" aria-hidden="true"></div>
+      <div id="scan-inside"></div>
+    </section>
+
+    <section id="bit-river" aria-label="Bit River">
+      <rfid-bit-river>
+        <h2>Bit River</h2>
+        <p>A reader's field powers a passive tag. The tag changes the load on its antenna, and the reader detects those changes as bits.</p>
+      </rfid-bit-river>
+    </section>
   </main>
 </body>
 </html>
