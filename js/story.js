@@ -1,97 +1,110 @@
 /*
- * The first two minutes after the opening, played like a film by scrolling.
+ * The first two minutes after the opening, played like a film by scrolling (SCRIPT.md,
+ * Part 1). One plain sentence is on screen at a time, always in the same place, and a part
+ * is labelled only while the sentence names it.
  *
- *   Scene 2  Look inside   The three objects line up and turn to glass. Inside each, a copper
- *                          coil and a tiny chip glow: the same two parts.
- *   Scene 3  No battery    The key comes forward and opens. The visitor drags its battery out
- *                          (or scrolling pulls it out). The buttons die; the coil and the chip
- *                          don't care. The card comes back: it has no battery at all.
- *   Scenes 4–5             The reader rises and the lab takes over (js/lab.js).
+ *   Scene 2  Inside      "They all use RFID." / "Inside each one: a coil and a chip."
+ *   Scene 3  No battery  The key opens; the visitor pulls its battery out (or scrolling does).
+ *   Scenes 4–6           Power, Reply, Break it: the lab (js/lab.js) runs the reader and the
+ *                        key, and supplies the sentences that depend on what the visitor does.
  *
  * Everything here is a function of the scroll position `s`, measured in screens (1 = one
- * viewport height), plus the one thing the visitor does by hand: pull the battery out.
- * landing.js owns the 3D scene; this file owns the timeline, the words and the labels.
+ * viewport height), plus the battery, which the visitor can pull by hand.
+ * landing.js owns the 3D scene; this file owns the timeline, the sentence and the labels.
  *
- * window.RFIDStory.create() returns { length, chapters, timeline(s), paint(state, points, ready) }.
+ * window.RFIDStory.create() returns { length, chapters, time, timeline(s), paint(state, points, ready, lab) }.
  */
 (function () {
   'use strict';
 
-  const LENGTH = 9.6;                       // screens of scrolling after the hero
+  const LENGTH = 10.8;                      // screens of scrolling after the hero
   const TIME = {
     hero: [0, .38],                         // the hero's words leave
     drop: { start: .06, stagger: .1, span: .55 },
-    titleIn: [.62, 1.0],
-    glass: [1.05, 1.45],                    // all three turn to glass
-    insideLine: [1.25, 1.55],
-    labelsInside: { start: 1.3, stagger: .07, span: .26 },
-    titleOut: [2.0, 2.3],
-    feature: [2.1, 2.75],                   // the key comes forward, the others step aside
-    open: [2.8, 3.5],                       // the key opens
-    labelsOpen: { start: 3.45, stagger: .09, span: .3 },
-    pull: [4.25, 4.75],                     // scrolling pulls the battery out, if no hand did
-    cardBack: [4.95, 5.35],                 // the card returns, in glass
-    leave: [5.7, 6.1],                      // the card leaves, the key closes, still in glass
-    reader: [5.9, 6.4],                     // the reader rises; the lab starts at 6.2
-    lab: 6.2,
-    breakIt: 7.7,
-    beats: [[3.4, 4.95], [4.95, 5.7]]       // "Drag the battery out" … and "So what powers it?"
+    glass: [1.05, 1.4],                     // all three turn to glass
+    feature: [1.95, 2.55],                  // the key comes forward, the others step aside
+    open: [2.55, 3.1],                      // the key opens
+    pull: [4.0, 4.4],                       // scrolling pulls the battery out, if no hand did
+    cardBack: [4.9, 5.25],                  // the card returns, in glass
+    leave: [5.75, 6.1],                     // the card leaves, the key closes, still in glass
+    reader: [5.85, 6.35],                   // the reader rises
+    lab: 6.1,                               // the lab runs from here
+    power: 6.45,                            // the lab's power sentences from here
+    reply: 7.6,                             // scene 5
+    spell: 8.9,                             // "The changes spell the key's ID."
+    breakIt: 9.35                           // scene 6
   };
-  const CHAPTERS = [['Intro', 0], ['RFID', .85], ['Inside', 1.35], ['No battery', 2.4], ['The reader', 6.3], ['Break it', 7.8]];
+  const CHAPTERS = [['Intro', 0], ['Inside', .5], ['No battery', 1.95], ['Power', 5.85], ['Reply', 7.6], ['Break it', 9.35]];
 
-  // Labels. `object` is 0 key, 1 phone, 2 card, 3 reader. The line starts on `part` (at `aim`,
-  // a fraction of its half-size); the label sits outside `frame` ('*' = the whole object).
-  // Where on each coil the line lands: the key's and phone's coils are compact loops; the
-  // card's runs right around its edge.
-  const COIL_AIM = [[.6, -.5], [.6, -.5], [.985, -.4]];
-  const INSIDE = [0, 1, 2].flatMap(object => [
-    { object, part: 'coil', frame: '*', aim: COIL_AIM[object], side: 'top', narrowSide: 'top', title: 'Coil', group: 'inside' },
-    { object, part: 'chip', frame: '*', aim: [0, 0], side: 'bottom', narrowSide: 'bottom', title: 'Chip', group: 'inside' }
-  ]);
-  const OPEN = [
-    { object: 0, part: 'lock-button', frame: '*', aim: [0, 0], side: 'right', narrowSide: 'top', title: 'Buttons', group: 'open' },
-    { object: 0, part: 'coin-battery', frame: '*', aim: [0, .2], side: 'left', narrowSide: 'bottom', title: 'Battery', group: 'open', battery: true },
-    { object: 0, part: 'coil', frame: 'coil', aim: [.96, -.2], side: 'top', narrowSide: 'top', title: 'RFID coil', group: 'open' },
-    { object: 0, part: 'chip', frame: 'rfid-chip', aim: [0, 0], side: 'bottom', narrowSide: 'bottom', title: 'RFID chip', group: 'open' }
+  // The sentences that only depend on the scroll: [from, to, sentence].
+  const SAY = [
+    [.5, 1.05, 'They all use RFID.'],
+    [1.05, 1.9, 'Inside each one: a coil and a chip.'],
+    [2.55, 3.0, 'The key has a battery.'],
+    [6.0, 6.45, 'This is a reader.'],
+    [7.6, 7.9, 'Now the chip replies.'],
+    [7.9, 8.2, 'It has no radio.'],
+    [8.2, 8.55, 'It takes more power, then less.'],
+    [8.55, 8.9, 'The reader feels each change.']
   ];
-  const CALLOUTS = [...INSIDE, ...OPEN];
+  // After the battery is out.
+  const AFTER = [
+    [3.0, 4.5, 'The buttons stop working.'],
+    [4.5, 4.9, 'The coil and chip don’t need it.'],
+    [4.9, 5.3, 'Your bank card has no battery at all.'],
+    [5.3, 5.9, 'So what powers its chip?']
+  ];
+
+  // Labels: `object` is 0 key, 1 phone, 2 card, 3 reader. `when` names the sentence that
+  // shows it. The line starts on `part` (at `aim`, a fraction of its half-size), and the label
+  // sits outside `frame` ('*' = the whole object) on `side`.
+  const COIL_AIM = [[.6, -.5], [.6, -.5], [.985, -.4]];
+  const CALLOUTS = [
+    ...[0, 1, 2].flatMap(object => [
+      { object, part: 'coil', frame: '*', aim: COIL_AIM[object], side: 'top', narrowSide: 'top', title: 'Coil', when: ['Inside each one: a coil and a chip.'] },
+      { object, part: 'chip', frame: '*', aim: [0, 0], side: 'bottom', narrowSide: 'bottom', title: 'Chip', when: ['Inside each one: a coil and a chip.'] }
+    ]),
+    { object: 0, part: 'coin-battery', frame: '*', aim: [0, .2], side: 'left', narrowSide: 'bottom', title: 'Battery', when: ['The key has a battery.', 'Pull it out.'] },
+    { object: 0, part: 'lock-button', frame: '*', aim: [0, 0], side: 'left', narrowSide: 'top', title: 'Buttons', when: ['The buttons stop working.'] },
+    { object: 0, part: 'coil', frame: 'coil', aim: [.96, -.2], side: 'top', narrowSide: 'top', title: 'Coil', when: ['The coil and chip don’t need it.'] },
+    { object: 0, part: 'chip', frame: 'rfid-chip', aim: [0, 0], side: 'bottom', narrowSide: 'bottom', title: 'Chip', when: ['The coil and chip don’t need it.'] },
+    { object: 3, part: '*', frame: '*', aim: [.7, 0], side: 'right', narrowSide: 'bottom', title: 'Reader', when: ['This is a reader.', 'Move the key to the reader.'] }
+  ];
 
   const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
   const span = ([a, b], s) => clamp01((s - a) / (b - a));
-  const easeOut = p => 1 - (1 - p) ** 3;
   const easeInOut = p => p < .5 ? 4 * p * p * p : 1 - (-2 * p + 2) ** 3 / 2;
+  const inRange = (list, s) => list.find(([a, b]) => s >= a && s < b)?.[2] || '';
 
   function create() {
     const $ = s => document.querySelector(s);
-    const copy = $('.copy'), title = $('.story-title'), words = [...title.querySelectorAll('h2 .word')];
-    const titleLines = [...title.querySelectorAll('p')], beats = [...document.querySelectorAll('.story-panel .beat')];
+    const copy = $('.copy'), say = $('#say');
     const cue = $('.scroll-cue'), fill = $('.chapters-fill'), lines = $('.callout-lines');
     const chapterButtons = [...document.querySelectorAll('.chapters button')];
-    const handle = $('.battery-handle'), dead = $('.beat-dead'), deadWords = $('.beat-dead-words');
+    const handle = $('.battery-handle');
     document.documentElement.style.setProperty('--story-length', LENGTH);
 
-    // Build the labels and their leader lines once.
     const svg = 'http://www.w3.org/2000/svg';
     const labels = CALLOUTS.map(c => {
       const el = document.createElement('div');
-      el.className = 'callout callout-' + c.group;
+      el.className = 'callout';
       el.innerHTML = `<b>${c.title}</b>`;
       $('.callouts').append(el);
       const line = document.createElementNS(svg, 'path');
       const dot = document.createElementNS(svg, 'circle');
       dot.setAttribute('r', '3');
       lines.append(line, dot);
-      return { ...c, el, line, dot };
+      return { ...c, el, line, dot, q: 0 };
     });
 
     chapterButtons.forEach((button, i) => button.addEventListener('click', () => {
-      scrollTo({ top: CHAPTERS[i][1] * innerHeight, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      scrollTo({ top: CHAPTERS[i][1] * innerHeight + (i ? 2 : 0), behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
     }));
 
     // ---------- The battery, by hand ----------
     // The handle sits over the battery. Dragging it moves the battery; far enough, and it
     // comes out for good (until the visitor scrolls back before the key opened).
-    const battery = { x: 0, y: 0, out: 0, freed: false, since: 0, drag: null, scale: 1 };
+    const battery = { x: 0, y: 0, freed: false, since: 0, drag: null, scale: 1 };
     handle.addEventListener('pointerdown', e => {
       if (battery.freed) return;
       handle.setPointerCapture(e.pointerId);
@@ -109,7 +122,7 @@
       if (!battery.drag || e.pointerId !== battery.drag.id) return;
       battery.drag = null;
       handle.classList.remove('is-dragging');
-      if (!battery.freed) { battery.x = battery.y = 0; }
+      if (!battery.freed) battery.x = battery.y = 0;
     };
     handle.addEventListener('pointerup', drop);
     handle.addEventListener('pointercancel', drop);
@@ -126,21 +139,15 @@
     }
 
     function timeline(s) {
-      const n = 3;
-      // The battery: pulled by hand (animated over 0.7 s), or by scrolling.
       if (s < TIME.open[0]) { battery.freed = false; battery.x = battery.y = 0; }
       const byHand = battery.freed ? easeInOut(clamp01((performance.now() - battery.since) / 700)) : 0;
-      const byScroll = easeInOut(span(TIME.pull, s));
-      const out = Math.max(byHand, byScroll);
+      const out = Math.max(byHand, easeInOut(span(TIME.pull, s)));
       const leave = easeInOut(span(TIME.leave, s));
       return {
         s,
         hero: easeInOut(span(TIME.hero, s)),
-        drop: Array.from({ length: n }, (_, i) => clamp01((s - TIME.drop.start - i * TIME.drop.stagger) / TIME.drop.span)),
-        titleIn: span(TIME.titleIn, s),
-        titleOut: easeInOut(span(TIME.titleOut, s)),
+        drop: [0, 1, 2].map(i => clamp01((s - TIME.drop.start - i * TIME.drop.stagger) / TIME.drop.span)),
         glass: easeInOut(span(TIME.glass, s)),
-        insideLine: span(TIME.insideLine, s),
         feature: easeInOut(span(TIME.feature, s)),
         open: easeInOut(span(TIME.open, s)) * (1 - leave),
         battery: { out, x: battery.freed ? battery.x * (1 - out) : battery.x, y: battery.freed ? battery.y * (1 - out) : battery.y },
@@ -149,26 +156,42 @@
         leave,
         reader: easeInOut(span(TIME.reader, s)),
         lab: s >= TIME.lab,
+        mode: s >= TIME.breakIt ? 'break' : s >= TIME.reply ? 'reply' : s >= TIME.lab ? 'power' : null,
+        spell: s >= TIME.spell,
         breakIt: s >= TIME.breakIt,
-        labels: CALLOUTS.map((c, k) => {
-          if (c.group === 'inside') {
-            const i = INSIDE.indexOf(c);
-            const q = easeOut(clamp01((s - TIME.labelsInside.start - i * TIME.labelsInside.stagger) / TIME.labelsInside.span));
-            return q * (1 - span([1.95, 2.15], s));
-          }
-          const i = OPEN.indexOf(c);
-          const q = easeOut(clamp01((s - TIME.labelsOpen.start - i * TIME.labelsOpen.stagger) / TIME.labelsOpen.span));
-          const gone = c.battery ? out : 0;
-          return q * (1 - span([5.55, 5.8], s)) * (1 - gone);
-        }),
-        beats: TIME.beats.map(([a, b]) => Math.min(clamp01((s - a) / .16), 1 - clamp01((s - b) / .12))),
         callouts: CALLOUTS.map(c => [c.object, c.part, c.frame])
       };
     }
 
+    // The one sentence for this moment. The lab speaks for itself in the power and break
+    // scenes, and when the key is out of reach during the reply.
+    function sentence(st, lab) {
+      const s = st.s;
+      if (s < TIME.open[0] || s >= TIME.reader[0] && s < TIME.power) return inRange(SAY, s);
+      if (s < TIME.reader[0]) {
+        if (s < 3.0) return inRange(SAY, s);
+        return st.battery.out > .5 ? inRange(AFTER, s) : 'Pull it out.';
+      }
+      if (!lab) return '';
+      if (st.mode === 'power' || st.mode === 'break') return lab.say;
+      if (!lab.awake) return 'Move the key to the reader.';
+      if (s >= TIME.spell) return lab.idOk ? 'That’s the “ID” in RFID.' : 'The changes spell the key’s ID.';
+      return inRange(SAY, s);
+    }
+
+    let shown = null;
+    function speak(text) {
+      if (text === shown) return;
+      shown = text;
+      say.textContent = text;
+      say.classList.remove('is-new');
+      void say.offsetWidth;                 // restart the fade-in
+      say.classList.add('is-new');
+    }
+
     // `points` maps "object:part" to its [x, y, halfWidth, halfHeight] on screen, or is
     // empty while there is no 3D.
-    function paint(state, points = {}, ready = true) {
+    function paint(state, points = {}, ready = true, lab = null) {
       const { s } = state;
       const narrow = innerWidth < 760 || innerWidth < innerHeight;
 
@@ -181,38 +204,15 @@
       }
       cue.style.opacity = ready ? (1 - clamp01(s / .12)).toFixed(3) : '0';
 
-      // "This is RFID." Each word lifts from faint to solid; then the lines below it.
-      const out = state.titleOut;
-      title.style.opacity = (state.titleIn > 0 ? 1 - out : 0).toFixed(3);
-      title.style.transform = `translateY(${(-out * 40).toFixed(1)}px)`;
-      title.style.visibility = state.titleIn > 0 && out < 1 ? 'visible' : 'hidden';
-      words.forEach((word, j) => {
-        const q = easeOut(clamp01((state.titleIn - j * .14) / .5));
-        word.style.opacity = (.12 + .88 * q).toFixed(3);
-        word.style.transform = `translateY(${((1 - q) * .18).toFixed(3)}em) scale(${(.94 + .06 * q).toFixed(4)})`;
-      });
-      [easeOut(clamp01((state.titleIn - .55) / .45)), easeOut(state.insideLine)].forEach((q, k) => {
-        if (!titleLines[k]) return;
-        titleLines[k].style.opacity = q.toFixed(3);
-        titleLines[k].style.transform = `translateY(${((1 - q) * 12).toFixed(1)}px)`;
-      });
+      const text = state.hero >= .6 ? sentence(state, lab) : '';
+      speak(text);
 
-      // The words on the left, one beat at a time. The first beat changes once the battery
-      // is out: "Drag the battery out." becomes "The buttons die."
-      beats.forEach((beat, k) => {
-        const q = state.beats[k];
-        beat.style.opacity = q.toFixed(3);
-        beat.style.transform = `translateY(${((1 - q) * 24).toFixed(1)}px)`;
-        beat.style.visibility = q > .001 ? 'visible' : 'hidden';
-      });
-      const isOut = state.battery.out > .5;
-      dead.classList.toggle('is-out', isOut);
-      deadWords.setAttribute('aria-hidden', String(!isOut));
-
-      // Labels, joined to their parts by hairlines.
-      const minX = narrow ? 12 : 12;
-      labels.forEach((label, k) => {
-        const q = state.labels[k];
+      // Labels: only the ones the sentence names, joined to their parts by hairlines.
+      labels.forEach(label => {
+        const want = text && label.when.includes(text) ? 1 : 0;
+        label.q += (want - label.q) * .2;
+        if (Math.abs(want - label.q) < .01) label.q = want;
+        const q = label.q;
         const point = points[label.object + ':' + label.part];
         if (!point || q <= .001) {
           label.el.style.opacity = '0';
@@ -230,23 +230,22 @@
         let side = narrow ? label.narrowSide : label.side;
         let [lx, ly] = place(side);
         if (side === 'right' && lx + w > innerWidth - 12) [lx, ly] = place(side = 'top');
-        if (side === 'left' && lx < minX) [lx, ly] = place(side = 'bottom');
-        lx = Math.min(Math.max(lx, minX), innerWidth - w - 12);
+        if (side === 'left' && lx < 12) [lx, ly] = place(side = 'bottom');
+        lx = Math.min(Math.max(lx, 12), innerWidth - w - 12);
         ly = Math.min(Math.max(ly, 12), innerHeight - h - 12);
         const anchorX = side === 'right' ? lx - 6 : side === 'left' ? lx + w + 6 : Math.min(Math.max(px, lx + 4), lx + w - 4);
         const anchorY = side === 'top' ? ly + h + 6 : side === 'bottom' ? ly - 6 : Math.min(Math.max(py, ly + 4), ly + h - 4);
-        label.el.style.transform = `translate(${lx.toFixed(1)}px, ${(ly + (1 - q) * 8).toFixed(1)}px)`;
+        label.el.style.transform = `translate(${lx.toFixed(1)}px, ${ly.toFixed(1)}px)`;
         label.el.style.opacity = q.toFixed(3);
-        const ex = px + (anchorX - px) * q, ey = py + (anchorY - py) * q;
-        label.line.setAttribute('d', `M${px.toFixed(1)} ${py.toFixed(1)}L${ex.toFixed(1)} ${ey.toFixed(1)}`);
+        label.line.setAttribute('d', `M${px.toFixed(1)} ${py.toFixed(1)}L${anchorX.toFixed(1)} ${anchorY.toFixed(1)}`);
         label.line.setAttribute('opacity', q.toFixed(3));
         label.dot.setAttribute('cx', px.toFixed(1)); label.dot.setAttribute('cy', py.toFixed(1));
         label.dot.setAttribute('opacity', q.toFixed(3));
       });
 
-      // The battery's handle sits over the battery while it can be pulled.
+      // The battery's handle sits over the battery while the sentence asks for it.
       const cell = points['0:coin-battery'];
-      const canPull = cell && state.beats[0] > .5 && state.battery.out < .02 && !battery.freed;
+      const canPull = cell && (text === 'Pull it out.' || text === 'The key has a battery.') && state.battery.out < .02 && !battery.freed;
       handle.hidden = !canPull;
       if (canPull) {
         const r = Math.max(26, Math.max(cell[2], cell[3]) * 1.25);

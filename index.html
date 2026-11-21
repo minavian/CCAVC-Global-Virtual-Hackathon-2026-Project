@@ -63,87 +63,38 @@
   <!-- The story after the hero. It is pinned over the stage and played by scrolling
        (see js/story.js); the empty track below only gives the page its scroll length. -->
   <div class="story" id="story">
-    <section class="story-title" aria-labelledby="story-title">
-      <h2 id="story-title"><span class="word">This</span> <span class="word">is</span> <span class="word">RFID.</span></h2>
-      <p>Radio-frequency identification.</p>
-      <p>Inside each one, the same two parts: a copper coil and a tiny chip.</p>
-    </section>
+    <!-- One plain sentence at a time, always in the same place (js/story.js). -->
+    <p class="say" id="say" aria-live="polite"></p>
     <p class="visually-hidden">Inside the key, the card and the phone: a copper coil and a chip.</p>
-    <section class="story-panel" aria-label="The key has a battery">
-      <article class="beat beat-dead">
-        <p class="kicker">No battery</p>
-        <div class="beat-alive-words">
-          <h3>Drag the battery out.</h3>
-          <p>It’s the round cell at the bottom of the key.</p>
-        </div>
-        <div class="beat-dead-words" aria-hidden="true">
-          <h3>The buttons die.</h3>
-          <p>The coil and the chip don’t care: they never used the battery.</p>
-        </div>
-      </article>
-      <article class="beat">
-        <p class="kicker">No battery</p>
-        <h3>Your bank card has no battery at all.</h3>
-        <p>So what powers its chip?</p>
-      </article>
-    </section>
     <svg class="callout-lines" aria-hidden="true"></svg>
     <div class="callouts" aria-hidden="true"></div>
     <button type="button" class="battery-handle" hidden aria-label="Pull the battery out of the key"></button>
 
-    <!-- Scenes 4 and 5: the reader and the tag, live (js/lab.js). -->
-    <section class="lab" aria-label="A reader and a tag" aria-hidden="true">
+    <!-- Scenes 4 to 6: the reader and the key, live (js/lab.js). -->
+    <section class="lab" aria-label="A reader and a key" aria-hidden="true">
       <canvas class="lab-canvas" aria-hidden="true"></canvas>
-      <div class="lab-side">
-        <div class="lab-words">
-          <p class="kicker">The reader</p>
-          <h3 class="lab-prompt">Drag the key toward the reader.</h3>
-          <ol class="lab-steps">
-            <li data-n="1">The reader’s coil makes a magnetic field that keeps flipping.</li>
-            <li data-n="2">The field makes electricity in the key’s coil.</li>
-            <li data-n="3">Enough electricity, and the chip wakes up.</li>
-            <li data-n="4">The chip answers by soaking up more of the field, then less.</li>
-            <li data-n="5">The reader feels those dips. They spell the key’s ID.</li>
-          </ol>
-          <p class="lab-result" role="status" aria-live="polite">The chip is asleep.</p>
-        </div>
-        <div class="lab-panel">
-          <div class="lab-id"><span>Reader</span><b>·· ·· ·· ··</b><small class="lab-frequency">125 kHz</small></div>
-          <div class="lab-strip"><span>The reader’s signal, zoomed in<em class="lab-strip-note"> · simulated, slowed down</em></span><canvas aria-hidden="true"></canvas></div>
-          <fieldset class="lab-controls">
-            <legend class="visually-hidden">Change the tag</legend>
-            <label>Distance <input id="lab-distance" type="range" min="2" max="120" step="1" value="95"></label>
-            <label>Angle <input id="lab-angle" type="range" min="0" max="90" step="1" value="0"></label>
-            <label class="lab-check"><input id="lab-metal" type="checkbox"> Metal plate behind it</label>
-            <span class="lab-switch" role="radiogroup" aria-label="Tag">
-              <label><input type="radio" name="lab-tag" id="lab-tag-key" checked> Key</label>
-              <label><input type="radio" name="lab-tag" id="lab-tag-card"> Card</label>
-            </span>
-          </fieldset>
-          <ul class="lab-ticks" aria-label="Ways to break it">
-            <li data-reason="far">Too far</li>
-            <li data-reason="turned">Turned</li>
-            <li data-reason="metal">Metal</li>
-          </ul>
-          <div class="lab-payoff">
-            <p><b>That’s why you tap your card flat on the reader.</b> The reader is the battery.</p>
-            <p class="lab-next">Scroll on to take it apart.</p>
-          </div>
-        </div>
-      </div>
       <button type="button" class="lab-grab" role="slider" aria-label="Distance from the reader" aria-valuemin="2" aria-valuemax="120" aria-valuenow="95"></button>
-      <div class="lab-meter" aria-hidden="true"><span>Volts at the chip</span><div><i></i><em></em></div><b>0.0 V</b></div>
-      <p class="lab-fine">Simulation, slowed down. Computed live from the physics.</p>
+      <div class="lab-meter" aria-hidden="true"><div><i></i><em></em></div><span>Power</span></div>
+      <div class="lab-trace" aria-hidden="true"><span>What the reader feels</span><canvas></canvas></div>
+      <p class="lab-id" aria-live="off"><span>ID</span><b>·· ·· ·· ··</b></p>
+      <div class="lab-buttons" role="group" aria-label="Break it">
+        <button type="button" id="lab-turn" aria-pressed="false">Turn it</button>
+        <button type="button" id="lab-metal" aria-pressed="false">Add metal</button>
+        <button type="button" id="lab-card" aria-pressed="false">Use a card</button>
+      </div>
+      <p class="lab-badge" aria-hidden="true">Slowed down</p>
+      <svg class="lab-hand" viewBox="0 0 48 56" aria-hidden="true"><path d="M18 52c-6-4-12-12-14-18-1-3 2-5 5-3l5 5V8c0-3 2-5 4-5s4 2 4 5v16c0-3 2-5 4-5s4 2 4 5v2c0-3 2-5 4-5s4 2 4 5v4c0-3 2-4 4-4s3 2 3 5v10c0 8-4 13-8 16"/></svg>
+      <p class="lab-fine">Simulation, computed live.</p>
     </section>
 
     <p class="scroll-cue" aria-hidden="true"><span>Scroll</span><i></i></p>
     <nav class="chapters" aria-label="Chapters">
       <div class="chapters-track" aria-hidden="true"><i class="chapters-fill"></i></div>
       <button type="button">Intro</button>
-      <button type="button">RFID</button>
       <button type="button">Inside</button>
       <button type="button">No battery</button>
-      <button type="button">The reader</button>
+      <button type="button">Power</button>
+      <button type="button">Reply</button>
       <button type="button">Break it</button>
     </nav>
   </div>

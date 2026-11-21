@@ -170,6 +170,7 @@
     layout.box = storyOn ? { x: 0, y: 0, w: Math.round(w), h: Math.round(h) } : layout.heroBox;
     measureHeadline();
     gl?.resize(layout.box);
+    setFrame();
   }
 
   function measureHeadline() {
@@ -209,38 +210,49 @@
 
   // ---------- Story poses ----------
   // Where object i of n stands in the straight line.
+  // Positions in the film are in design pixels on the frame (see designFrame()).
   function rowPose(i, n) {
-    const { w, h } = layout, narrow = stacked.matches;
-    const gap = narrow ? w / (n + .35) : Math.min(w * .26, h * .54);
-    const size = narrow ? Math.min(gap * .86, h * .25) : Math.min(gap * .74, h * .4);
-    return { x: w / 2 + (i - (n - 1) / 2) * gap, y: h * (narrow ? .57 : .6), size,
-      pitch: .05, yaw: -(i - (n - 1) / 2) * .28, roll: 0 };
+    const f = designFrame(), at = (x, y) => [f.x + x * f.u, f.y + y * f.u];
+    const [x, y] = f.tall ? at(195 + (i - (n - 1) / 2) * 122, 520) : at(720 + (i - (n - 1) / 2) * 400, 580);
+    return { x, y, size: (f.tall ? 112 : 330) * f.u, pitch: .05, yaw: -(i - (n - 1) / 2) * .28, roll: 0 };
   }
 
   // The area the featured object fills: the right side, or the top on phones.
   function featureRect() {
-    const { w, h } = layout;
-    return stacked.matches ? { x: w * .06, y: h * .08, w: w * .88, h: h * .46 }
-      : { x: w * .47, y: h * .12, w: w * .48, h: h * .76 };
+    const f = designFrame(), box = (x, y, w, h) => ({ x: f.x + x * f.u, y: f.y + y * f.u, w: w * f.u, h: h * f.u });
+    return f.tall ? box(16, 230, 358, 440) : box(780, 120, 600, 700);
+  }
+
+  // The film is laid out on one design frame, 1440 × 900 on wide screens and 390 × 844 on
+  // phones, scaled by a single factor `u` to fit the window and centred. Every size and
+  // place in the film comes from it (CSS reads --u, --fx and --fy), so each screen of the
+  // same shape shows exactly the same picture, only bigger or smaller.
+  function designFrame() {
+    const { w, h } = layout, tall = stacked.matches;
+    const W = tall ? 390 : 1440, H = tall ? 844 : 900, u = Math.min(w / W, h / H);
+    return { u, x: (w - W * u) / 2, y: (h - H * u) / 2, tall };
+  }
+  function setFrame() {
+    const f = designFrame();
+    root.style.setProperty('--u', f.u.toFixed(4) + 'px');
+    root.style.setProperty('--fx', f.x.toFixed(1) + 'px');
+    root.style.setProperty('--fy', f.y.toFixed(1) + 'px');
   }
 
   // The lab: where the reader pad sits on screen, how many pixels a meter is, and how far
-  // the camera looks down onto it (radians).
+  // the camera looks down onto it (radians). Room above the pad for the key at its farthest,
+  // and below it for what the reader feels and the ID.
   function labGeometry() {
-    const { w, h } = layout;
-    if (stacked.matches) {
-      const k = Math.min(w * .7 / .1, h * .3 / .1);
-      return { padX: w * .5, padY: h * .56, k, tilt: .5 };
-    }
-    const k = Math.min(w * .28 / .1, h * .36 / .1);
-    return { padX: w * .7, padY: h * .74, k, tilt: .5 };
+    const f = designFrame();
+    if (f.tall) return { padX: f.x + 195 * f.u, padY: f.y + 470 * f.u, k: 2500 * f.u, tilt: .5, u: f.u, tall: true };
+    return { padX: f.x + 1030 * f.u, padY: f.y + 500 * f.u, k: 4600 * f.u, tilt: .5, u: f.u, tall: false };
   }
 
   // A fall: speeding up under gravity, then one small bounce.
   const fall = d => d < .78 ? (d / .78) ** 2 : 1 - Math.sin(Math.PI * (d - .78) / .22) * .045;
 
   function storyPoses(st) {
-    const n = 3, { w, h } = layout, narrow = stacked.matches;
+    const n = 3, { w, h } = layout;
     // 1. Each object drops out of the carousel into the line.
     for (let i = 0; i < n; i++) {
       const p = poses[i], d = st.drop[i];
@@ -298,7 +310,7 @@
     // The card comes back, small and in glass: it has no battery either.
     if (st.cardBack > 0) {
       const p = poses[CARD], q = st.cardBack;
-      const to = narrow ? { x: w * .24, y: h * .62, size: w * .34 } : { x: w * .6, y: h * .74, size: h * .24 };
+      const f = designFrame(), to = f.tall ? { x: f.x + 100 * f.u, y: f.y + 720 * f.u, size: 130 * f.u } : { x: f.x + 420 * f.u, y: f.y + 640 * f.u, size: 230 * f.u };
       p.x = lerp(w * -.2, to.x, q); p.y = to.y; p.baseY = p.y; p.size = to.size;
       p.pitch = .15; p.yaw = .35; p.roll = -.08; p.depth = 0; p.lift = 280; p.shade = 1; p.visible = true;
       looks[CARD] = { glass: 1, glow: 1 };
@@ -602,24 +614,24 @@
   function paintStory() {
     if (!story || !storyState) return;
     const st = storyState, ready = intro === null && started;
-    const labelled = st.labels.some(q => q > 0) || st.beats[0] > 0;
+    // While the film plays, the sentence and the labels follow the lab and the battery as
+    // well as the scroll, so it repaints every frame; on the hero it waits for scrolling.
     const key = `${scrollNow.toFixed(5)}|${ready}`;
-    if (key === paintedAt && !labelled) return;
+    if (key === paintedAt && !storyOn) return;
     paintedAt = key;
     const points = {};
-    if (labelled && gl) {
+    if (gl && storyOn) {
       const wanted = new Map();
-      st.callouts.forEach(([object, part, frame], k) => {
-        if (st.labels[k] <= 0 && part !== 'coin-battery') return;
+      for (const [object, part, frame] of st.callouts) {
         if (!wanted.has(object)) wanted.set(object, new Set());
         wanted.get(object).add(part).add(frame);
-      });
+      }
       for (const [object, names] of wanted) {
         const found = gl.points(object, [...names]);
         for (const name in found) points[object + ':' + name] = found[name];
       }
     }
-    story.paint(st, points, ready);
+    story.paint(st, points, ready, labState);
   }
 
   function frame(now) {

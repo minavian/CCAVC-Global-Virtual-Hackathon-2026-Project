@@ -37,7 +37,7 @@ Written by <who> · <date> · Issue #<n>
 - [The phone's lock screen](#the-phones-lock-screen-jslockscreenjs)
 - [The story: a film played by scrolling](#the-story-a-film-played-by-scrolling-jsstoryjs-jslandingjs)
 - [The simulation: physics, protocol and reader](#the-simulation-physics-protocol-and-reader-jsrfid)
-- [The lab: scenes 4 and 5](#the-lab-scenes-4-and-5-jslabjs)
+- [The lab: Power, Reply, Break it](#the-lab-power-reply-break-it-jslabjs)
 - [Take it apart: scenes 6 to 17](#take-it-apart-scenes-6-to-17-jsdeepjs)
 - [The checks](#the-checks-tests)
 
@@ -156,27 +156,29 @@ Owner: Mina Vian · 2026-11-20 · Issue #5
 ### The story: a film played by scrolling (`js/story.js`, `js/landing.js`)
 Owner: Mina Vian · 2026-11-21, updated 2026-11-21 · Issues #9, #19
 
-**What it does.** After the first screen, scrolling plays the first two minutes of the script (`SCRIPT.md`) like a film:
-1. **Look inside.** The three objects drop into a line under "This is RFID." They turn to glass, and inside each one a copper coil and a tiny chip glow, each labelled `Coil` and `Chip`.
-2. **No battery.** The key comes forward and opens. Labels point out its buttons, its battery, its RFID coil and its RFID chip. The visitor drags the battery out (or scrolling pulls it out): "The buttons die. The coil and the chip don't care." Then the card comes back in glass: "Your bank card has no battery at all. So what powers its chip?"
-3. **The reader.** The key closes, stays in glass, and the reader pad rises under it. From here the lab (`js/lab.js`) takes over.
+**What it does.** After the first screen, scrolling plays the first two minutes of `SCRIPT.md`. One plain sentence is on screen at a time, always top left, and a part is labelled only while the sentence names it:
+- **Inside:** "They all use RFID." Then the objects turn to glass: "Inside each one: a coil and a chip." Each object gets `Coil` and `Chip` labels.
+- **No battery:**
+  - "The key has a battery." and "Pull it out.": the visitor drags the battery (or scrolling pulls it).
+  - "The buttons stop working." and "The coil and chip don't need it."
+  - The card comes back: "Your bank card has no battery at all." and "So what powers its chip?"
+- **Power, Reply, Break it:** the lab (`js/lab.js`) runs these, and supplies the sentences that depend on what the visitor does.
 
-A chapter bar at the bottom (Intro, RFID, Inside, No battery, The reader, Break it) works like a video's scrubber. On phones it shows the current chapter's name and a dot for each of the others.
+The chapter bar at the bottom reads Intro, Inside, No battery, Power, Reply and Break it. On phones it shows the current chapter's name and a dot for each of the others.
 
 **How it works.**
-- **Progress in screens.** `landing.js` turns the scroll position into `scrollNow`, measured in screens (1 = one window height), and eases it toward the real scroll position, so a mouse wheel's steps feel like smooth playback.
-- **One timeline.** `story.js` holds the timing (`TIME`) and `timeline(s)`, which turns `s` into progress values from 0 to 1 for each beat. Everything is a pure function of `s` except one thing the visitor does by hand: the battery. Pulling it out is remembered (and animated over 0.7 s) until the visitor scrolls back before the key opened.
-- **The battery handle** is a real button over the battery (`.battery-handle`). Dragging it more than 22 mm (in the key's own size) frees the battery. Enter, Space or an arrow key does the same, so it works without a mouse.
-- **The 3D poses** (`storyPoses` in `landing.js`): each object blends from its carousel pose to its place in the line, then the key to its featured pose. That pose is measured, not hard-coded: `fit` finds where the open key must stand to fill the right-hand area. In the lab, poses come from the lab's state: the key sits `distance` meters above the pad, with depth worked out from the camera's tilt, so the closer object always draws in front.
-- **Looks.** Each frame, `storyPoses` also writes a look for each object (`looks`): glass, glow, chip light, battery and buttons. `render` hands them to `look()` in `models.js`.
-- **The labels** follow their parts. Each frame, `points` reports where each part is on screen, for any of the objects (`"object:part"`, with `*` for the whole object and `coil` or `chip` for its RFID parts). Each label sits just outside its frame on the side given, and its line runs straight to it.
+- **Progress in screens.** `landing.js` turns the scroll position into `scrollNow`, in screens (1 = one window height), and eases it toward the real scroll position, so a mouse wheel's steps feel like smooth playback.
+- **One timeline.** `story.js` holds the timing (`TIME`), and `timeline(s)` turns `s` into progress values for the 3D. The sentences that depend only on the scroll are a list of ranges (`SAY`, and `AFTER` for after the battery is out). `sentence()` picks the one for the moment. In the lab scenes, it takes the lab's sentence instead. `speak()` swaps the text and replays a short fade-in.
+- **Labels** (`CALLOUTS`) each name the sentences that show them (`when`). They fade in and out with the sentence, and each sits outside its object, joined to its part by a thin line.
+- **The battery handle** is a real button over the battery. Dragging it more than 22 mm (in the key's own size) frees the battery; Enter, Space or an arrow key does the same.
+- **One design frame.** The whole film is laid out on a 1440 × 900 frame (390 × 844 on phones), scaled by one factor to fit the window and centred (`designFrame` in `landing.js`). It sets `--u` (one design pixel), `--fx` and `--fy` for the CSS, and every size and place in the film comes from them. So every screen of the same shape shows exactly the same picture, only bigger or smaller.
 
-**Why it is built this way.** The page should feel like a film, but the brief rejects videos, so the visitor drives it: scrolling plays it, and the first hands-on moment (pulling the battery) comes at about 0:25. Keeping the timing in one pure function makes it easy to tune and impossible to get out of sync.
+**Why it is built this way.** The visitors are ordinary people. One short sentence at a time, beside the thing it names, is quicker to read than a list. The brief rejects videos, so the visitor drives it: the first hands-on moment (pulling the battery) comes at about 0:20.
 
-**How to check it.** Serve the folder, open it and scroll. With `?debug`, `__hero.state.scroll` shows the progress. Drag the dashed ring over the battery in the "No battery" chapter.
+**How to check it.** Serve the folder, open it and scroll. With `?debug`, `__hero.state.scroll` shows the progress. Resize the window: the picture keeps its layout.
 
 **Likely questions.**
-- Q: Does a real key have a coin battery? A: Yes, for its buttons, which send a radio signal to unlock the car. The model has none, so the film adds one. The RFID part (coil and chip) needs no battery, which is the point of the scene.
+- Q: Does a real key have a coin battery? A: Yes, for its buttons, which unlock the car by radio. The model has none, so the film adds one. The RFID part needs no battery, which is the point of the scene.
 - Q: What if someone doesn't scroll or drag? A: A "Scroll" cue sits under the first screen, and scrolling alone pulls the battery out and brings the key to the reader.
 
 ---
@@ -217,32 +219,35 @@ Owner: Mina Vian · 2026-11-21 · Issue #19
 
 ---
 
-### The lab: scenes 4 and 5 (`js/lab.js`)
-Owner: Mina Vian · 2026-11-21 · Issue #19
+### The lab: Power, Reply, Break it (`js/lab.js`)
+Owner: Mina Vian · 2026-11-21, updated 2026-11-21 · Issue #19
 
-**What it does.** The reader and the tag, live. The visitor drags the key toward the reader (scrolling also brings it closer). As it comes close, the five steps on the left light up one by one, and each step only lights when it really happens in the simulation:
-1. the field;
-2. electricity in the key's coil;
-3. the chip waking;
-4. the chip answering;
-5. the reader reading the ID.
-
-The volts meter beside the key shows the chip's voltage against its wake-up line. The strip shows the reader's signal, and the reader's display fills in the ID, `3F 9A 12 C7`, digit by digit. In scene 5, controls appear: distance, angle, a metal plate and a key/card switch. When the read fails, one line says why: too far, turned, or metal.
+**What it does.** The reader and the key, live, in three scenes.
+- **Power.** The visitor brings the key to the reader (scrolling also lowers it). Field lines rise from the reader's coil, copper sparks run round the key's coil, and a power bar fills toward its wake-up line. The sentences step forward one at a time:
+  1. "Move the key to the reader."
+  2. "The reader makes a magnetic field."
+  3. "The field makes electricity in the coil."
+  4. "Enough power wakes the chip."
+  5. "The reader is the battery."
+- **Reply.** "Now the chip replies." "It has no radio." "It takes more power, then less." With each change, the key's coil glows brighter or dimmer. A trace under the reader, labelled "What the reader feels", dips with each change. The ID display fills in `3F 9A 12 C7`, decoded from those dips: "That's the 'ID' in RFID."
+- **Break it.** Three buttons (Turn it, Add metal, Use a card) and the drag. The sentence says what broke ("Too far. Not enough power.", "Turned. The field misses the coil.", "Metal pushes the field away.") and asks for the next way to break it. Then: "That's why you tap close and flat." After 4 idle seconds, a ghost hand lifts the key once.
 
 **How it works.**
-- **Every frame**, `update` calls `physics.solve` with the key's distance (plus about a millimetre of hand drift, so the edge flickers like a real one), angle and metal plate.
-- **The key's answer** is made one bit at a time, slowed down to 85 ms per bit (really 512 µs). Each bit becomes 16 samples, dipped by the physics' `dip` and with the reader's noise added. The reader decides each bit from those samples. Digits appear as soon as their four bits are heard, and when a whole message has passed, `reader.hearKey` checks it from the samples alone before the display turns green.
-- **The card** answers only when asked: each time it wakes, a whole conversation runs through `channel` and `reader.activate`, and the strip plays the recorded samples back over seven seconds.
-- **Field lines** are traced through the field of the reader's coil (`physics.loopField`), plus its mirror image when there is metal. Lines that pass through the tag's coil are drawn in copper. They are only recomputed when the reader, the metal or the tag's height changes.
-- **The reason line** names the one change that would fix the read: metal first, then the angle, then the distance (`reasonFor`).
+- **Every frame**, `update` calls `physics.solve` with the key's distance (plus about a millimetre of hand drift), angle and metal.
+- **The power sentences** come from the physics: out of reach, field only, electricity, awake. They only move forward one step at a time, and each stays at least 1.5 s, so a fast scroll can't skip one.
+- **The key's reply** is made one bit at a time, slowed to 70 ms per bit (really 512 µs). The reader decides each bit from those samples. When a whole message has passed, `reader.hearKey` checks it from the samples alone before the display turns green. At the "spell" moment the reader starts listening afresh, from the end of one message into the next one's header.
+- **The card** replies only when asked: each time it wakes, a whole conversation runs through `channel` and `reader.activate`, and the trace plays the samples back.
+- **What broke** (`reasonFor`) is the one change that would fix the read: metal first, then the turn, then the distance.
+- **Timings people see** (how long a sentence stays, idle time) use real seconds. The simulation uses the frame clock.
+- **Sizes** come from the design frame (`geo.u`), like the rest of the film.
 
-**Why it is built this way.** The visitor's first real input changes real outputs, so the lesson comes from doing: closer, flat, and away from metal.
+**Why it is built this way.** The first hands-on part should teach by doing. Each sentence only appears when the thing it says is really happening in the simulation.
 
-**How to check it.** Scroll to "The reader" and drag the key. With `?debug`, `__lab.bits` shows the bits the reader decided, and `__lab.fastForward(140)` plays 140 bits at once.
+**How to check it.** Scroll to Power and drag the key. With `?debug`, `__lab.bits` shows the bits the reader decided, and `__lab.fastForward(70)` plays 70 bits at once.
 
 **Likely questions.**
-- Q: Is the ID really decoded, or just shown? A: It is decoded. The display only shows what the reader read from the samples, and it only turns green when the message passes its row and column checks.
-- Q: Why 2.5 cm when scrolling? A: Close enough to read, and close enough to the edge that a metal plate or a 70° turn breaks it, so every lesson is one click away.
+- Q: Is the ID really decoded? A: Yes. The display only shows what the reader read from the samples, and turns green only when the message passes its checks.
+- Q: Why 2.5 cm when scrolling? A: Close enough to read, and close enough to the edge that metal or a turn breaks it, so every lesson is one click away.
 
 ---
 

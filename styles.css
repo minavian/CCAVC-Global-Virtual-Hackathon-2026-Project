@@ -195,77 +195,6 @@ html[data-intro] .stage-light { opacity: 0; }
   pointer-events: none;
 }
 
-.story-title {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: clamp(64px, 15vh, 180px);
-  padding: 0 var(--gutter);
-  text-align: center;
-  visibility: hidden;
-}
-
-.story-title h2 {
-  margin: 0;
-  font-weight: 800;
-  font-size: clamp(40px, min(6vw, 11vh), 124px);
-  line-height: .95;
-  letter-spacing: -.042em;
-  word-spacing: .06em;
-}
-
-.story-title p {
-  max-width: 36ch;
-  margin: clamp(12px, 2.2vh, 26px) auto 0;
-  font-size: clamp(16px, min(1.5vw, 2.7vh), 25px);
-  line-height: 1.4;
-  letter-spacing: -.012em;
-  color: var(--muted);
-}
-
-/* The words on the left while the key fob is on the right. Beats share one grid cell
-   and cross-fade. */
-.story-panel {
-  position: absolute;
-  left: var(--gutter);
-  top: 50%;
-  width: min(38vw, 560px);
-  display: grid;
-  transform: translateY(-50%);
-}
-
-.beat {
-  grid-area: 1 / 1;
-  align-self: center;
-  visibility: hidden;
-}
-
-.kicker {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: .16em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.beat h3 {
-  margin: .45em 0 .42em;
-  font-weight: 800;
-  font-size: clamp(34px, min(4vw, 7.6vh), 78px);
-  line-height: .98;
-  letter-spacing: -.036em;
-}
-
-.beat p:last-child {
-  margin: 0;
-  max-width: 31ch;
-  font-size: clamp(17px, min(1.45vw, 2.6vh), 23px);
-  line-height: 1.45;
-  letter-spacing: -.01em;
-  color: var(--muted);
-}
-
 /* Labels on the open key fob, joined to their parts by hairlines. */
 .callout-lines {
   position: absolute;
@@ -305,16 +234,22 @@ html[data-intro] .stage-light { opacity: 0; }
   color: var(--muted);
 }
 
-.story-title p + p { max-width: 30ch; color: var(--ink); }
-
-/* "Drag the battery out." turns into "The buttons die." in the same place. */
-.beat-dead { display: grid; }
-.beat-dead .kicker { grid-area: 1 / 1; }
-.beat-alive-words, .beat-dead-words { grid-area: 2 / 1; transition: opacity .5s ease, transform .5s ease; }
-.beat-dead-words { opacity: 0; transform: translateY(10px); }
-.beat-dead.is-out .beat-alive-words { opacity: 0; transform: translateY(-10px); }
-.beat-dead.is-out .beat-dead-words { opacity: 1; transform: none; }
-.beat h3 + p { margin: 0; max-width: 31ch; font-size: clamp(17px, min(1.45vw, 2.6vh), 23px); line-height: 1.45; color: var(--muted); }
+/* The one sentence: top left, big, the same place in every scene, clear of the models.
+   Each new sentence fades in over the last. */
+.say {
+  position: absolute;
+  left: var(--gutter);
+  top: clamp(56px, 11vh, 120px);
+  width: min(42vw, 620px);
+  margin: 0;
+  font-weight: 800;
+  font-size: clamp(30px, min(3.4vw, 6.2vh), 64px);
+  line-height: 1.02;
+  letter-spacing: -.036em;
+  text-wrap: balance;
+}
+.say.is-new { animation: say-in .55s cubic-bezier(.16, 1, .3, 1); }
+@keyframes say-in { from { opacity: 0; transform: translateY(12px); filter: blur(4px); } }
 
 /* The battery's handle: a ring over the battery that invites a drag. */
 .battery-handle {
@@ -347,92 +282,6 @@ html[data-intro] .stage-light { opacity: 0; }
 }
 .lab.is-on { opacity: 1; visibility: visible; transition: opacity .5s ease; }
 .lab-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-
-.lab-side {
-  position: absolute;
-  left: var(--gutter);
-  top: 50%;
-  width: min(40vw, 540px);
-  transform: translateY(-50%);
-  display: grid;
-  gap: clamp(14px, 2.4vh, 28px);
-}
-.lab-words, .lab-panel { display: grid; gap: clamp(8px, 1.4vh, 16px); }
-.lab-words .kicker { margin: 0; }
-.lab-prompt {
-  margin: 0;
-  font-weight: 800;
-  font-size: clamp(28px, min(3vw, 5.4vh), 54px);
-  line-height: 1;
-  letter-spacing: -.034em;
-  text-wrap: balance;
-}
-.lab-steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
-.lab-steps li {
-  display: grid;
-  grid-template-columns: 22px 1fr;
-  gap: 8px;
-  font-size: clamp(14px, min(1.15vw, 2.1vh), 18px);
-  line-height: 1.35;
-  color: var(--muted);
-  opacity: .42;
-  transition: opacity .35s ease, color .35s ease;
-}
-.lab-steps li::before {
-  content: attr(data-n);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--muted);
-}
-.lab-steps li.is-on { opacity: 1; color: var(--ink); }
-.lab-steps li.is-on::before { color: var(--copper); }
-
-.lab-result {
-  margin: 0;
-  min-height: 1.4em;
-  font-weight: 600;
-  font-size: clamp(15px, min(1.2vw, 2.2vh), 19px);
-}
-.lab-result[data-state="read"] { color: var(--green); }
-.lab-result[data-state="far"], .lab-result[data-state="turned"], .lab-result[data-state="metal"] { color: var(--red); }
-
-.lab-id {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  font-size: 13px;
-  color: var(--muted);
-}
-.lab-id b {
-  font: 600 clamp(18px, 1.6vw, 24px) "JetBrains Mono", ui-monospace, monospace;
-  letter-spacing: .04em;
-  color: var(--ink);
-}
-.lab-id.is-ok b { color: var(--green); }
-.lab-id.is-ok b::after { content: " ✓"; }
-.lab-id span { font-weight: 600; letter-spacing: .14em; text-transform: uppercase; font-size: 11px; }
-.lab-id small { font-size: 12px; }
-
-.lab-strip { display: grid; gap: 4px; }
-.lab-strip span { font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
-.lab-strip-note { font-style: normal; font-weight: 500; letter-spacing: .04em; text-transform: none; }
-.lab-strip canvas {
-  width: 100%;
-  height: clamp(56px, 9vh, 92px);
-  border-top: 1px solid rgba(13, 13, 12, .12);
-  border-bottom: 1px solid rgba(13, 13, 12, .12);
-}
-
-.lab-ticks { display: flex; gap: 14px; margin: 0; padding: 0; list-style: none; font-size: 13px; color: var(--muted); }
-.lab:not(.is-breaking) .lab-ticks { display: none; }
-.lab-ticks li::before { content: "○ "; }
-.lab-ticks li.is-on { color: var(--ink); }
-.lab-ticks li.is-on::before { content: "● "; color: var(--red); }
-
-.lab-payoff { opacity: 0; transform: translateY(8px); transition: opacity .6s ease, transform .6s ease; }
-.lab-payoff.is-on { opacity: 1; transform: none; }
-.lab-payoff p { margin: 0; font-size: clamp(16px, min(1.35vw, 2.4vh), 21px); line-height: 1.4; }
-.lab-payoff .lab-next { margin-top: 6px; font-size: 13px; color: var(--muted); }
 
 /* The tag's handle: drag it up and down. Arrow keys move it too. */
 .lab-grab {
@@ -470,30 +319,87 @@ html[data-intro] .stage-light { opacity: 0; }
 .lab-meter.is-awake i { background: var(--copper); }
 .lab-meter em { position: absolute; left: -6px; right: -6px; height: 1.5px; background: var(--ink); font-style: normal; font-size: 0; }
 .lab-meter em::after { content: "Wake"; position: absolute; left: 22px; top: -7px; font-size: 10px; color: var(--ink); }
-.lab-meter b { font: 600 12px "JetBrains Mono", ui-monospace, monospace; color: var(--ink); }
+.lab-fine { position: absolute; right: var(--gutter); bottom: 56px; margin: 0; font-size: 11px; color: var(--muted); }
+.lab-meter span { font-size: 11px; font-weight: 600; color: var(--ink); }
 
-.lab-controls {
+/* Under the reader: what it feels, and the ID it read. Both appear with the reply. */
+.lab-trace, .lab-id {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 300px;
   margin: 0;
-  padding: 0;
-  border: 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 18px;
-  font-size: 13px;
-  font-weight: 600;
   opacity: 0;
-  visibility: hidden;
-  pointer-events: auto;
   transition: opacity .5s ease;
 }
-.lab-controls.is-on { opacity: 1; visibility: visible; }
-.lab-controls label { display: grid; gap: 4px; }
-.lab-controls .lab-check, .lab-switch label { display: flex; align-items: center; gap: 8px; }
-.lab-switch { display: flex; gap: 16px; align-items: center; }
-.lab-controls input[type="range"] { width: 100%; accent-color: var(--ink); }
-.lab-controls input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.lab.is-replying .lab-trace, .lab.is-replying .lab-id { opacity: 1; }
+.lab-trace { display: grid; gap: 4px; justify-items: center; }
+.lab-trace span { font-size: 12px; font-weight: 600; color: var(--muted); }
+.lab-trace canvas { width: 300px; height: 52px; }
+.lab-id { display: flex; justify-content: center; align-items: baseline; gap: 10px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.lab-id b { font: 600 22px "JetBrains Mono", ui-monospace, monospace; letter-spacing: .04em; color: var(--ink); }
+.lab-id.is-ok b { color: var(--green); }
+.lab-id.is-ok b::after { content: " ✓"; }
 
-.lab-fine { position: absolute; right: var(--gutter); bottom: 56px; margin: 0; font-size: 11px; color: var(--muted); }
+/* Break it: three plain buttons under the sentence. */
+.lab-buttons {
+  position: absolute;
+  left: var(--gutter);
+  top: calc(clamp(56px, 11vh, 120px) + clamp(30px, min(3.4vw, 6.2vh), 64px) * 2.4 + 20px);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .5s ease;
+}
+.lab.is-breaking .lab-buttons { opacity: 1; visibility: visible; pointer-events: auto; }
+.lab-buttons button {
+  padding: 11px 18px;
+  border: 1.5px solid var(--ink);
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background-color .2s ease, color .2s ease;
+}
+.lab-buttons button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.lab-buttons button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+
+/* The slow-down badge, and the ghost hand. */
+.lab-badge {
+  position: absolute;
+  right: var(--gutter);
+  top: clamp(56px, 11vh, 120px);
+  margin: 0;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(13, 13, 12, .06);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity .5s ease;
+}
+.lab-badge.is-on { opacity: 1; }
+.lab-hand {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 40px;
+  height: 46px;
+  fill: rgba(255, 255, 255, .7);
+  stroke: rgba(13, 13, 12, .45);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  opacity: 0;
+  transition: opacity .3s ease;
+  pointer-events: none;
+}
+.lab-hand.is-on { opacity: 1; }
 
 /* A quiet invitation to scroll, under the hero. */
 .scroll-cue {
@@ -600,22 +506,6 @@ html[data-intro] .chapters { opacity: 0; pointer-events: none; }
     font-size: clamp(16px, min(4.4vw, 2.5svh), 26px);
   }
 
-  /* The story stacks too: the key fob on top, its words underneath. */
-  .story-title { top: clamp(56px, 12vh, 140px); }
-  .story-title h2 { font-size: clamp(34px, min(10vw, 7vh), 80px); }
-
-  .story-panel {
-    top: auto;
-    bottom: calc(env(safe-area-inset-bottom) + 64px);
-    width: auto;
-    right: var(--gutter);
-    transform: none;
-  }
-
-  .beat h3 { font-size: clamp(28px, min(8vw, 4.8vh), 52px); }
-  .beat p:last-child { font-size: clamp(15px, min(4vw, 2.2vh), 19px); }
-  .kicker { font-size: 11px; }
-
   .callout { max-width: 150px; }
   .callout b { font-size: 12.5px; }
   .callout span { display: none; }
@@ -623,26 +513,6 @@ html[data-intro] .chapters { opacity: 0; pointer-events: none; }
   .scroll-cue { bottom: 64px; }
   .chapters { bottom: calc(env(safe-area-inset-bottom) + 10px); }
 
-  /* The lab: words on top, the reader in the middle, the signal and controls below. */
-  .lab-side {
-    top: calc(env(safe-area-inset-top) + 16px);
-    bottom: calc(env(safe-area-inset-bottom) + 52px);
-    left: var(--gutter);
-    right: var(--gutter);
-    width: auto;
-    transform: none;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-  }
-  .lab-words, .lab-panel { gap: 6px; }
-  .lab-payoff { display: none; }
-  .lab-payoff.is-on { display: block; }
-  .lab-prompt { font-size: clamp(22px, 6.4vw, 32px); }
-  .lab-steps li { display: none; font-size: 14px; }
-  .lab-steps li.is-current { display: grid; }
-  .lab-strip canvas { height: 48px; }
-  .lab-ticks, .lab-payoff p { font-size: 13px; }
   /* Six chapter names don't fit: the current one, and a dot for each of the others. */
   .chapters { gap: 10px; align-items: center; }
   .chapters button:not([aria-current]) {
@@ -657,8 +527,6 @@ html[data-intro] .chapters { opacity: 0; pointer-events: none; }
   .chapters button:not([aria-current])::after { content: ""; position: absolute; inset: -12px; }
   .chapters button { position: relative; }
 
-  .lab-meter { width: 54px; }
-  .lab-meter div { height: 70px; }
   .lab-fine { display: none; }
 }
 
@@ -776,4 +644,77 @@ html[data-intro] .chapters { opacity: 0; pointer-events: none; }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
+}
+
+/* ---------- The film's frame ----------
+   The film is laid out on one design frame, 1440 × 900 on wide screens and 390 × 844 on
+   phones, scaled by one factor to fit the window (landing.js sets --u, one design pixel, and
+   --fx, --fy, the frame's corner). Every size below is in design pixels, so each screen of the
+   same shape shows exactly the same picture. */
+.say {
+  left: calc(var(--fx, 0px) + 110 * var(--u, 1px));
+  top: calc(var(--fy, 0px) + 100 * var(--u, 1px));
+  width: calc(700 * var(--u, 1px));
+  font-size: calc(76 * var(--u, 1px));
+  line-height: 1;
+}
+.lab-buttons {
+  left: calc(var(--fx, 0px) + 110 * var(--u, 1px));
+  top: calc(var(--fy, 0px) + 300 * var(--u, 1px));
+  gap: calc(12 * var(--u, 1px));
+}
+.lab-buttons button {
+  padding: calc(14 * var(--u, 1px)) calc(24 * var(--u, 1px));
+  border-width: calc(2 * var(--u, 1px));
+  font-size: calc(21 * var(--u, 1px));
+}
+.lab-badge {
+  right: auto;
+  left: calc(var(--fx, 0px) + 1240 * var(--u, 1px));
+  top: calc(var(--fy, 0px) + 108 * var(--u, 1px));
+  padding: calc(7 * var(--u, 1px)) calc(14 * var(--u, 1px));
+  font-size: calc(16 * var(--u, 1px));
+}
+.lab-meter { width: calc(80 * var(--u, 1px)); gap: calc(6 * var(--u, 1px)); }
+.lab-meter div { width: calc(14 * var(--u, 1px)); height: calc(150 * var(--u, 1px)); border-radius: calc(8 * var(--u, 1px)); }
+.lab-meter i { border-radius: calc(8 * var(--u, 1px)); }
+.lab-meter em { left: calc(-8 * var(--u, 1px)); right: calc(-8 * var(--u, 1px)); height: calc(2 * var(--u, 1px)); }
+.lab-meter em::after { left: calc(30 * var(--u, 1px)); top: calc(-9 * var(--u, 1px)); font-size: calc(14 * var(--u, 1px)); }
+.lab-meter span { font-size: calc(16 * var(--u, 1px)); }
+.lab-trace, .lab-id { width: calc(420 * var(--u, 1px)); }
+.lab-trace { gap: calc(6 * var(--u, 1px)); }
+.lab-trace span { font-size: calc(17 * var(--u, 1px)); }
+.lab-trace canvas { width: calc(420 * var(--u, 1px)); height: calc(76 * var(--u, 1px)); }
+.lab-id { gap: calc(12 * var(--u, 1px)); font-size: calc(16 * var(--u, 1px)); }
+.lab-id b { font-size: calc(36 * var(--u, 1px)); }
+.lab-hand { width: calc(52 * var(--u, 1px)); height: calc(60 * var(--u, 1px)); }
+.lab-fine { right: auto; left: calc(var(--fx, 0px) + 1240 * var(--u, 1px)); bottom: auto; top: calc(var(--fy, 0px) + 150 * var(--u, 1px)); font-size: calc(13 * var(--u, 1px)); }
+.story .callout b { font-size: calc(20 * var(--u, 1px)); }
+.story .callout { max-width: calc(260 * var(--u, 1px)); }
+
+@media (max-aspect-ratio: 1/1), (max-width: 760px) {
+  .say {
+    left: calc(var(--fx, 0px) + 22 * var(--u, 1px));
+    top: calc(var(--fy, 0px) + 64 * var(--u, 1px));
+    width: calc(346 * var(--u, 1px));
+    font-size: calc(38 * var(--u, 1px));
+  }
+  .lab-buttons {
+    left: calc(var(--fx, 0px) + 22 * var(--u, 1px));
+    right: auto;
+    top: calc(var(--fy, 0px) + 712 * var(--u, 1px));
+    width: calc(346 * var(--u, 1px));
+    justify-content: center;
+  }
+  .lab-buttons button { padding: calc(11 * var(--u, 1px)) calc(16 * var(--u, 1px)); font-size: calc(16 * var(--u, 1px)); }
+  .lab-badge { left: calc(var(--fx, 0px) + 268 * var(--u, 1px)); top: calc(var(--fy, 0px) + 22 * var(--u, 1px)); font-size: calc(13 * var(--u, 1px)); }
+  .lab-meter { width: calc(64 * var(--u, 1px)); }
+  .lab-meter div { height: calc(110 * var(--u, 1px)); }
+  .lab-trace, .lab-id { width: calc(320 * var(--u, 1px)); }
+  .lab-trace canvas { width: calc(320 * var(--u, 1px)); height: calc(60 * var(--u, 1px)); }
+  .lab-trace span { font-size: calc(15 * var(--u, 1px)); }
+  .lab-id b { font-size: calc(30 * var(--u, 1px)); }
+  .lab-fine { display: none; }
+  .story .callout b { font-size: calc(15 * var(--u, 1px)); }
+  .story .callout { max-width: calc(150 * var(--u, 1px)); }
 }
