@@ -4,6 +4,7 @@ const stage = document.querySelector('.scan-stage');
 const sequence = stage.closest('.scan-sequence');
 const depth = sequence.querySelector('.scan-depth');
 const viewport = stage.querySelector('.scan-view');
+const preview = stage.querySelector('.scan-preview');
 const grab = stage.querySelector('.scan-grab');
 const gesture = stage.querySelector('.scan-gesture');
 const keyboardHint = stage.querySelector('.scan-keyboard');
@@ -40,8 +41,9 @@ function loadScene() {
       status.textContent = '';
       wake();
       return renderer;
-    }).catch(() => {
+    }).catch(error => {
       fallback = true;
+      console.warn('Could not start the 3D scan. Showing a static preview.', error);
       grab.classList.add('is-fallback');
       stage.querySelector('#scan-instructions').textContent = 'Select Scan card to try the simulated scan.';
       keyboardHint.hidden = true;
@@ -240,6 +242,7 @@ function paint(now = performance.now()) {
   const inside = completed && progress > .38;
   const view = inside ? 'inside' : completed ? 'reveal' : 'pick';
   stage.dataset.view = view;
+  preview.hidden = !fallback || completed;
   reveal.hidden = view !== 'reveal';
   anatomy.hidden = !inside;
   next.hidden = view !== 'reveal';

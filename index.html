@@ -11,21 +11,22 @@
     // Decide before the first paint whether the opening plays, so nothing flashes.
     (function () {
       var root = document.documentElement;
+      if (location.protocol === 'file:') {
+        root.setAttribute('data-local-file', '');
+        return;
+      }
       if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
       root.setAttribute('data-intro', '');
       // If the page script never starts, show the finished page instead of a blank one.
       setTimeout(function () { if (!window.__heroStarted) root.removeAttribute('data-intro'); }, 6000);
     })();
   </script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Inter+Tight:wght@400;500;800&display=block">
+  <link rel="stylesheet" href="vendor/fonts/fonts.css">
   <link rel="stylesheet" href="styles.css">
   <script type="importmap">
     {"imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+      "three": "./vendor/three/build/three.module.min.js",
+      "three/addons/": "./vendor/three/examples/jsm/"
     }}
   </script>
   <script src="js/lockscreen.js" defer></script>
@@ -51,6 +52,7 @@
         </h1>
         <p id="subline">and almost nobody knows how it works<span class="dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></p>
         <a class="scan-link" href="#scan-lab">Try an RFID scan</a>
+        <p class="local-file-note">Open the project through a local web server to use the 3D demo. See <a href="README.md">the setup instructions</a>.</p>
       </div>
     </div>
 
@@ -62,6 +64,10 @@
         </header>
         <h2 class="scan-reveal" id="scan-reveal" tabindex="-1" hidden><span>How It</span> <span>Works?</span></h2>
         <div class="scan-view" aria-hidden="true"></div>
+        <div class="scan-preview" aria-hidden="true" hidden>
+          <img src="bit-river/assets/reader.webp" alt="" width="640" height="512" loading="lazy">
+          <img src="bit-river/assets/card.webp" alt="" width="900" height="720" loading="lazy">
+        </div>
         <div class="scan-gesture" aria-hidden="true" hidden></div>
         <button class="scan-grab" type="button" aria-describedby="scan-instructions scan-keyboard" hidden><span>Scan card</span></button>
         <footer class="scan-controls">

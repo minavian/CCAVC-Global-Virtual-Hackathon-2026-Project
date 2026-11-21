@@ -47,18 +47,19 @@ Written by Claude (Claude Code) for Mina Vian · 2026-11-20 · Issues #3, #5
 **What it does.** One screen: on the left, the three everyday RFID objects (key fob, phone, contactless card) in 3D; on the right, the headline "Those are the things you use every day." and the line "and almost nobody knows how it works…". On phones the words sit on top and the objects below.
 
 **How it works.**
-- `index.html` holds the words as real text (an `h1` and a `p`), an empty `#stage` for the 3D canvas, and loads three scripts: `js/lockscreen.js`, `js/models.js`, `js/landing.js`. Three.js 0.170 comes from the jsDelivr CDN through an import map; the fonts (Inter Tight, and Antonio for the phone's clock) come from Google Fonts.
+- `index.html` holds the words as real text (an `h1` and a `p`), an empty `#stage` for the 3D canvas, and loads `js/lockscreen.js`, `js/models.js` and `js/landing.js`.
 - A tiny script in `<head>` adds `data-intro` to the page before anything is drawn, so the opening can start from a blank state without a flash. If the visitor prefers reduced motion, it is not added and the page simply appears finished.
 - `styles.css` uses a two-column grid on wide screens and a stacked layout when the window is taller than wide or narrower than 760 px. The stage covers the whole page behind the words, so objects are never cut off by a column edge. A faint SVG noise texture over everything gives a printed-paper feel.
 - Codex for Akris Luno · 2026-11-21 · Issue #16. The link below the headline brings the contactless card to the front and carries it into the scan. The carousel only captures arrow keys while focused and stops rendering when it leaves the viewport.
+- Codex for the project team · 2026-11-21. The import maps on the landing page and the standalone Bit River page load the same bundled Three.js 0.170 files. `vendor/fonts/fonts.css` supplies Inter Tight and Antonio for the English text and phone clock. The original licenses are bundled alongside the assets. `index.html` detects `file://` and shows the setup link before the intro starts.
 
 **Why it is built this way.** The words are real HTML (not drawn in 3D) so they are sharp, selectable and readable by screen readers. No build step, so anyone can open the folder and serve it.
 
-**How to check it.** Serve the folder (for example `python -m http.server`) and open it. The `.glb` models do not load from `file://`, so double-clicking `index.html` shows the words only.
+**How to check it.** Follow the server command in `README.md`. With internet access disabled, open the landing page and standalone Bit River through that server. Both should load their models and fonts. Open `index.html` from disk to check the setup note.
 
 **Likely questions.**
 - Q: Why does the page need a server? A: Browsers block loading model files straight from disk for security; any static host works.
-- Q: Why Google Fonts with `display=block`? A: The headline is measured for the animation; swapping fonts mid-animation would make it jump, so the page waits up to 3 seconds for the real font.
+- Q: Why does the intro wait for the fonts? A: The headline is measured for the animation. The page waits up to 3 seconds for the bundled font so the text keeps its shape as it moves.
 
 ---
 
@@ -160,6 +161,7 @@ Written by OpenAI Codex for Akris Luno · 2026-11-21 · Issue #16
 - `scan.js` projects the card and reader into screen coordinates. `paintGuidance()` moves a gesture cue toward the reader and passes pointer position, attention and distance to `drawScan()`. The card tilts with the pointer and gently rocks while hovered. The reader light responds as the card approaches. The card follows a captured mouse or touch pointer and returns to rest if released too far away. The simulated read threshold unlocks the cutaway and Bit River. Reduced motion keeps the instruction and light feedback while removing the gesture and tilt.
 - `drawScan()` follows the card from contact through the expanding wave to the first cutaway pose. The keyboard path places the hand around a point on the card so the grip moves with it. `SCAN_TIMING` aligns the chime, reader indicator, wave and heading fade.
 - `drawInside()` moves the camera and opens the card as the visitor scrolls. `drawRiver()` closes the card and moves it to Bit River’s projected position. The scan canvas follows the card throughout the embedded Bit River section.
+- Codex for the project team · 2026-11-21. If 3D setup fails, `scan.js` shows stills of the reader and card from Bit River. The **Scan card** button advances to the explanation and allows Bit River to draw its own card.
 
 **Why it is built this way.** Visitors control the distance to the reader before the scan succeeds. Preserving one model lets each transition start at the previous scene’s pose. A scan button and the text explanation remain available if 3D fails to load. Reduced motion uses still poses for the landing flight, wave and scroll transitions.
 
