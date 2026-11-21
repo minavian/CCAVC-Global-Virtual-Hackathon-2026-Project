@@ -123,6 +123,16 @@ body::after {
 
 .stage canvas { display: block; }
 
+.hero-preview:not([hidden]) {
+  position: absolute;
+  left: calc(var(--region-x, 0px) + var(--region-w, 100vw) * .08);
+  top: calc(var(--region-y, 0px) + var(--region-h, 100vh) * .18);
+  width: calc(var(--region-w, 100vw) * .84);
+  height: calc(var(--region-h, 100vh) * .64);
+  object-fit: contain;
+  pointer-events: none;
+}
+
 /* Words. */
 .copy {
   grid-area: copy;

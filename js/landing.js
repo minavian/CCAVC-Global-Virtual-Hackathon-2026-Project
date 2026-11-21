@@ -48,6 +48,7 @@
   const stage = $('stage'), headline = $('headline'), subline = $('subline');
   const copyBox = document.querySelector('.copy');
   const announcer = $('focus-name');
+  const heroPreview = stage.querySelector('.hero-preview');
   const words = [...headline.querySelectorAll('.word')];
   const dots = [...subline.querySelectorAll('.dots span')];
   const shadows = [...document.querySelectorAll('.shadows i')];
@@ -567,7 +568,8 @@
       if (intro === null && focus === 0 && !flight) arrive(0);
     } catch (error) {
       gl = null;
-      console.warn('The 3D models could not load; showing the words only.', error);
+      heroPreview.hidden = false;
+      console.warn('The 3D models could not load; showing the card preview.', error);
     }
   }
 
@@ -810,6 +812,7 @@
     canvas.addEventListener('webglcontextlost', e => {
       e.preventDefault();
       gl = null; canvas.remove();
+      heroPreview.hidden = false;
     });
     stage.insertBefore(canvas, announcer);
 

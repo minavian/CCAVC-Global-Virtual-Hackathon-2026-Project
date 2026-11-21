@@ -52,6 +52,7 @@ Written by Claude (Claude Code) for Mina Vian · 2026-11-20 · Issues #3, #5
 - `styles.css` uses a two-column grid on wide screens and a stacked layout when the window is taller than wide or narrower than 760 px. The stage covers the whole page behind the words, so objects are never cut off by a column edge. A faint SVG noise texture over everything gives a printed-paper feel.
 - Codex for Akris Luno · 2026-11-21 · Issue #16. The link below the headline brings the contactless card to the front and carries it into the scan. The carousel only captures arrow keys while focused and stops rendering when it leaves the viewport.
 - Codex for the project team · 2026-11-21. The import maps on the landing page and the standalone Bit River page load the same bundled Three.js 0.170 files. `vendor/fonts/fonts.css` supplies Inter Tight and Antonio for the English text and phone clock. The original licenses are bundled alongside the assets. `index.html` detects `file://` and shows the setup link before the intro starts.
+- Codex for the project team · 2026-11-21. If the browser cannot create a 3D context or loses it, `loadScene()` and the context-loss handler show the card image from Bit River in the landing stage. The scan also has a static preview and a button to continue.
 
 **Why it is built this way.** The words are real HTML (not drawn in 3D) so they are sharp, selectable and readable by screen readers. No build step, so anyone can open the folder and serve it.
 
