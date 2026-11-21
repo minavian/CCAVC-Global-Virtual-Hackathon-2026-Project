@@ -115,15 +115,21 @@
   let gl = null;
   let lastNow = null, frameId = 0;
   let skipPointer = null, skipEvent = null;
-  const poses = [0, 1, 2].map(() => ({ x: 0, y: 0, baseY: 0, size: 0, depth: 0, side: 0, roll: 0, pitch: 0, yaw: 0,
+  // Five things on the stage: the key, the phone and the card (the carousel), then the
+  // reader pad and the metal plate, which only the lab uses.
+  const READER = 3, PLATE = 4;
+  const poses = [0, 1, 2, 3, 4].map(() => ({ x: 0, y: 0, baseY: 0, size: 0, depth: 0, side: 0, roll: 0, pitch: 0, yaw: 0,
     lift: 0, shade: 1, visible: true, float: 0 }));
+  const looks = [{}, {}, {}, {}, {}];
 
   // ---------- Story state ----------
   // Scrolling plays the story (js/story.js). Its progress `scrollNow` is measured in screens
   // and eases toward the real scroll position, so wheel steps still feel like a film.
   const story = window.RFIDStory ? window.RFIDStory.create() : null;
+  const lab = window.RFIDLab ? window.RFIDLab.create() : null;
   const FEATURED = 0;                        // the key fob is the object the story opens
-  let scrollGoal = 0, scrollNow = 0, storyOn = false, storyState = null, paintedAt = null;
+  const CARD = 2;
+  let scrollGoal = 0, scrollNow = 0, storyOn = false, storyState = null, labState = null, paintedAt = null;
 
   // ---------- Layout ----------
   // The stage covers the whole page; the objects live in the region the words leave free.
@@ -196,6 +202,8 @@
       p.roll = BASE_ROLL[i] + side * .2 + float * .027 + Math.tanh(velocity * .28) * .13;
       p.lift = 0; p.shade = 1; p.visible = true;
     }
+    poses[READER].visible = poses[PLATE].visible = false;
+    for (const look of looks) for (const k in look) delete look[k];
     if (storyOn && storyState) storyPoses(storyState);
   }
 
@@ -212,27 +220,31 @@
   // The area the featured object fills: the right side, or the top on phones.
   function featureRect() {
     const { w, h } = layout;
-    return stacked.matches ? { x: w * .06, y: h * .1, w: w * .88, h: h * .44 }
+    return stacked.matches ? { x: w * .06, y: h * .08, w: w * .88, h: h * .46 }
       : { x: w * .47, y: h * .12, w: w * .48, h: h * .76 };
   }
 
-  // The close-up on the open key fob: the parts that do the RFID work, and their frame.
-  const INSIDE_PARTS = ['antenna-coil', 'rfid-chip'];
-  function insideRect() {
+  // The lab: where the reader pad sits on screen, how many pixels a meter is, and how far
+  // the camera looks down onto it (radians).
+  function labGeometry() {
     const { w, h } = layout;
-    return stacked.matches ? { x: w * .07, y: h * .16, w: w * .86, h: h * .4 }
-      : { x: w * .5, y: h * .2, w: w * .4, h: h * .6 };
+    if (stacked.matches) {
+      const k = Math.min(w * .7 / .1, h * .3 / .1);
+      return { padX: w * .5, padY: h * .56, k, tilt: .5 };
+    }
+    const k = Math.min(w * .28 / .1, h * .36 / .1);
+    return { padX: w * .7, padY: h * .74, k, tilt: .5 };
   }
 
   // A fall: speeding up under gravity, then one small bounce.
   const fall = d => d < .78 ? (d / .78) ** 2 : 1 - Math.sin(Math.PI * (d - .78) / .22) * .045;
 
   function storyPoses(st) {
-    const n = poses.length;
+    const n = 3, { w, h } = layout, narrow = stacked.matches;
     // 1. Each object drops out of the carousel into the line.
-    poses.forEach((p, i) => {
-      const d = st.drop[i];
-      if (d <= 0) return;
+    for (let i = 0; i < n; i++) {
+      const p = poses[i], d = st.drop[i];
+      if (d <= 0) continue;
       const row = rowPose(i, n), move = easeInOutCubic(d), turn = easeOutCubic(d);
       const down = row.y >= p.y ? fall(d) : move;
       const tumble = calm ? 0 : Math.sin(Math.PI * d) * .22 * (i % 2 ? 1 : -1);
@@ -245,46 +257,89 @@
       p.pitch = lerp(p.pitch, row.pitch, turn);
       p.yaw = lerp(p.yaw, row.yaw, turn);
       p.roll = lerp(p.roll, row.roll, turn) + tumble;
-    });
-
-    // 2. The key fob is chosen: the others drift out of focus and away, it moves right.
-    const f = st.feature;
-    gl?.open(FEATURED, st.open, st.inside);   // closed again whenever we scroll back up
-    if (f <= 0) return;
-    const { w, h } = layout;
-    poses.forEach((p, i) => {
-      if (i === FEATURED) return;
-      const away = i % 2 ? -1 : 1;
-      p.x += away * f * w * .34;
-      p.y += f * h * .05;
-      p.size *= 1 - .25 * f;
-      p.depth = lerp(p.depth, 1, f);
-      p.shade = 1 - f;
-      p.visible = f < .985;
-    });
-
-    // 3. It opens; its pose is fitted so the open parts always fill the frame. Then the
-    //    shells slide away and the frame closes in on the coil, the chip and their seal.
-    const p = poses[FEATURED], open = st.open, inside = st.inside;
-    const breathe = calm ? 0 : Math.sin(elapsed * .35) * .05;
-    const pitch = .12 + .1 * open, yaw = -.42 + .06 * open + breathe, roll = 0;
-    const rect = featureRect();
-    let fit = gl ? gl.fit(FEATURED, rect, pitch, yaw, roll)
-      : { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2, size: rect.h };
-    if (gl && inside > 0) {
-      const close = gl.fit(FEATURED, insideRect(), pitch, yaw, roll, INSIDE_PARTS);
-      fit = { x: lerp(fit.x, close.x, inside), y: lerp(fit.y, close.y, inside), size: lerp(fit.size, close.size, inside) };
     }
-    p.x = lerp(p.x, fit.x, f);
-    p.y = lerp(p.y, fit.y, f);
-    p.baseY = p.y;
-    p.size = lerp(p.size, fit.size, f);
-    p.pitch = lerp(p.pitch, pitch, f);
-    p.yaw = lerp(p.yaw, yaw, f);
-    p.roll = lerp(p.roll, roll, f);
-    p.depth = lerp(p.depth, 0, f);
-    p.lift = 300 * f;                        // closer to the camera, so it stays sharp
-    p.shade = 1 - f;
+
+    // Scene 2: all three turn to glass, with their coils and chips glowing.
+    const f = st.feature;
+    for (let i = 0; i < n; i++) looks[i] = { glass: st.glass * (i === FEATURED ? 1 - f : 1), glow: st.glass * (i === FEATURED ? 1 - f : 1) };
+
+    // Scene 3: the key comes forward; the others step aside.
+    if (f > 0) {
+      for (let i = 0; i < n; i++) {
+        if (i === FEATURED) continue;
+        const p = poses[i], away = i % 2 ? -1 : 1;
+        p.x += away * f * w * .34;
+        p.y += f * h * .05;
+        p.size *= 1 - .25 * f;
+        p.depth = lerp(p.depth, 1, f);
+        p.shade = 1 - f;
+        p.visible = f < .985;
+      }
+      // It opens; its pose is fitted so the open parts always fill the frame.
+      const p = poses[FEATURED], open = st.open;
+      const breathe = calm ? 0 : Math.sin(elapsed * .35) * .05;
+      const pitch = .12 + .1 * open, yaw = -.42 + .06 * open + breathe, roll = 0;
+      looks[FEATURED] = { open, glass: 0, glow: open * .35, battery: st.battery, power: open > 0 ? st.power : 0 };
+      const rect = featureRect();
+      const fit = gl ? (gl.look(FEATURED, looks[FEATURED]), gl.fit(FEATURED, rect, pitch, yaw, roll))
+        : { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2, size: rect.h };
+      p.x = lerp(p.x, fit.x, f);
+      p.y = lerp(p.y, fit.y, f);
+      p.baseY = p.y;
+      p.size = lerp(p.size, fit.size, f);
+      p.pitch = lerp(p.pitch, pitch, f);
+      p.yaw = lerp(p.yaw, yaw, f);
+      p.roll = lerp(p.roll, roll, f);
+      p.depth = lerp(p.depth, 0, f);
+      p.lift = 300 * f;                        // closer to the camera, so it stays sharp
+      p.shade = 1 - f;
+    }
+
+    // The card comes back, small and in glass: it has no battery either.
+    if (st.cardBack > 0) {
+      const p = poses[CARD], q = st.cardBack;
+      const to = narrow ? { x: w * .24, y: h * .62, size: w * .34 } : { x: w * .6, y: h * .74, size: h * .24 };
+      p.x = lerp(w * -.2, to.x, q); p.y = to.y; p.baseY = p.y; p.size = to.size;
+      p.pitch = .15; p.yaw = .35; p.roll = -.08; p.depth = 0; p.lift = 280; p.shade = 1; p.visible = true;
+      looks[CARD] = { glass: 1, glow: 1 };
+    }
+
+    // Scenes 4–5: the key closes, stays in glass, and moves over the reader as it rises.
+    const r = st.reader;
+    if (st.leave > 0 || r > 0) {
+      const g = labGeometry(), squash = Math.cos(g.tilt), lift = Math.sin(g.tilt);
+      const ls = labState || { tag: 'key', distance: .095, angle: 0, metal: false, chip: 0, glow: .2, readerGlow: .5, metalGap: .006 };
+      const tagIndex = ls.tag === 'card' ? CARD : FEATURED;
+      const swap = ls.tag === 'card' ? 1 : 0;
+      // The reader pad.
+      const pad = poses[READER];
+      Object.assign(pad, { x: g.padX, y: g.padY + (1 - r) * h * .45, size: g.k * .094, pitch: g.tilt, yaw: 0, roll: 0,
+        depth: 0, lift: 300, shade: 1, visible: r > 0 });
+      looks[READER] = { glow: r * ls.readerGlow };
+      // The tag: above the pad, its long side across the screen.
+      const tagY = g.padY - ls.distance * g.k * squash, tagLift = 300 + ls.distance * g.k * lift;
+      const key = poses[FEATURED], e = easeInOutCubic(st.leave);
+      const labPose = { x: g.padX, y: tagY, size: g.k * (tagIndex === CARD ? .0856 : .059), pitch: -Math.PI / 2 + g.tilt + ls.angle,
+        yaw: 0, roll: tagIndex === CARD ? 0 : Math.PI / 2 };
+      // The key leaves the stage if the card is the tag.
+      const keyTo = swap ? { ...labPose, x: -w * .3 } : labPose;
+      key.x = lerp(key.x, keyTo.x, e); key.y = lerp(key.y, keyTo.y, e); key.baseY = key.y;
+      key.size = lerp(key.size, g.k * .059, e);
+      key.pitch = lerp(key.pitch, keyTo.pitch, e); key.yaw = lerp(key.yaw, 0, e); key.roll = lerp(key.roll, keyTo.roll, e);
+      key.lift = lerp(key.lift, tagLift, e); key.depth = 0; key.shade = 1;
+      key.visible = !(swap && e >= 1);
+      looks[FEATURED] = { open: st.open, glass: e, glow: lerp(st.open * .35, ls.tag === 'key' ? ls.glow : .3, e),
+        chip: ls.tag === 'key' ? ls.chip * e : 0, battery: { out: 1, x: 0, y: 0 }, power: 0 };
+      if (swap && st.lab) {
+        const c = poses[CARD];
+        Object.assign(c, labPose, { baseY: labPose.y, lift: tagLift, depth: 0, shade: 1, visible: true });
+        looks[CARD] = { glass: 1, glow: ls.glow, chip: ls.chip };
+      }
+      // The metal plate, just behind the tag.
+      const plate = poses[PLATE];
+      Object.assign(plate, { x: g.padX, y: g.padY - (ls.distance + ls.metalGap) * g.k * squash, size: g.k * .07, pitch: g.tilt,
+        yaw: 0, roll: 0, depth: 0, lift: 300 + (ls.distance + ls.metalGap) * g.k * lift, shade: 1, visible: !!(st.lab && ls.metal) });
+    }
   }
 
   function landingPulse() {
@@ -499,6 +554,7 @@
       measure();
     }
     storyState = story ? story.timeline(scrollNow) : null;
+    labState = lab && layout ? lab.update(dt, storyOn ? storyState : null, labGeometry()) : null;
 
     if (intro !== null) {
       intro = frozenAt !== null ? frozenAt : intro + dt;
@@ -536,6 +592,7 @@
       el.style.transform = `translate(${(p.x - 50).toFixed(1)}px, ${(y - 50).toFixed(1)}px) scale(${(width / 100).toFixed(3)}, ${(height / 100).toFixed(3)})`;
       el.style.opacity = (p.visible ? shown * (1 - p.depth) ** 2 * .85 * p.shade : 0).toFixed(3);
     });
+    if (gl) looks.forEach((look, i) => gl.look(i, look));
     gl?.draw(dt, fade);
     paintStory();
   }
@@ -545,11 +602,23 @@
   function paintStory() {
     if (!story || !storyState) return;
     const st = storyState, ready = intro === null && started;
-    const labelled = st.labels.some(q => q > 0);
+    const labelled = st.labels.some(q => q > 0) || st.beats[0] > 0;
     const key = `${scrollNow.toFixed(5)}|${ready}`;
     if (key === paintedAt && !labelled) return;
     paintedAt = key;
-    const points = labelled && gl ? gl.points(FEATURED, st.callouts) : {};
+    const points = {};
+    if (labelled && gl) {
+      const wanted = new Map();
+      st.callouts.forEach(([object, part, frame], k) => {
+        if (st.labels[k] <= 0 && part !== 'coin-battery') return;
+        if (!wanted.has(object)) wanted.set(object, new Set());
+        wanted.get(object).add(part).add(frame);
+      });
+      for (const [object, names] of wanted) {
+        const found = gl.points(object, [...names]);
+        for (const name in found) points[object + ':' + name] = found[name];
+      }
+    }
     story.paint(st, points, ready);
   }
 
@@ -585,7 +654,7 @@
   function hitTest(clientX, clientY) {
     const r = stage.getBoundingClientRect(), x = clientX - r.left, y = clientY - r.top;
     let best = -1, bestScore = Infinity;
-    poses.forEach((p, i) => {
+    poses.slice(0, 3).forEach((p, i) => {
       const score = Math.hypot(x - p.x, y - p.y) / (p.size * .5) + p.depth * .35;
       if (score < bestScore) { bestScore = score; best = i; }
     });
@@ -684,6 +753,7 @@
         import('three/addons/environments/RoomEnvironment.js')
       ]);
       const objects = await window.RFIDModels.load(T, GLTFLoader, reduced);
+      objects.push(window.RFIDModels.readerPad(T), window.RFIDModels.metalPlate(T));
       const scene = createScene(T, objects, RoomEnvironment);
       if (layout) scene.resize(layout.box);
       await scene.warm();
@@ -938,11 +1008,14 @@
     }
 
     // Where each named part of object i is on screen: [x, y, halfWidth, halfHeight] in
-    // stage pixels, from the part's bounding box.
+    // stage pixels, from the part's bounding box. '*' is the whole object; 'coil' and 'chip'
+    // are its RFID parts.
     function points(i, names) {
       const out = {}, o = objects[i];
+      if (!o || !stands[i].visible) return out;
+      stands[i].updateMatrixWorld(true);
       for (const name of names) {
-        const part = o.part(name);
+        const part = name === '*' ? stands[i] : o.part(o.rfid && (name === 'coil' || name === 'chip') ? o.rfid[name] : name);
         if (!part) continue;
         box3.setFromObject(part).getCenter(centre3);
         box3.getSize(size3);
@@ -977,6 +1050,7 @@
       fit,
       points,
       open(i, e, push) { objects[i].open?.(e, push); },
+      look(i, state) { objects[i]?.look?.(state); },
       // Dev aid (?debug): average milliseconds per fully finished frame, independent of
       // requestAnimationFrame throttling, plus the scene's draw calls and triangles.
       bench(frames = 60) {

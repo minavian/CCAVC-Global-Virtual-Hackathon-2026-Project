@@ -305,6 +305,196 @@ html[data-intro] .stage-light { opacity: 0; }
   color: var(--muted);
 }
 
+.story-title p + p { max-width: 30ch; color: var(--ink); }
+
+/* "Drag the battery out." turns into "The buttons die." in the same place. */
+.beat-dead { display: grid; }
+.beat-dead .kicker { grid-area: 1 / 1; }
+.beat-alive-words, .beat-dead-words { grid-area: 2 / 1; transition: opacity .5s ease, transform .5s ease; }
+.beat-dead-words { opacity: 0; transform: translateY(10px); }
+.beat-dead.is-out .beat-alive-words { opacity: 0; transform: translateY(-10px); }
+.beat-dead.is-out .beat-dead-words { opacity: 1; transform: none; }
+.beat h3 + p { margin: 0; max-width: 31ch; font-size: clamp(17px, min(1.45vw, 2.6vh), 23px); line-height: 1.45; color: var(--muted); }
+
+/* The battery's handle: a ring over the battery that invites a drag. */
+.battery-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 0;
+  border: 1.5px dashed rgba(13, 13, 12, .55);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .08);
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+  animation: handle 1.6s ease-in-out infinite;
+}
+.battery-handle.is-dragging { cursor: grabbing; animation: none; border-style: solid; }
+.battery-handle:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+@keyframes handle { 50% { box-shadow: 0 0 0 10px rgba(13, 13, 12, .06); } }
+
+/* ---------- The lab (scenes 4 and 5) ---------- */
+.lab {
+  --copper: #b8652a;
+  --green: #1f7a4a;
+  --red: #b3261e;
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .5s ease, visibility 0s linear .5s;
+}
+.lab.is-on { opacity: 1; visibility: visible; transition: opacity .5s ease; }
+.lab-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+.lab-side {
+  position: absolute;
+  left: var(--gutter);
+  top: 50%;
+  width: min(40vw, 540px);
+  transform: translateY(-50%);
+  display: grid;
+  gap: clamp(14px, 2.4vh, 28px);
+}
+.lab-words, .lab-panel { display: grid; gap: clamp(8px, 1.4vh, 16px); }
+.lab-words .kicker { margin: 0; }
+.lab-prompt {
+  margin: 0;
+  font-weight: 800;
+  font-size: clamp(28px, min(3vw, 5.4vh), 54px);
+  line-height: 1;
+  letter-spacing: -.034em;
+  text-wrap: balance;
+}
+.lab-steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.lab-steps li {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 8px;
+  font-size: clamp(14px, min(1.15vw, 2.1vh), 18px);
+  line-height: 1.35;
+  color: var(--muted);
+  opacity: .42;
+  transition: opacity .35s ease, color .35s ease;
+}
+.lab-steps li::before {
+  content: attr(data-n);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.lab-steps li.is-on { opacity: 1; color: var(--ink); }
+.lab-steps li.is-on::before { color: var(--copper); }
+
+.lab-result {
+  margin: 0;
+  min-height: 1.4em;
+  font-weight: 600;
+  font-size: clamp(15px, min(1.2vw, 2.2vh), 19px);
+}
+.lab-result[data-state="read"] { color: var(--green); }
+.lab-result[data-state="far"], .lab-result[data-state="turned"], .lab-result[data-state="metal"] { color: var(--red); }
+
+.lab-id {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.lab-id b {
+  font: 600 clamp(18px, 1.6vw, 24px) "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: .04em;
+  color: var(--ink);
+}
+.lab-id.is-ok b { color: var(--green); }
+.lab-id.is-ok b::after { content: " ✓"; }
+.lab-id span { font-weight: 600; letter-spacing: .14em; text-transform: uppercase; font-size: 11px; }
+.lab-id small { font-size: 12px; }
+
+.lab-strip { display: grid; gap: 4px; }
+.lab-strip span { font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.lab-strip-note { font-style: normal; font-weight: 500; letter-spacing: .04em; text-transform: none; }
+.lab-strip canvas {
+  width: 100%;
+  height: clamp(56px, 9vh, 92px);
+  border-top: 1px solid rgba(13, 13, 12, .12);
+  border-bottom: 1px solid rgba(13, 13, 12, .12);
+}
+
+.lab-ticks { display: flex; gap: 14px; margin: 0; padding: 0; list-style: none; font-size: 13px; color: var(--muted); }
+.lab:not(.is-breaking) .lab-ticks { display: none; }
+.lab-ticks li::before { content: "○ "; }
+.lab-ticks li.is-on { color: var(--ink); }
+.lab-ticks li.is-on::before { content: "● "; color: var(--red); }
+
+.lab-payoff { opacity: 0; transform: translateY(8px); transition: opacity .6s ease, transform .6s ease; }
+.lab-payoff.is-on { opacity: 1; transform: none; }
+.lab-payoff p { margin: 0; font-size: clamp(16px, min(1.35vw, 2.4vh), 21px); line-height: 1.4; }
+.lab-payoff .lab-next { margin-top: 6px; font-size: 13px; color: var(--muted); }
+
+/* The tag's handle: drag it up and down. Arrow keys move it too. */
+.lab-grab {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 140px;
+  height: 92px;
+  padding: 0;
+  border: 0;
+  border-radius: 18px;
+  background: none;
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+}
+.lab:not(.is-on) .lab-grab { pointer-events: none; }
+.lab-grab.is-dragging { cursor: grabbing; }
+.lab-grab:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+.lab-meter {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  width: 64px;
+  font-size: 10px;
+  text-align: center;
+  color: var(--muted);
+}
+.lab-meter div { position: relative; width: 10px; height: 96px; border-radius: 6px; background: rgba(13, 13, 12, .08); overflow: visible; }
+.lab-meter i { position: absolute; inset: 0; border-radius: 6px; background: rgba(13, 13, 12, .4); transform-origin: 50% 100%; transform: scaleY(0); }
+.lab-meter.is-awake i { background: var(--copper); }
+.lab-meter em { position: absolute; left: -6px; right: -6px; height: 1.5px; background: var(--ink); font-style: normal; font-size: 0; }
+.lab-meter em::after { content: "Wake"; position: absolute; left: 22px; top: -7px; font-size: 10px; color: var(--ink); }
+.lab-meter b { font: 600 12px "JetBrains Mono", ui-monospace, monospace; color: var(--ink); }
+
+.lab-controls {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: auto;
+  transition: opacity .5s ease;
+}
+.lab-controls.is-on { opacity: 1; visibility: visible; }
+.lab-controls label { display: grid; gap: 4px; }
+.lab-controls .lab-check, .lab-switch label { display: flex; align-items: center; gap: 8px; }
+.lab-switch { display: flex; gap: 16px; align-items: center; }
+.lab-controls input[type="range"] { width: 100%; accent-color: var(--ink); }
+.lab-controls input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+.lab-fine { position: absolute; right: var(--gutter); bottom: 56px; margin: 0; font-size: 11px; color: var(--muted); }
+
 /* A quiet invitation to scroll, under the hero. */
 .scroll-cue {
   position: absolute;
@@ -432,6 +622,156 @@ html[data-intro] .chapters { opacity: 0; pointer-events: none; }
 
   .scroll-cue { bottom: 64px; }
   .chapters { bottom: calc(env(safe-area-inset-bottom) + 10px); }
+
+  /* The lab: words on top, the reader in the middle, the signal and controls below. */
+  .lab-side {
+    top: calc(env(safe-area-inset-top) + 16px);
+    bottom: calc(env(safe-area-inset-bottom) + 52px);
+    left: var(--gutter);
+    right: var(--gutter);
+    width: auto;
+    transform: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .lab-words, .lab-panel { gap: 6px; }
+  .lab-payoff { display: none; }
+  .lab-payoff.is-on { display: block; }
+  .lab-prompt { font-size: clamp(22px, 6.4vw, 32px); }
+  .lab-steps li { display: none; font-size: 14px; }
+  .lab-steps li.is-current { display: grid; }
+  .lab-strip canvas { height: 48px; }
+  .lab-ticks, .lab-payoff p { font-size: 13px; }
+  /* Six chapter names don't fit: the current one, and a dot for each of the others. */
+  .chapters { gap: 10px; align-items: center; }
+  .chapters button:not([aria-current]) {
+    width: 7px;
+    height: 7px;
+    padding: 0;
+    border-radius: 50%;
+    background: currentColor;
+    font-size: 0;
+    opacity: .35;
+  }
+  .chapters button:not([aria-current])::after { content: ""; position: absolute; inset: -12px; }
+  .chapters button { position: relative; }
+
+  .lab-meter { width: 54px; }
+  .lab-meter div { height: 70px; }
+  .lab-fine { display: none; }
+}
+
+/* ---------- Part 2: take it apart ---------- */
+/* It scrolls up over the pinned film, on its own paper. */
+.deep {
+  --copper: #b8652a;
+  --green: #1f7a4a;
+  --red: #b3261e;
+  position: relative;
+  z-index: 11;
+  background: var(--paper);
+  padding: clamp(72px, 12vh, 140px) var(--gutter) 96px;
+  box-shadow: 0 -40px 80px rgba(245, 242, 236, .9);
+}
+.deep-head { max-width: 980px; margin: 0 auto clamp(56px, 9vh, 110px); }
+.deep-head h2 {
+  margin: 14px 0 0;
+  font-weight: 800;
+  font-size: clamp(36px, min(5.4vw, 9vh), 96px);
+  line-height: .96;
+  letter-spacing: -.042em;
+  text-wrap: balance;
+}
+.deep-head p:last-child { max-width: 58ch; margin: 20px 0 0; font-size: clamp(17px, 1.4vw, 21px); line-height: 1.5; color: var(--muted); }
+.deep-part {
+  max-width: 1180px;
+  margin: clamp(48px, 8vh, 96px) auto 24px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(13, 13, 12, .16);
+  font-weight: 800;
+  font-size: clamp(22px, 2.2vw, 34px);
+  letter-spacing: -.025em;
+}
+.deep-part span { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+
+.plate {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: clamp(28px, 5vh, 56px) 0;
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: clamp(24px, 4vw, 64px);
+  align-items: center;
+  border-bottom: 1px solid rgba(13, 13, 12, .08);
+}
+.plate-words { display: grid; gap: 12px; align-content: start; }
+.plate-num { margin: 0; font: 600 13px "JetBrains Mono", ui-monospace, monospace; color: var(--copper); }
+.plate h3 { margin: 0; font-weight: 800; font-size: clamp(26px, 2.4vw, 38px); line-height: 1.02; letter-spacing: -.03em; text-wrap: balance; }
+.plate-words > p { margin: 0; max-width: 46ch; font-size: clamp(15px, 1.15vw, 18px); line-height: 1.5; color: var(--muted); }
+.plate-gate { font-style: italic; color: var(--ink) !important; }
+.plate-controls { display: grid; gap: 12px; margin-top: 6px; font-size: 14px; font-weight: 600; }
+.plate-controls label { display: grid; grid-template-columns: auto 1fr; gap: 4px 6px; align-items: baseline; }
+.plate-controls label > input[type="range"], .plate-controls label > input[type="text"] { grid-column: 1 / -1; }
+.plate-controls output { font-weight: 500; color: var(--muted); }
+.plate-controls output::before { content: "· "; }
+.plate-controls input[type="range"] { width: 100%; accent-color: var(--ink); }
+.plate-controls input[type="text"] { width: 3.2em; padding: 6px 8px; border: 1px solid rgba(13, 13, 12, .3); border-radius: 8px; background: transparent; font: 600 18px "JetBrains Mono", monospace; text-align: center; }
+.plate-check, .plate-switch label { display: flex !important; align-items: center; gap: 8px; }
+.plate-switch { display: flex; flex-wrap: wrap; gap: 18px; }
+.plate-controls button {
+  justify-self: start;
+  padding: 9px 16px;
+  border: 1.5px solid var(--ink);
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+.plate-controls button:hover { background: var(--ink); color: var(--paper); }
+.plate-controls input:focus-visible, .plate-controls button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+.plate-readout { min-height: 3em; color: var(--ink) !important; font-weight: 600; }
+.plate-real { font-size: 13px !important; }
+/* A canvas's own pixel size must never widen its column (it is resized to fit every frame). */
+.plate > * { min-width: 0; }
+.plate-canvas { width: 100%; max-width: 100%; min-width: 0; height: clamp(300px, 46vh, 460px); display: block; }
+
+.plate-river { display: grid; gap: 14px; }
+.plate-river .plate-canvas { height: clamp(150px, 22vh, 220px); }
+.chat { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; max-height: 300px; overflow: auto; }
+.chat li { display: flex; }
+.chat button {
+  max-width: 78%;
+  display: grid;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 14px;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  animation: chat-in .35s ease;
+}
+.chat small { display: none; font: 500 11px "JetBrains Mono", monospace; opacity: .75; }
+.chat li.is-open small { display: block; }
+.chat-phone button { background: var(--ink); color: var(--paper); }
+.chat-card { justify-content: flex-end; }
+.chat-card button { background: #ead8c7; color: var(--ink); }
+.chat-app { justify-content: center; }
+.chat-app button { background: transparent; color: var(--muted); font-style: italic; }
+.chat li.is-stolen button { background: #f3d6d3; color: var(--red); }
+@keyframes chat-in { from { opacity: 0; transform: translateY(6px); } }
+
+.deep-end { max-width: 980px; margin: clamp(64px, 10vh, 120px) auto 0; }
+.deep-last { margin: 0 0 18px; font-weight: 800; font-size: clamp(30px, 3.6vw, 56px); line-height: 1; letter-spacing: -.035em; }
+.deep-end p { max-width: 62ch; color: var(--muted); line-height: 1.55; }
+.deep-end a { color: var(--ink); }
+.deep-fine { font-size: 13px; }
+
+@media (max-width: 860px) {
+  .plate { grid-template-columns: minmax(0, 1fr); }
+  .plate-canvas { height: 300px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

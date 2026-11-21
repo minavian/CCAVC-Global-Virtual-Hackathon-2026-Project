@@ -36,6 +36,10 @@ Written by <who> · <date> · Issue #<n>
 - [The three 3D objects](#the-three-3d-objects-jsmodelsjs-models)
 - [The phone's lock screen](#the-phones-lock-screen-jslockscreenjs)
 - [The story: a film played by scrolling](#the-story-a-film-played-by-scrolling-jsstoryjs-jslandingjs)
+- [The simulation: physics, protocol and reader](#the-simulation-physics-protocol-and-reader-jsrfid)
+- [The lab: scenes 4 and 5](#the-lab-scenes-4-and-5-jslabjs)
+- [Take it apart: scenes 6 to 17](#take-it-apart-scenes-6-to-17-jsdeepjs)
+- [The checks](#the-checks-tests)
 
 ---
 
@@ -121,6 +125,8 @@ Models by nduchuy348-art (`models/*.glb`, branch `create-new-model`); loading co
 - **Flicker fix** (`liftDecals`): flat printed layers (the card's artwork, its chip contacts) sit at exactly the same depth as the plastic underneath, which made the GPU flicker between them. Those flat sheets are nudged toward the camera in depth only.
 - **Phone back** (`refineBack`, `deepenCover`): the faint brushed swirl and logo in the back's texture are strengthened (fine detail amplified, broad shading kept). The flash gets a drawn frosted lens with two LEDs (`flashFace`).
 - **The H** (`redrawH`): the H on the camera island is replaced with an outline traced from a photo of the real phone (`H_PHOTO`). The island's printed layer shows its texture upside down, so the H is drawn flipped.
+- **One call sets the whole look** (`looker`, returned as `look(state)`): how open it is, how much it is turned to glass, how much the coil and chip glow, whether the chip is lit (awake), the key's battery (in, being dragged, or out) and whether the key's buttons are lit. In glass, every part except the RFID parts (`RFID_PARTS`: each object's coil and chip) fades to 14% opacity but still writes depth, because the depth-of-field pass would otherwise blur it as if it were far away. Only what changed is touched, so calling it every frame costs nothing.
+- **Added parts.** The fob gets a coin battery (`addCoinBattery`, 18 mm, with its + face drawn on a canvas), because a real key has one and scene 3 pulls it out. The phone gets a small NFC chip (`addNfcChip`) beside its antenna's feed, so the "Chip" label points at a real object. The lab adds a reader pad (`readerPad`: a metal puck with a three-turn copper coil under smoked glass, looking like no particular brand) and a half see-through metal plate (`metalPlate`).
 
 **Why it is built this way.** The teammate's models are kept untouched on disk; every change happens when they load, so a newer model can be dropped in.
 
@@ -148,29 +154,154 @@ Owner: Mina Vian · 2026-11-20 · Issue #5
 ---
 
 ### The story: a film played by scrolling (`js/story.js`, `js/landing.js`)
-Owner: Mina Vian · 2026-11-21 · Issue #9
+Owner: Mina Vian · 2026-11-21, updated 2026-11-21 · Issues #9, #19
 
-**What it does.** After the first screen, scrolling plays a short film instead of moving a page:
-1. The three objects drop out of the diagonal into a straight line, and the title "This is RFID technology." appears.
-2. The key fob is chosen: the phone and card drift out of focus and away, and the fob moves to the right with text on the left.
-3. The fob opens: its front shell swings off, and the chip on its little circuit board and the copper coil step out.
-4. The shells slide out of frame, the view closes in on the coil and the chip, and labelled lines point out the copper antenna coil, the tuning capacitors and the transponder chip.
+**What it does.** After the first screen, scrolling plays the first two minutes of the script (`SCRIPT.md`) like a film:
+1. **Look inside.** The three objects drop into a line under "This is RFID." They turn to glass, and inside each one a copper coil and a tiny chip glow, each labelled `Coil` and `Chip`.
+2. **No battery.** The key comes forward and opens. Labels point out its buttons, its battery, its RFID coil and its RFID chip. The visitor drags the battery out (or scrolling pulls it out): "The buttons die. The coil and the chip don't care." Then the card comes back in glass: "Your bank card has no battery at all. So what powers its chip?"
+3. **The reader.** The key closes, stays in glass, and the reader pad rises under it. From here the lab (`js/lab.js`) takes over.
 
-A chapter bar at the bottom (Intro, RFID, Key fob, Inside) works like a video's scrubber; clicking a chapter jumps to it.
+A chapter bar at the bottom (Intro, RFID, Inside, No battery, The reader, Break it) works like a video's scrubber. On phones it shows the current chapter's name and a dot for each of the others.
 
 **How it works.**
-- **Progress in screens.** `landing.js` turns the scroll position into `scrollNow`, measured in screens (1 = one window height of scrolling), and eases it toward the real scroll position each frame, so even a mouse wheel's steps feel like smooth playback.
-- **One timeline.** `story.js` holds the timing (`TIME`) and `timeline(s)`, which turns `s` into progress values from 0 to 1 for each beat: the hero leaving, each object's drop, the title, the fob being chosen, opening, the close-up, each label and each block of text. Everything is a pure function of `s`, so scrolling back up replays it exactly in reverse.
-- **The 3D poses** (`storyPoses` in `landing.js`) blend each object from its carousel pose to its place in the line (`rowPose`, with a gravity fall and a small bounce), then to the featured pose. The featured pose is not hard-coded: `fit` measures the open fob at its current angle and works out where it must stand, and how big it must be, to fill the right-hand area (`featureRect`), or during the close-up just the coil and the chip (`insideRect`, `INSIDE_PARTS`). The fob is also brought closer to the camera so the depth-of-field blur never softens it.
-- **The words** (`paint` in `story.js`) are real HTML, faded and moved with styles.
-- **The labels** (`CALLOUTS`) follow their parts. Each frame, `points` reports where each part and the piece it belongs to are on screen (their bounding boxes). Each label is placed just outside that piece, on the side given by `side` (`narrowSide` on phones), so it never covers the object at any screen size; if there's no room on the right it moves to the top. Its line runs straight from a spot on the part (`aim`) to the label's nearest edge.
-- **Speed.** Objects that have left the frame are hidden, the shells are skipped once they are out of view, and the words are only repainted when the scroll position changes. Frames measured at 0.7 to 5.6 ms on the test machine.
+- **Progress in screens.** `landing.js` turns the scroll position into `scrollNow`, measured in screens (1 = one window height), and eases it toward the real scroll position, so a mouse wheel's steps feel like smooth playback.
+- **One timeline.** `story.js` holds the timing (`TIME`) and `timeline(s)`, which turns `s` into progress values from 0 to 1 for each beat. Everything is a pure function of `s` except one thing the visitor does by hand: the battery. Pulling it out is remembered (and animated over 0.7 s) until the visitor scrolls back before the key opened.
+- **The battery handle** is a real button over the battery (`.battery-handle`). Dragging it more than 22 mm (in the key's own size) frees the battery. Enter, Space or an arrow key does the same, so it works without a mouse.
+- **The 3D poses** (`storyPoses` in `landing.js`): each object blends from its carousel pose to its place in the line, then the key to its featured pose. That pose is measured, not hard-coded: `fit` finds where the open key must stand to fill the right-hand area. In the lab, poses come from the lab's state: the key sits `distance` meters above the pad, with depth worked out from the camera's tilt, so the closer object always draws in front.
+- **Looks.** Each frame, `storyPoses` also writes a look for each object (`looks`): glass, glow, chip light, battery and buttons. `render` hands them to `look()` in `models.js`.
+- **The labels** follow their parts. Each frame, `points` reports where each part is on screen, for any of the objects (`"object:part"`, with `*` for the whole object and `coil` or `chip` for its RFID parts). Each label sits just outside its frame on the side given, and its line runs straight to it.
 
-**Why it is built this way.** The page should feel like a video, not an ordinary web page, which would read as basic to judges. A film tied to the scroll keeps the visitor in control (they can stop, go back, or jump with the chapter bar) while still feeling like a video. Keeping the timing in one pure function makes it easy to tune and impossible to get out of sync.
+**Why it is built this way.** The page should feel like a film, but the brief rejects videos, so the visitor drives it: scrolling plays it, and the first hands-on moment (pulling the battery) comes at about 0:25. Keeping the timing in one pure function makes it easy to tune and impossible to get out of sync.
 
-**How to check it.** Serve the folder, open it and scroll. `?t=20` skips the opening; with `?debug`, `__hero.state.scroll` shows the progress and `__hero.bench(60)` measures a frame. Check at desktop size and at phone size (words below the objects).
+**How to check it.** Serve the folder, open it and scroll. With `?debug`, `__hero.state.scroll` shows the progress. Drag the dashed ring over the battery in the "No battery" chapter.
 
 **Likely questions.**
-- Q: Is the open key fob accurate? A: The parts are the team's model: a chip on a small circuit board with two tuning capacitors, and a copper coil (in the real thing, sealed in resin), which is what an RFID transponder contains. The labels describe what each part does.
-- Q: What if someone doesn't scroll? A: A "Scroll" cue sits under the first screen, and scrolling (or the keyboard's Page Down or Space) plays the film.
-- Q: What about reduced motion? A: The film only moves when the visitor scrolls, and the easing toward the scroll position is switched off.
+- Q: Does a real key have a coin battery? A: Yes, for its buttons, which send a radio signal to unlock the car. The model has none, so the film adds one. The RFID part (coil and chip) needs no battery, which is the point of the scene.
+- Q: What if someone doesn't scroll or drag? A: A "Scroll" cue sits under the first screen, and scrolling alone pulls the battery out and brings the key to the reader.
+
+---
+
+### The simulation: physics, protocol and reader (`js/rfid/`)
+Owner: Mina Vian · 2026-11-21 · Issue #19
+
+**What it does.** Everything the site shows reacting is computed here, from the visitor's inputs, in real units. Seven small files, each with one job:
+
+| File | Job |
+|---|---|
+| `physics.js` | The coils: the field, the voltage at the chip, whether it wakes, and the size of its answer |
+| `iso14443a.js` | The card standard both sides share: frames, check bits, CRC_A, and how bits become pauses and flickers |
+| `lf.js` | The car key's 125 kHz message (the EM4100 format: a header, the ID, row and column check bits) |
+| `tag.js` | The chips: the card's chip with the standard's states, and the key's chip |
+| `air.js` | Turns pauses and switch patterns into the samples a reader measures, with noise |
+| `reader.js` | The receiver: reads IDs from samples alone, and runs a whole conversation with a card |
+| `channel.js` | Joins a reader to the cards in its field, and records every exchange for drawing |
+
+**How it works.**
+- **Physics** (`physics.js`, `solve`). The reader's coil and the tag's coil are treated as coaxial circular loops of the real parts' sizes (as circles of the same area). Their link is the mutual inductance from Maxwell's formula with elliptic integrals (`loopMutual`, `ellipticKE`), times the cosine of the angle between them. The voltage induced in the tag's coil is V = ω·M·I (Faraday's law). The tag is a tuned circuit: the coil (inductance from its size and turns, `coilInductance`) in series with the capacitor and the chip, solved with complex numbers. The chip is modelled as a resistor. Above its limit (3.3 V for the card) it soaks up the extra, which looks like a smaller resistor; `solve` finds that resistor by bisection.
+- **Calibration** (runs once). The card's chip load is set so it wakes exactly where the pad's field falls to 1.5 A/m, the standard's minimum (ISO/IEC 14443-2); that puts the pad's range at 4.85 cm. The pad's current is set so its field at the centre is 7.5 A/m, the standard's maximum. The car's reader is set so the key wakes up to 4 cm away. The card's chip ends up drawing about 5 mW and the key's about 75 µW, both realistic.
+- **The answer.** When the chip closes its switch, it changes the impedance the tag reflects into the reader's coil, (ωM)²/Z, and the reader's current changes by the fraction `dip`. That dip is the answer.
+- **Metal** is a perfect conductor, handled with mirror images: a second reader coil behind the plate, mirrored, with the current reversed (cutting the field at the tag), and a mirror of the tag's own coil (lowering its inductance, so its tuning rises).
+- **The card standard** (`iso14443a.js`). Reader to card: each bit is placed as a pause by modified Miller coding (`millerPauses`), and the card decodes the pauses back (`millerDecode`). Card to reader: Manchester coding on an 847.5 kHz subcarrier (`manchesterSwitch`): flicker in the first half of a bit is a 1, in the second half a 0. Every byte carries an odd parity bit; the longer messages carry CRC_A. The card waits the standard's delay before answering (`answerDelay`).
+- **The chips** (`tag.js`). The card's chip only ever gets the bits it decoded from pauses in the field, and only answers by choosing bits for its switch. It follows the standard's states (IDLE, READY, ACTIVE, HALT): it answers "Anyone there?" with ATQA, its ID during anticollision (only if its ID starts with the bits the reader names), and SAK when selected. A card with random IDs makes up a new one, starting with 08, each time it powers up.
+- **The reader** (`reader.js`) gets nothing but samples. `hearCard` measures the noise in the quiet stretch before a card may answer, then slides a 16-sample window along, correlating it with a sine and cosine at 847.5 kHz to measure the flicker. It finds the start of the answer, then reads each bit by comparing its two halves; flicker in both halves, about equally, is a clash between two cards. `activate` runs the whole conversation: REQA, then anticollision (narrowing down at each clash by choosing a side), then SELECT, with every check bit and check number tested. `hearKey` tries every alignment of the key's message until one passes all its checks.
+- **The channel** (`channel.js`) is the only file that knows both sides. It renders each exchange, lets each powered card hear and answer, and adds each card's dip to the reader's samples. A card whose storage capacitor can't carry it through a pause resets instead of answering.
+
+**Why it is built this way.** The brief says outputs must be computed from inputs, and the organisers' own example falls short because its receiver could peek at the sender's data. Here the reader is a separate file that only gets samples, and a test checks that it never refers to the tag, the channel or the physics. Every file works both as a plain browser script and in Node, so the same code runs on the site and in the tests.
+
+**How to check it.** Run `node --test tests/` or open `tests/` in the browser. In the console, `RFID.physics.solve({ tag: 'card', distance: .03 })` returns the numbers for a card 3 cm from the pad.
+
+**Likely questions.**
+- Q: Why model the chip as a resistor? A: To the coil, a running chip is a load drawing power. A resistor is the simplest honest model of that. The limiter makes it a smaller resistor when there is extra power, as a real chip's shunt regulator does.
+- Q: Is the car key's protocol real? A: The key speaks the EM4100 format, a real and common 125 kHz read-only format. Real car keys differ by maker and many add a secret handshake on top; the scene only needs the part they share: a battery-free chip answering through the field.
+- Q: What is simplified? A: The coils are treated as circles of the same area; the reader holds its current steady; metal is a perfect conductor; noise is plain random noise. The tests check the parts that are exact: the standard's own CRC examples, the coding, and that 1.5 A/m wakes the card.
+
+---
+
+### The lab: scenes 4 and 5 (`js/lab.js`)
+Owner: Mina Vian · 2026-11-21 · Issue #19
+
+**What it does.** The reader and the tag, live. The visitor drags the key toward the reader (scrolling also brings it closer). As it comes close, the five steps on the left light up one by one, and each step only lights when it really happens in the simulation:
+1. the field;
+2. electricity in the key's coil;
+3. the chip waking;
+4. the chip answering;
+5. the reader reading the ID.
+
+The volts meter beside the key shows the chip's voltage against its wake-up line. The strip shows the reader's signal, and the reader's display fills in the ID, `3F 9A 12 C7`, digit by digit. In scene 5, controls appear: distance, angle, a metal plate and a key/card switch. When the read fails, one line says why: too far, turned, or metal.
+
+**How it works.**
+- **Every frame**, `update` calls `physics.solve` with the key's distance (plus about a millimetre of hand drift, so the edge flickers like a real one), angle and metal plate.
+- **The key's answer** is made one bit at a time, slowed down to 85 ms per bit (really 512 µs). Each bit becomes 16 samples, dipped by the physics' `dip` and with the reader's noise added. The reader decides each bit from those samples. Digits appear as soon as their four bits are heard, and when a whole message has passed, `reader.hearKey` checks it from the samples alone before the display turns green.
+- **The card** answers only when asked: each time it wakes, a whole conversation runs through `channel` and `reader.activate`, and the strip plays the recorded samples back over seven seconds.
+- **Field lines** are traced through the field of the reader's coil (`physics.loopField`), plus its mirror image when there is metal. Lines that pass through the tag's coil are drawn in copper. They are only recomputed when the reader, the metal or the tag's height changes.
+- **The reason line** names the one change that would fix the read: metal first, then the angle, then the distance (`reasonFor`).
+
+**Why it is built this way.** The visitor's first real input changes real outputs, so the lesson comes from doing: closer, flat, and away from metal.
+
+**How to check it.** Scroll to "The reader" and drag the key. With `?debug`, `__lab.bits` shows the bits the reader decided, and `__lab.fastForward(140)` plays 140 bits at once.
+
+**Likely questions.**
+- Q: Is the ID really decoded, or just shown? A: It is decoded. The display only shows what the reader read from the samples, and it only turns green when the message passes its row and column checks.
+- Q: Why 2.5 cm when scrolling? A: Close enough to read, and close enough to the edge that a metal plate or a 70° turn breaks it, so every lesson is one click away.
+
+---
+
+### Take it apart: scenes 6 to 17 (`js/deep.js`)
+Owner: Mina Vian · 2026-11-21 · Issue #19
+
+**What it does.** Twelve scenes after the film, each one layer deeper into the same idea, each with one thing to try:
+- **6** Distance and coil size against field and volts.
+- **7** A still magnet makes nothing.
+- **8** The tuning capacitor.
+- **9** Metal: field lines with a plate.
+- **10** Riding through the pauses: the chip's stored volts.
+- **11** Load modulation at true size and zoomed.
+- **12** The subcarrier, in a spectrum.
+- **13** Manchester coding against a drifting clock.
+- **14** Check bits and CRC with noise.
+- **15** The whole conversation as a river and a chat.
+- **16** Two cards at once.
+- **17** Why a phone can't read a car key.
+
+**How it works.**
+- `plate(id, draw)` wires each scene: its canvas, inputs and readout. It redraws when an input changes, and only while it is on screen (an `IntersectionObserver`). Scenes 7 and 15 move, so they draw every frame while visible.
+- Every number comes from `js/rfid`. Scene 6 sweeps `physics.solve` across distance. Scene 8 sweeps frequency (`physics.sweep`) and finds the range by bisection (`physics.range`). Scene 9 traces field lines with the metal's mirror coil. Scene 10 runs the REQA command's real pauses through the chip's storage capacitor (200 µA drawn, reset below 1.8 V). Scene 11 plots a real exchange's samples. Scene 12 takes a Fourier transform (`fft`, written here) of a card's answer with and without the flicker. Scene 13 decodes a letter with a reader whose clock runs fast or slow. Scenes 14 to 16 run `reader.activate` on real channels: with noise and the checks on or off; with a packet stolen on the air (its samples wiped, so the check fails and the phone asks again); with up to three cards. Scene 17 plots the tag's tuning curve against the reader's frequency.
+
+**Why it is built this way.** The brief asks for one idea taken as far as possible. Each scene takes away or changes one part of the same mechanism, so the explanation comes from what the visitor sees break. That is what the organisers' example says a winning entry would do.
+
+**How to check it.** Scroll past the film, then try each control. Every readout should change.
+
+**Likely questions.**
+- Q: Scene 8 says the card's range only shrinks, but the key starves. Why the difference? A: A bank card's chip draws about 5 mW, so even with tuning it uses most of what arrives. The key's chip draws about 75 µW and depends on tuning to build up enough voltage. Without the capacitor, its range falls from 4 cm to under 1 cm.
+- Q: In scene 14, why doesn't a wrong ID get all the way through with the checks off? A: Because the card checks its own ID when the phone selects it, and refuses a wrong one. That second layer of checking is real.
+
+---
+
+### The checks (`tests/`)
+Owner: Mina Vian · 2026-11-21 · Issue #19
+
+**What it does.** 24 checks on the simulation, which run in Node (`node --test tests/`) and in the browser (open `tests/`), with the same list (`tests/cases.js`).
+
+**How it works.** The checks fall into four groups:
+- **The standard's own examples:** CRC_A of 50 00 is 57 CD; of E0 50, BC A5.
+- **The coding:** 300 random commands survive the pauses; the key's message fails on any single flipped bit.
+- **The reader:**
+  - it never refers to the tag;
+  - it reads 100 random IDs from samples alone;
+  - in heavy noise it fails rather than trusting a wrong ID;
+  - with its checks off, it accepts a wrong ID that the card then refuses;
+  - with two cards, it picks the right one;
+  - without a storage capacitor, the card never answers.
+- **The physics:**
+  - 1.5 A/m wakes the card;
+  - 7.5 A/m at the pad's centre;
+  - Faraday: a slow field makes no voltage;
+  - the capacitor's effect;
+  - the tuning peak;
+  - metal;
+  - the cosine of the angle;
+  - Maxwell's formula against the small-loop formula far away.
+
+**Why it is built this way.** No libraries and no build step: Node's own test runner, and a plain page for the browser. Judges can open the checks themselves.
+
+**How to check it.** `node --test tests/`; or serve the folder and open `/tests/`. Every line should be green.

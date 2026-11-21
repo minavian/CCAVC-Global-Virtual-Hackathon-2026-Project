@@ -43,11 +43,23 @@
   const PUSH = { 'front-housing': [.05, .16, .03], 'rear-housing': [-.01, -.16, -.02] };
   const clamp01 = v => Math.max(0, Math.min(1, v));
 
+  // The RFID part of each object: its coil and its chip. They glow copper in the film, and
+  // stay solid while everything else turns to glass. Labels point at `coil` and `chip`.
+  const RFID_PARTS = {
+    'Key fob': { coil: 'copper-winding-and-leads', chip: 'rfid-ic-package', parts: ['antenna-coil', 'rfid-chip'] },
+    'Phone': { coil: 'nfc-antenna', chip: 'nfc-chip', parts: ['nfc-antenna', 'nfc-chip'] },
+    'Contactless card': { coil: 'perimeter-and-coupling-antenna', chip: 'silicon-die',
+      parts: ['perimeter-and-coupling-antenna', 'silicon-die', 'die-underfill', 'module-antenna'] }
+  };
+  const COPPER = 0xd08040;
+
   function load(T, GLTFLoader, reduceMotion) {
     const loader = new GLTFLoader();
     return Promise.all(FILES.map(async ([name, url, behave]) => {
       const gltf = await loader.loadAsync(url);
       const model = new T.Group(), shell = gltf.scene;
+      if (name === 'Phone') addNfcChip(T, shell);
+      if (name === 'Key fob') addCoinBattery(T, shell);
       const sealed = SEALED[name].map(n => shell.getObjectByName(n)).filter(Boolean);
       for (const part of sealed) part.visible = false;
       const revealed = sealed.filter(part => !STAY_HIDDEN.includes(part.name));
@@ -60,9 +72,172 @@
       // so skip recomputing those transforms every frame.
       shell.traverse(part => { part.updateMatrix(); part.matrixAutoUpdate = false; });
       const open = opener(gltf.animations.find(clip => clip.name === 'Explode'), shell, revealed);
-      return { name, model, span: Math.max(size.x, size.y), open, part: n => shell.getObjectByName(n),
-        action: behave(T, shell, model, reduceMotion) };
+      // The behaviours replace some materials, so the glass look is set up after them.
+      const action = behave(T, shell, model, reduceMotion);
+      const look = looker(T, name, shell, open, revealed);
+      return { name, model, span: Math.max(size.x, size.y), open, look, rfid: RFID_PARTS[name],
+        part: n => shell.getObjectByName(n), action };
     }));
+  }
+
+  /*
+   * look(state) sets how an object appears, all at once:
+   *   open, push   as for open()
+   *   glass        0–1: the shell turns to glass, and the coil and chip show through it
+   *   glow         0–1: the coil and chip glow copper
+   *   chip         0–1: the chip lights up (awake)
+   *   battery      the key's coin battery: { out (0–1, pulled out), x, y (drag offset, m) }
+   *   power        0–1: the key's buttons are lit (its battery is in)
+   * Only what changed is touched, so calling it every frame is cheap.
+   */
+  function looker(T, name, shell, open, revealed) {
+    const rfid = RFID_PARTS[name];
+    const inRfid = new Set(), coil = new Set(), chipParts = new Set();
+    for (const n of rfid.parts) shell.getObjectByName(n)?.traverse(o => inRfid.add(o));
+    for (const n of [rfid.coil, 'module-antenna']) shell.getObjectByName(n)?.traverse(o => coil.add(o));
+    shell.getObjectByName(rfid.chip)?.traverse(o => chipParts.add(o));
+    // The parts shown through the glass: the RFID parts, and the key's battery.
+    const throughGlass = [...rfid.parts, 'coin-battery'].map(n => shell.getObjectByName(n)).filter(Boolean);
+    const glassy = [], glowing = [];
+    shell.traverse(o => {
+      if (!o.isMesh) return;
+      o.material = o.material.clone();
+      const m = o.material;
+      if (coil.has(o) || chipParts.has(o)) glowing.push({ m, chip: chipParts.has(o), base: m.emissive ? m.emissive.clone() : null,
+        color: m.color ? m.color.clone() : null });
+      if (!inRfid.has(o) && o.name !== 'coin-battery-cell' && o.name !== 'coin-battery-face')
+        glassy.push({ m, opacity: m.opacity, transparent: m.transparent, depthWrite: m.depthWrite });
+    });
+    const battery = shell.getObjectByName('coin-battery');
+    const batteryHome = battery ? battery.position.clone() : null;
+    const inlays = ['lock-button-inlay', 'unlock-button-inlay'].map(n => shell.getObjectByName(n)).filter(Boolean)
+      .map(o => ({ m: o.material, base: o.material.emissive ? o.material.emissive.clone() : null }));
+    const copper = new T.Color(COPPER), white = new T.Color(0xfff3dd);
+    let last = '';
+    return (s = {}) => {
+      const glass = s.glass || 0, glow = s.glow || 0, chip = s.chip || 0, power = s.power ?? 1;
+      const b = s.battery || { out: 0, x: 0, y: 0 };
+      const key = [s.open || 0, s.push || 0, glass, glow, chip, power, b.out, b.x, b.y].map(v => (+v).toFixed(4)).join('|');
+      if (key === last) return;
+      last = key;
+      open(s.open || 0, s.push || 0);
+      for (const g of glassy) {
+        const see = glass > .001;
+        if (g.m.transparent !== (see || g.transparent)) { g.m.transparent = see || g.transparent; g.m.needsUpdate = true; }
+        // Glass still writes depth: the composite's depth of field reads it, and a shell with
+        // no depth would be blurred as if it were far away.
+        g.m.opacity = g.opacity * (1 - .86 * glass);
+      }
+      // The RFID parts (and battery) show through the glass even while the object is closed.
+      if (glass > .001) for (const part of throughGlass) part.visible = true;
+      else for (const part of throughGlass) part.visible = (s.open || 0) > 0 && revealed.includes(part) || part.name === 'coin-battery' && (s.open || 0) > 0;
+      for (const g of glowing) {
+        if (!g.base) continue;
+        const amount = g.chip ? Math.max(glow * .55, chip) : glow;
+        g.m.emissive.copy(g.base).lerp(g.chip && chip > glow * .55 ? white : copper, Math.min(1, amount) * .9);
+        g.m.emissiveIntensity = 1 + amount * (g.chip ? 2.2 : 2.4);
+        if (g.color && !g.chip) g.m.color.copy(g.color).lerp(copper, Math.min(1, amount) * .7);
+      }
+      for (const g of inlays) {
+        if (!g.base) continue;
+        g.m.emissive.copy(g.base).lerp(new T.Color(0xcfe6ff), power * .55);
+      }
+      if (battery) {
+        battery.position.set(batteryHome.x + b.x - b.out * .05, batteryHome.y + b.y - b.out * .02, batteryHome.z - .004 * (s.open || 0) - b.out * .01);
+        battery.updateMatrix();
+        battery.traverse(o => { if (o.material) { o.material.transparent = b.out > 0; o.material.opacity = 1 - Math.max(0, b.out - .6) / .4; } });
+        if (b.out >= 1) battery.visible = false;
+      }
+      shell.updateMatrixWorld(true);
+    };
+  }
+
+  // The phone's NFC chip: a small dark package on the main board, beside the antenna's feed.
+  // (The model has the antenna but no separate chip, so the film can point at a real object.)
+  function addNfcChip(T, shell) {
+    const chip = new T.Mesh(new T.BoxGeometry(.004, .004, .0009),
+      new T.MeshStandardMaterial({ color: 0x1c1d20, roughness: .45, metalness: .2, emissive: 0x000000 }));
+    chip.name = 'nfc-chip';
+    chip.position.set(-.021, .058, -.0012);
+    shell.add(chip);
+  }
+
+  // A coin battery inside the key (the model has none, and a real key has one): 18 mm across,
+  // steel, with its + face, in the bottom of the case behind the coil.
+  function addCoinBattery(T, shell) {
+    const group = new T.Group();
+    group.name = 'coin-battery';
+    const steel = new T.MeshStandardMaterial({ color: 0xbfc2c7, metalness: .95, roughness: .28 });
+    const cell = new T.Mesh(new T.CylinderGeometry(.009, .009, .0032, 64), steel);
+    cell.name = 'coin-battery-cell';
+    cell.rotation.x = Math.PI / 2;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 256;
+    const c = canvas.getContext('2d');
+    const shine = c.createRadialGradient(100, 90, 10, 128, 128, 128);
+    shine.addColorStop(0, '#eef0f3'); shine.addColorStop(1, '#a9adb3');
+    c.fillStyle = shine; c.beginPath(); c.arc(128, 128, 128, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = 'rgba(40, 44, 52, .35)'; c.lineWidth = 6; c.beginPath(); c.arc(128, 128, 118, 0, Math.PI * 2); c.stroke();
+    c.fillStyle = 'rgba(30, 34, 40, .7)';
+    c.font = '700 92px "Inter Tight", Arial, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText('+', 128, 112);
+    c.font = '600 30px "Inter Tight", Arial, sans-serif';
+    c.fillText('3V', 128, 182);
+    const map = new T.CanvasTexture(canvas);
+    map.colorSpace = T.SRGBColorSpace;
+    const face = new T.Mesh(new T.CircleGeometry(.0089, 64), new T.MeshStandardMaterial({ map, metalness: .8, roughness: .3 }));
+    face.name = 'coin-battery-face';
+    face.position.z = -.0017;
+    face.rotation.y = Math.PI;
+    group.add(cell, face);
+    group.position.set(0, -.0195, -.0029);
+    shell.add(group);
+  }
+
+  // ---------- Things the film adds around the objects ----------
+  // A reader pad: a brushed metal puck with a copper coil under a smoked glass top. It looks
+  // like no particular brand, because it stands for every reader. Lies flat: its axis is +Y.
+  function readerPad(T) {
+    const model = new T.Group(), shell = new T.Group();
+    const metal = new T.MeshPhysicalMaterial({ color: 0xc9c6c0, metalness: .92, roughness: .34, clearcoat: .4 });
+    const base = new T.Mesh(new T.CylinderGeometry(.045, .047, .008, 96), metal);
+    const glass = new T.Mesh(new T.CylinderGeometry(.0415, .0415, .0012, 96),
+      new T.MeshPhysicalMaterial({ color: 0x1b1c1f, roughness: .12, metalness: 0, clearcoat: 1, transparent: true, opacity: .74 }));
+    glass.position.y = .0046;
+    const copper = new T.MeshStandardMaterial({ color: 0xb87333, metalness: 1, roughness: .3, emissive: 0x000000 });
+    const coil = new T.Group();
+    coil.name = 'reader-coil';
+    for (const r of [.0335, .0350, .0365]) {
+      const ring = new T.Mesh(new T.TorusGeometry(r, .00055, 8, 160), copper);
+      ring.rotation.x = Math.PI / 2;
+      coil.add(ring);
+    }
+    coil.position.y = .0036;
+    shell.add(base, coil, glass);
+    model.add(shell);
+    const base3 = new T.Color(0x000000), glowColor = new T.Color(COPPER);
+    let last = -1;
+    return {
+      name: 'Reader', model, span: .094, part: n => shell.getObjectByName(n),
+      look(s = {}) {
+        const g = s.glow || 0;
+        if (g === last) return;
+        last = g;
+        copper.emissive.copy(base3).lerp(glowColor, g * .8);
+        copper.emissiveIntensity = 1 + g;
+      },
+      action: { update() {} }
+    };
+  }
+
+  // A metal plate, to slide behind the tag. Lies flat.
+  function metalPlate(T) {
+    const model = new T.Group();
+    // Half see-through, so the tag stays visible under it.
+    const plate = new T.Mesh(new T.BoxGeometry(.07, .0016, .05),
+      new T.MeshPhysicalMaterial({ color: 0xa9adb3, metalness: 1, roughness: .38, clearcoat: .2, transparent: true, opacity: .5 }));
+    model.add(plate);
+    return { name: 'Metal plate', model, span: .07, part: () => null, look() {}, action: { update() {} } };
   }
 
   // `open(e, push)` poses the model's own "Explode" animation at e (0 = closed, 1 = fully
@@ -343,5 +518,5 @@
     };
   }
 
-  window.RFIDModels = { load };
+  window.RFIDModels = { load, readerPad, metalPlate, RFID_PARTS };
 })();
