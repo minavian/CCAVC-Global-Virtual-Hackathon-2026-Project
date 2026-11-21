@@ -15,7 +15,6 @@ const keyboardHint = stage.querySelector('.scan-keyboard');
 const next = stage.querySelector('.scan-next');
 const status = stage.querySelector('.scan-status');
 const reveal = stage.querySelector('.scan-reveal');
-const riverSection = document.querySelector('#bit-river');
 const deep = document.querySelector('#take-apart');
 const motion = matchMedia('(prefers-reduced-motion: reduce)');
 const CARD = 2;
@@ -161,7 +160,7 @@ function finishScan() {
   playing = false;
   manualPosition = null;
   completed = true;
-  depth.hidden = track.hidden = riverSection.hidden = deep.hidden = false;
+  depth.hidden = track.hidden = deep.hidden = false;
   keyboardHint.hidden = true;
   paint();
   if (moveFocus) {
@@ -242,9 +241,6 @@ function paint(now = performance.now()) {
     if (borrowed) restoreLandingCard();
     if (sectionFocus === story) {
       story.querySelector('.chapters button').focus({ preventScroll: true });
-      sectionFocus = null;
-    } else if (sectionFocus === riverSection && riverSection.getBoundingClientRect().top <= 1) {
-      riverSection.focus({ preventScroll: true });
       sectionFocus = null;
     }
     return;
@@ -491,7 +487,7 @@ stage.querySelector('.scan-replay').addEventListener('click', () => {
   const origin = scene?.getDevicePose();
   completed = detected = false;
   hinted = false;
-  depth.hidden = track.hidden = riverSection.hidden = deep.hidden = true;
+  depth.hidden = track.hidden = deep.hidden = true;
   sectionFocus = null;
   status.removeAttribute('data-success');
   status.textContent = fallback ? 'The 3D view is unavailable.' : '';
@@ -510,20 +506,14 @@ stage.querySelector('.scan-replay').addEventListener('click', () => {
   grab.focus({ preventScroll: true });
 });
 
-function linkSection(link, anchor, focus) {
-  link.addEventListener('click', event => {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    event.preventDefault();
-    sectionFocus = focus;
-    const offset = anchor === track ? experience.clientHeight : 0;
-    scrollTo({ top: scrollY + anchor.getBoundingClientRect().top - offset,
-      behavior: motion.matches ? 'instant' : 'smooth' });
-    wake();
-  });
-}
-
-linkSection(stage.querySelector('.scan-story-link'), track, story);
-linkSection(story.querySelector('a[href="#bit-river"]'), riverSection, riverSection);
+stage.querySelector('.scan-story-link').addEventListener('click', event => {
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  sectionFocus = story;
+  scrollTo({ top: scrollY + track.getBoundingClientRect().top - experience.clientHeight,
+    behavior: motion.matches ? 'instant' : 'smooth' });
+  wake();
+});
 
 new IntersectionObserver(([entry]) => {
   inView = entry.isIntersecting;

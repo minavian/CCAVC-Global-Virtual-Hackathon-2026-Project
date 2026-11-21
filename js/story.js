@@ -42,7 +42,7 @@
     [2.55, 3.0, 'The key has a battery.'],
     [6.0, 6.45, 'This is a reader.'],
     [7.6, 7.9, 'Now the chip replies.'],
-    [7.9, 8.2, 'It has no radio.'],
+    [7.9, 8.2, 'It uses the reader’s field.'],
     [8.2, 8.55, 'It takes more power, then less.'],
     [8.55, 8.9, 'The reader feels each change.']
   ];

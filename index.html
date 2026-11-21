@@ -43,7 +43,6 @@
   <script src="js/deep.js" defer></script>
   <script src="js/landing.js" defer></script>
   <script type="module" src="js/scan.js"></script>
-  <script type="module" src="bit-river/bit-river.js"></script>
 </head>
 <body>
   <main>
@@ -130,21 +129,12 @@
             <button type="button">Power</button>
             <button type="button">Reply</button>
             <button type="button">Break it</button>
-            <a href="#bit-river">Bit River</a>
           </nav>
         </section>
       </div>
       <div class="scan-depth" aria-hidden="true" hidden></div>
       <div class="track" id="story-intro" aria-hidden="true" hidden></div>
     </section>
-
-    <section id="bit-river" aria-label="Bit River" tabindex="-1" hidden>
-      <rfid-bit-river>
-        <h2>Bit River</h2>
-        <p>A reader's field powers a passive tag. The tag changes the load on its antenna, and the reader detects those changes as bits.</p>
-      </rfid-bit-river>
-    </section>
-    <noscript><p><a href="bit-river/">Read about Bit River</a></p></noscript>
 
     <!-- Take it apart (js/deep.js). Every scene runs on the same simulation as the film. -->
     <section class="deep" id="take-apart" aria-labelledby="deep-title" hidden>

@@ -167,7 +167,7 @@ Written by OpenAI Codex for Akris Luno · 2026-11-21 · Issue #16
 **How it works.**
 
 - The carousel supplies the card’s screen position, size and rotation through `getPose()`. `borrowCard()` moves that same Three.js object from the landing scene to the scan scene. `drawHandoff()` starts with its rendered pose and blends it into the scan while the page scrolls.
-- `scan.js` projects the card and reader into screen coordinates. `paintGuidance()` moves a gesture cue toward the reader and passes pointer position, attention and distance to `drawScan()`. The card tilts with the pointer and gently rocks while hovered. The reader light responds as the card approaches. The card follows a captured mouse or touch pointer and returns to rest if released too far away. The simulated read unlocks the film, Bit River and the deeper experiments. Reduced motion keeps the instruction and light feedback while removing the gesture and tilt.
+- `scan.js` projects the card and reader into screen coordinates. `paintGuidance()` moves a gesture cue toward the reader and passes pointer position, attention and distance to `drawScan()`. The card tilts with the pointer and gently rocks while hovered. The reader light responds as the card approaches. The card follows a captured mouse or touch pointer and returns to rest if released too far away. The simulated read unlocks the film and the deeper experiments. Reduced motion keeps the instruction and light feedback while removing the gesture and tilt.
 - `drawScan()` follows the card from contact through the expanding wave to the centered reveal. The keyboard path places the hand around a point on the card so the grip moves with it. `SCAN_TIMING` aligns the chime, reader indicator, wave and heading fade.
 - OpenAI Codex for the project team · 2026-11-21. The scan and the film share a sticky viewport. `setStoryProgress()` moves the landing stage into that viewport and gives `drawStory()` the card's next screen position, size and rotation. The card is already at that pose when it returns to the landing stage. Scrolling backwards reverses the handoff.
 - If 3D setup fails, `scan.js` shows stills of the reader and card from Bit River. The **Scan card** button advances to the title and the chapters.
@@ -210,11 +210,11 @@ Written by OpenAI Codex for Akris Luno · 2026-11-21 · Issue #12. Embedded in t
 - `bit-river.js` registers `<rfid-bit-river>`. The element's scroll position sets the chapter and camera view. The chapter buttons move along the same scroll track. The paper background stays the same throughout.
 - `river.js` draws the reader's charging pulse and the card's copper reply. Drawing, packet positions, and drag checks use the same curve. `replyFront()` extends the reply as the visitor scrolls. `replySample()` illustrates the load modulation for byte `7B` of the simulated ID, least significant bit first. [NXP PN512 data sheet](https://www.nxp.com/docs/en/data-sheet/PN512.pdf)
 - Packet buttons drift along the curve, fade as they wrap, and pause in place while they have visible keyboard focus. `fadeText()` eases changes to the chapter copy and packet readout. Lifting a packet shows a missing notice followed by a replacement confirmation. Reduced motion keeps the packet effects static.
-- OpenAI Codex for the project team merged `feat/12-bit-river` at `1ca893a`. The mobile readout reserves space across chapters so the plot stays in place when packet text changes. The merged film leads to Bit River after the live lab as a close-up of the reply. Both the embedded and standalone views load bundled assets and fade from the card poster to the model after the first rendered frame.
+- OpenAI Codex for the project team merged `feat/12-bit-river` at `1ca893a`. The mobile readout reserves space across chapters so the plot stays in place when packet text changes. The bonus page loads bundled assets and fades from the card poster to the model after the first rendered frame.
 
-**Why it is built this way.** The element contains its own styles and controls so the same component works after the film and at `/bit-river/`.
+**Why it is built this way.** The illustrated packet interaction lives on the bonus page at `/bit-river/`. OpenAI Codex for the project team brought the copper signal treatment into the live lab, where it responds to the simulation.
 
-**How to check it.** Scroll past the live lab or choose **Bit River** in the chapter bar. Watch the reader's field form, then the copper reply travel back. Choose “Transmit,” then hover, tap, or use Tab to inspect a packet. Drag the packet away, use **Lift packet**, or press Delete while it has focus. Run `node --test bit-river/river.test.mjs` with Node 22.7 or newer to check the path, reveal, and sample bit timing.
+**How to check it.** Open `/bit-river/`. Watch the reader's field form, then the illustrated copper reply. Choose “Transmit,” then hover, tap, or use Tab to inspect a packet. Drag the packet away, use **Lift packet**, or press Delete while it has focus. Run `node --test bit-river/river.test.mjs` with Node 22.7 or newer to check the path, reveal, and sample bit timing.
 
 **Likely questions.**
 
@@ -235,7 +235,7 @@ Owner: Mina Vian · 2026-11-21, updated 2026-11-21 · Issues #9, #19
   - The card comes back: "Your bank card has no battery at all." and "So what powers its chip?"
 - **Power, Reply, Break it:** the lab (`js/lab.js`) runs these, and supplies the sentences that depend on what the visitor does.
 
-The chapter bar links Intro, Inside, No battery, Power, Reply, Break it and Bit River. The chapter names fit on phones as well.
+The chapter bar links Intro, Inside, No battery, Power, Reply and Break it. Scrolling past Break it takes the visitor straight to Take it apart. The chapter names fit on phones as well.
 
 **How it works.**
 - **Progress in screens.** OpenAI Codex for the project team merged the film after the scan on 2026-11-21. The start of the film track is the zero point for the chapter buttons and the 3D timeline. `landing.js` eases `scrollNow` toward that local scroll position so mouse wheel steps feel like smooth playback.
@@ -300,21 +300,22 @@ Owner: Mina Vian · 2026-11-21, updated 2026-11-21 · Issue #19
   3. "The field makes electricity in the coil."
   4. "Enough power wakes the chip."
   5. "The reader is the battery."
-- **Reply.** "Now the chip replies." "It has no radio." "It takes more power, then less." With each change, the key's coil glows brighter or dimmer. A trace under the reader, labelled "What the reader feels", dips with each change. The ID display fills in `3F 9A 12 C7`, decoded from those dips: "That's the 'ID' in RFID."
+- **Reply.** "Now the chip replies." "It uses the reader’s field." "It takes more power, then less." OpenAI Codex for the project team used the copper treatment from Bit River to highlight the coupled field lines and coils. The trace under the reader, labelled "What the reader feels", follows the same reply samples. The ID display fills in `3F 9A 12 C7`, decoded from those dips.
 - **Break it.** Three buttons (Turn it, Add metal, Use a card) and the drag. The sentence says what broke ("Too far. Not enough power.", "Turned. The field misses the coil.", "Metal pushes the field away.") and asks for the next way to break it. Then: "That's why you tap close and flat." After 4 idle seconds, a ghost hand lifts the key once.
 
 **How it works.**
 - **Every frame**, `update` calls `physics.solve` with the key's distance (plus about a millimetre of hand drift), angle and metal.
 - **The power sentences** come from the physics: out of reach, field only, electricity, awake. They only move forward one step at a time, and each stays at least 1.5 s, so a fast scroll can't skip one.
-- **The key's reply** is made one bit at a time, slowed to 70 ms per bit (really 512 µs). The reader decides each bit from those samples. When a whole message has passed, `reader.hearKey` checks it from the samples alone before the display turns green. At the "spell" moment the reader starts listening afresh, from the end of one message into the next one's header.
-- **The card** replies only when asked: each time it wakes, a whole conversation runs through `channel` and `reader.activate`, and the trace plays the samples back.
+- **The key's reply** is slowed to 70 ms per bit (really 512 µs). `sampleKey()` fills the current bit as it plays and uses its latest switch position to light the coils. When a whole message has passed, `reader.hearKey` checks it from the samples alone before the display turns green. The same reply continues from Reply into Break it.
+- **The card** replies when asked. The lab runs a conversation through `channel` and `reader.activate`, then plays the recording back in the trace. The recorded card switch pattern lights the coils during the card's part of the exchange.
+- **When the tag loses power**, the trace returns to its baseline, the copper response stops and the ID clears. The reader’s field remains visible. Reduced motion keeps the waveform and steady copper colour while suppressing the pulsing highlights.
 - **What broke** (`reasonFor`) is the one change that would fix the read: metal first, then the turn, then the distance.
 - **Timings people see** (how long a sentence stays, idle time) use real seconds. The simulation uses the frame clock.
 - **Sizes** come from the design frame (`geo.u`), like the rest of the film.
 
 **Why it is built this way.** The first hands-on part should teach by doing. Each sentence only appears when the thing it says is really happening in the simulation.
 
-**How to check it.** Scroll to Power and drag the key. With `?debug`, `__lab.bits` shows the bits the reader decided, and `__lab.fastForward(70)` plays 70 bits at once.
+**How to check it.** Go to Reply, then pull the key away or focus it and press Page Up. The copper response and waveform should stop together. Move it back to resume, then try Break it and **Use a card**. With `?debug`, `__lab.bits` shows the bits the reader decided, and `__lab.fastForward(70)` plays 70 bits at once.
 
 **Likely questions.**
 - Q: Is the ID really decoded? A: Yes. The display only shows what the reader read from the samples, and turns green only when the message passes its checks.

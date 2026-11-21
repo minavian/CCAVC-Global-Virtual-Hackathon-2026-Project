@@ -91,9 +91,9 @@ Each row is one moment. "On screen" is the only sentence showing at that moment.
 | When | On screen | Picture |
 |---|---|---|
 | The visitor scrolls | Now the chip replies. | Time slows; a small badge reads `Slowed down`. The view eases closer to the key and the reader. |
-| Next | It has no radio. | Hold on the chip. |
-| Next | It takes more power, then less. | A tiny switch beside the chip blinks. With each blink, the key's coil glows brighter, then dimmer. |
-| Next | The reader feels each change. | Under the pad, a line labelled `What the reader feels` dips with each blink. |
+| Next | It uses the reader’s field. | Hold on the chip. |
+| Next | It takes more power, then less. | The key's coil and the copper field lines brighten with the load changes. |
+| Next | The reader feels each change. | Under the pad, a line labelled `What the reader feels` dips in time with the highlight. Moving out of range leaves a flat reference line. |
 | Next | The changes spell the key's ID. | The dips fly up into the display under the reader, filling in `3F 9A 12 C7` piece by piece. |
 | The ID is complete and checked | That's the "ID" in RFID. | The display turns green, with a tick. |
 

@@ -480,7 +480,7 @@ html[data-intro] .chapters { opacity: 0; pointer-events: none; }
   transform-origin: 0 50%;
 }
 
-.chapters :is(button, a) {
+.chapters button {
   appearance: none;
   display: inline-grid;
   place-items: center;
@@ -496,13 +496,12 @@ html[data-intro] .chapters { opacity: 0; pointer-events: none; }
   white-space: nowrap;
   color: var(--muted);
   cursor: pointer;
-  text-decoration: none;
   transition: color .3s ease;
 }
 
-.chapters :is(button, a):hover, .chapters button[aria-current] { color: var(--ink); }
+.chapters button:hover, .chapters button[aria-current] { color: var(--ink); }
 .chapters button[aria-current] { font-weight: 800; }
-.chapters :is(button, a):focus-visible { outline: 1.5px solid var(--ink); outline-offset: 4px; border-radius: 4px; }
+.chapters button:focus-visible { outline: 1.5px solid var(--ink); outline-offset: 4px; border-radius: 4px; }
 
 /* Phones and tall windows: words on top, objects below. */
 @media (max-aspect-ratio: 1/1), (max-width: 760px) {
@@ -532,14 +531,9 @@ html[data-intro] .chapters { opacity: 0; pointer-events: none; }
 
   .scroll-cue { bottom: 64px; }
   .chapters { bottom: calc(env(safe-area-inset-bottom) + 6px); gap: clamp(4px, 1.3vw, 9px); width: max-content; max-width: calc(100% - 24px); }
-  .chapters :is(button, a) { min-width: 32px; font-size: 11px; letter-spacing: .015em; }
+  .chapters button { min-width: 32px; font-size: 11px; letter-spacing: .015em; }
 
   .lab-fine { display: none; }
-}
-
-@media (max-width: 365px) {
-  .chapters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); width: calc(100% - 24px); gap: 0 4px; }
-  .scroll-cue { bottom: 110px; }
 }
 
 /* ---------- Part 2: take it apart ---------- */
@@ -901,13 +895,6 @@ html[data-local-file] .copy .scan-link, html[data-local-file] .scan-sequence { d
 .scan-stage[hidden], .scan-stage [hidden] { display: none; }
 .scan-stage[data-view="reveal"] .scan-intro { visibility: hidden; }
 .scan-depth { height: 78svh; }
-
-rfid-bit-river:not(:defined) {
-  display: block;
-  max-width: 38rem;
-  margin: auto;
-  padding: 12vh 20px;
-}
 
 @media (max-height: 560px) {
   .scan-intro { padding-top: 12px; }
