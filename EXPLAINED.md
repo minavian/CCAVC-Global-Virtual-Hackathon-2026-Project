@@ -1,20 +1,20 @@
 # How this project works, explained by whoever wrote it
 
-In the interviews, **every team member must be able to explain any part of the project**, including the parts a teammate wrote. This file makes that possible. Every part of the code has an entry here, written by whoever built it, for a teammate who has never seen it.
+In the interviews, **every team member must be able to explain any part of the project**, including the parts a teammate or an AI tool wrote. This file makes that possible. Every part of the code has an entry here, written by whoever built it, for a teammate who has never seen it.
 
 ## Rules
 
-- **After you write or change code, add or update its entry here in the same pull request.** Everyone does this, without being asked.
+- **After you write or change code, add or update its entry here in the same pull request.** This applies to people and to AI agents. AI agents do it without being asked.
 - Write for a teammate who has not read the code: plain English, short sentences, no unexplained jargon.
 - One entry per part. If you change a part that already has an entry, update that entry rather than adding a new one.
-- Say who owns it and when.
+- Say who wrote it (a person, or which AI tool and for whom) and when.
 - If something is a simplification or a guess (a simulated value, a made-up threshold), say so.
 
 ## Template
 
 ```md
 ### <Part name> (`path/to/file`)
-Owner: <who> · <date> · Issue #<n>
+Written by <who> · <date> · Issue #<n>
 
 **What it does.** One or two sentences a visitor would understand.
 
