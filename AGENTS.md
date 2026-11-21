@@ -6,6 +6,7 @@
 
 ## GitHub workflow
 
+- Preserve edit history in Git by committing changes. If a file is too large for Git or the hosting service, notify the user.
 - Leave new issues unassigned. Claim an issue before starting and coordinate with the assignee before contributing to claimed work.
 - Branch from `main` for each issue and sync regularly. Use `<type>/<issue-number>-<short-description>`, such as `fix/15-navigation`. Git worktrees are optional.
 - Keep edits within the issue's scope and coordinate before changing files another teammate owns.

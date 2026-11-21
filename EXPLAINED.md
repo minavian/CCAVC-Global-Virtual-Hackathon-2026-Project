@@ -195,16 +195,20 @@ Integration by OpenAI Codex for Akris Luno · 2026-11-21 · Issue #16
 ### Bit River transmission (`bit-river/`)
 Written by OpenAI Codex for Akris Luno · 2026-11-21 · Issue #12. Embedded in the scan story for Issue #16.
 
-**What it does.** Follow a passive card's simulated reply to the reader and inspect example packets.
+**What it does.** Follow a passive card's simulated reply to the reader and inspect example packets. The reader's field supplies energy to the card. The chip varies the load on its antenna, and the reader detects those changes as a reply.
 
-**How it works.** `bit-river.js` registers `<rfid-bit-river>`. The element's scroll position selects a chapter, and the chapter buttons jump to those same positions. `card.js` renders the team's card. `river.js` assigns positions to the field strands and data packets on canvas. The sample values are fictional. The reader detects the passive card's reply as changes in the load on its antenna.
+**How it works.**
 
-The warm paper backdrop and copper signal stay the same throughout the chapters. Packet controls fade and slide into place as the transmission begins. On phones the inspector reserves space so the plot stays the same height. On the main page, `getCardTarget()` gives the scan canvas the card’s position, size and rotation as the river moves. The standalone demo draws its own model and crossfades it in over its poster.
+- `bit-river.js` registers `<rfid-bit-river>`. The element's scroll position sets the chapter and camera view. The chapter buttons move along the same scroll track. The paper background stays the same throughout.
+- `river.js` draws the reader's charging pulse and the card's copper reply. Drawing, packet positions, and drag checks use the same curve. `replyFront()` extends the reply as the visitor scrolls. `replySample()` illustrates the load modulation for byte `7B` of the simulated ID, least significant bit first. [NXP PN512 data sheet](https://www.nxp.com/docs/en/data-sheet/PN512.pdf)
+- Packet buttons drift along the curve, fade as they wrap, and pause in place while they have visible keyboard focus. `fadeText()` eases changes to the chapter copy and packet readout. Lifting a packet shows a missing notice followed by a replacement confirmation. Reduced motion keeps the packet effects static.
+- OpenAI Codex for the project team merged `feat/12-bit-river` at `1ca893a` and resolved the overlap with the scan story. The mobile readout reserves space across chapters so the plot stays in place when packet text changes. Both the river and `getCardTarget()` use the same dimensions and scroll position to keep the transferred scan card aligned with the signal. The standalone page fades from its card poster to the model after the first rendered frame. Both pages load bundled assets for offline hosting.
 
 **Why it is built this way.** The element contains its own styles and controls so the same component works after the cutaway and at `/bit-river/`.
 
-**How to check it.** Scroll past the cutaway or follow “Follow the signal.” Choose “Transmit,” then inspect or lift a packet. Run `node --test bit-river/river.test.mjs` to check the path and chapter geometry.
+**How to check it.** Scroll past the cutaway or follow “Follow the signal.” Watch the card come into place as the reader's field forms. Choose “Transmit,” then hover, tap, or use Tab to inspect a packet. Drag the packet away, use **Lift packet**, or press Delete while it has focus. On the standalone page, check that the poster fades into the 3D model. Run `node --test bit-river/river.test.mjs` with Node 22.7 or newer to check the path, reveal, and sample bit timing.
 
 **Likely questions.**
 
 - Q: How does the card stay lined up with the signal? A: Bit River computes both positions from the same chapter progress and plot dimensions.
+- Q: Does the demo read or replace a real packet? A: The values come from a local array, and packet replacement is an effect within the demo.
