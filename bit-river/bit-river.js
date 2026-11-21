@@ -2,15 +2,15 @@ import { clamp, ease, replyFront, riverGeometry, sizeCanvas, drawField, drawTraf
 
 const file = name => new URL(name, import.meta.url).href;
 const chapters = [
-  { name: 'Approach', at: 0, title: 'Inside a tap.', copy: 'The reader powers the card.' },
-  { name: 'Reveal', at: .22, title: 'Look closer.', copy: '' },
-  { name: 'Connect', at: .55, title: 'A quiet reply.', copy: 'The card changes its antenna load.' },
-  { name: 'Transmit', at: .77, title: 'Read the river.', copy: '' }
+  { name: 'Approach', at: 0, title: 'Inside a tap.', route: 'Reader → card' },
+  { name: 'Reveal', at: .22, title: 'The field forms.', route: 'Inductive coupling' },
+  { name: 'Connect', at: .55, title: 'A quiet reply.', route: 'Card → reader', copy: 'The card changes its antenna load.' },
+  { name: 'Transmit', at: .77, title: 'Read the river.', route: 'Inspect a packet' }
 ];
 const packets = [
-  { label: 'ID', value: '04 7B 21 9E', meaning: 'Tag identifier' },
-  { label: 'Auth', value: '8A 2F', meaning: 'Example response' },
-  { label: 'Data', value: 'Gallery pass', meaning: 'Example payload' }
+  { label: 'ID', value: '04 7B 21 9E' },
+  { label: 'Auth', value: '8A 2F' },
+  { label: 'Data', value: 'Gallery pass' }
 ];
 const sparks = Array.from({ length: 10 }, (_, i) =>
   `<i style="--angle:${i * 36}deg;--delay:${i % 3 * 35}ms"></i>`).join('');
@@ -32,7 +32,7 @@ function mount(host, root, signal) {
     <link rel="stylesheet" href="${file('bit-river.css')}">
     <section class="frame" aria-label="Bit River interactive RFID transmission">
       <header class="mast">
-        <div class="identity">${icon('brand')}<strong>Bit River</strong><span>RFID field guide</span></div>
+        <div class="identity">${icon('brand')}<strong>Bit River</strong></div>
         <div class="tools">
           <button class="pause" type="button" hidden>${icon('pause')}<span>Pause flow</span></button>
           <button class="sound" type="button" aria-pressed="false">${icon('sound')}<span>Sound off</span></button>
@@ -48,8 +48,8 @@ function mount(host, root, signal) {
             <canvas class="model"></canvas>
           </div>
           <div class="device reader" aria-hidden="true"><img src="${file('assets/reader.webp')}" alt=""></div>
-          <span class="device-label tag-label">Passive tag</span>
-          <span class="device-label reader-label">RFID reader <span class="connected" hidden>Connected</span></span>
+          <span class="device-label tag-label">Card</span>
+          <span class="device-label reader-label">Reader <span class="connected" hidden>Connected</span></span>
           <div class="packets" role="group" aria-label="Simulated packets" hidden>
             ${packets.map(p => `<button type="button" class="packet" aria-label="Inspect ${p.label} packet"
                 aria-pressed="false" aria-controls="reading" aria-keyshortcuts="Delete">
@@ -59,11 +59,10 @@ function mount(host, root, signal) {
             </button>`).join('')}
           </div>
         </div>
-        <aside class="readout" id="reading" tabindex="-1">
+        <aside class="readout" id="reading" tabindex="-1" aria-label="Packet readout">
           <div class="direction"><span class="legend-stroke" aria-hidden="true"></span><span class="legend-name"></span></div>
           <div class="route"></div>
-          <p class="help" hidden></p>
-          <button class="lift" type="button" hidden>Lift this packet</button>
+          <button class="lift" type="button" hidden>Lift packet</button>
         </aside>
         <span class="sr announcement" role="status"></span>
       </div>
@@ -80,10 +79,12 @@ function mount(host, root, signal) {
   const nodes = [...root.querySelectorAll('.packet')];
   const stops = [...root.querySelectorAll('[data-chapter]')];
   const motion = matchMedia('(prefers-reduced-motion: reduce)');
+  const fades = new Map();
   let reduced = motion.matches;
   const phases = [.22, .51, .80];
-  let geometry, ink, bits, drawCard, audio, drag, replacement, returning;
+  let geometry, ink, bits, drawCard, audio, drag, replacement, returning, noticeTimer;
   let chapter = -1, selected = -1, missing = -1;
+  let restored = false;
   let progress = 0, clock = 0, lastTime, raf = 0;
   let visible = false, paused = false, sound = false, dirty = true, loadStarted = false, connected = false;
   const on = (target, event, fn, options = {}) => target.addEventListener(event, fn, { ...options, signal });
@@ -113,34 +114,70 @@ function mount(host, root, signal) {
     if (connected && sound) tone(1100, 1600, .24);
   });
 
-  function showReading() {
-    const packet = packets[selected];
-    const inspecting = chapter === 3 && packet && missing < 0;
-    $('.readout').classList.toggle('warning', missing >= 0);
-    $('.lift').hidden = !inspecting;
-    $('.help').hidden = !inspecting && missing < 0;
-    if (missing >= 0) {
-      $('.legend-name').textContent = 'Packet lost';
-      $('.route').textContent = 'DATA PACKET MISSING! 🚨';
-      $('.help').textContent = 'Sending a replacement…';
-    } else if (inspecting) {
-      $('.legend-name').textContent = packet.label + ' · Simulated';
-      $('.route').textContent = packet.value;
-      $('.help').textContent = packet.meaning;
-    } else {
-      $('.legend-name').textContent = ['Power field', 'Inductive coupling', 'Load modulation', 'Simulated data'][chapter];
-      $('.route').textContent = ['Reader → tag', 'Antenna coil', 'Tag → reader', 'Inspect a packet'][chapter];
+  // Retarget the same fade when scroll or pointer input changes the next line.
+  function fadeText(node, value) {
+    const running = fades.get(node);
+    if ((running?.value ?? node.textContent) === value) return;
+    const opacity = running ? Number(getComputedStyle(node).opacity) : 1;
+    running?.animation.cancel();
+    fades.delete(node);
+    if (!visible || motion.matches || !node.animate) {
+      node.textContent = value;
+      return;
     }
+
+    function enter(from) {
+      node.textContent = value;
+      if (!value) return;
+      const animation = node.animate([{ opacity: from }, { opacity: 1 }], {
+        duration: 220, easing: 'cubic-bezier(.22, 1, .36, 1)'
+      });
+      fades.set(node, { animation, value });
+      animation.onfinish = () => {
+        if (fades.get(node)?.animation === animation) fades.delete(node);
+      };
+    }
+
+    if (!node.textContent || node.textContent === value) {
+      enter(node.textContent ? opacity : 0);
+      return;
+    }
+    const animation = node.animate([{ opacity }, { opacity: 0 }], {
+      duration: 85, easing: 'ease-in', fill: 'forwards'
+    });
+    fades.set(node, { animation, value });
+    animation.onfinish = () => {
+      if (fades.get(node)?.animation !== animation) return;
+      fades.delete(node);
+      animation.cancel();
+      enter(0);
+    };
+  }
+
+  function clearRestored() {
+    clearTimeout(noticeTimer);
+    restored = false;
+  }
+
+  function showReading() {
+    const notice = missing >= 0 ? 'Packet missing' : restored ? 'Packet replaced' : '';
+    const packet = chapter === 3 && !notice ? packets[selected] : undefined;
+    $('.readout').classList.toggle('warning', missing >= 0);
+    $('.lift').hidden = !packet;
+    fadeText($('.legend-name'), packet ? packet.label + ' · Simulated' : '');
+    fadeText($('.route'), notice || packet?.value || chapters[chapter].route);
   }
   function inspect(index) {
     if (missing >= 0 || selected === index) return;
+    clearRestored();
     selected = index;
     nodes.forEach((n, i) => n.classList.toggle('selected', i === index));
     showReading();
-    $('.announcement').textContent = packets[index].label + '. ' + packets[index].value + '. ' + packets[index].meaning;
+    $('.announcement').textContent = packets[index].label + '. Simulated value ' + packets[index].value + '.';
   }
   function resetPackets() {
     clearTimeout(replacement);
+    clearRestored();
     drag = returning = null;
     missing = selected = -1;
     phases.splice(0, 3, .22, .51, .80);
@@ -156,17 +193,16 @@ function mount(host, root, signal) {
     chapter = index;
     frame.dataset.chapter = index;
     frame.toggleAttribute('data-inside', index >= 2);
-    $('.copy h2').textContent = chapters[index].title;
-    $('.copy p').textContent = chapters[index].copy;
+    fadeText($('.copy h2'), chapters[index].title);
+    fadeText($('.copy p'), chapters[index].copy ?? '');
     $('.packets').hidden = index !== 3;
     stops.forEach((stop, i) => {
       if (i === index) stop.setAttribute('aria-current', 'step');
       else stop.removeAttribute('aria-current');
     });
     const last = index === chapters.length - 1;
-    const label = last ? 'Replay' : index === 0 ? 'Scroll to explore' : 'Next chapter';
-    const shortLabel = last ? 'Replay' : index === 0 ? 'Explore' : 'Next';
-    $('.advance').innerHTML = `<span class="advance-full">${label}</span><span class="advance-short">${shortLabel}</span>` + icon(last ? 'replay' : 'down');
+    const label = last ? 'Replay' : index === 0 ? 'Explore' : 'Next';
+    $('.advance').innerHTML = `<span>${label}</span>` + icon(last ? 'replay' : 'down');
     showReading();
   }
   function go(index) {
@@ -251,7 +287,16 @@ function mount(host, root, signal) {
   // available when a visitor has moved focus into this chapter.
   on(root, 'keydown', event => { if (event.key.startsWith('Arrow')) event.stopPropagation(); });
   on(document, 'visibilitychange', () => { lastTime = undefined; refresh(); });
-  on(motion, 'change', refresh);
+  on(motion, 'change', () => {
+    if (motion.matches) {
+      for (const [node, { animation, value }] of fades) {
+        animation.cancel();
+        node.textContent = value;
+      }
+      fades.clear();
+    }
+    refresh();
+  });
   on(window, 'focus', refresh);
   const resize = new ResizeObserver(refresh);
   resize.observe(plot);
@@ -277,23 +322,32 @@ function mount(host, root, signal) {
     const restoreFocus = (root.activeElement === nodes[i] || root.activeElement === $('.lift')) &&
       root.activeElement.matches(':focus-visible');
     if (restoreFocus) $('.readout').focus({ preventScroll: true });
+    clearRestored();
     missing = i;
     selected = -1;
     nodes[i].classList.remove('selected', 'peek');
     nodes[i].setAttribute('aria-pressed', 'false');
     nodes[i].classList.add('missing');
     showReading();
-    $('.announcement').textContent = 'WARNING: Data packet missing! The tag is sending a replacement.';
+    $('.announcement').textContent = 'Packet missing. Sending a replacement.';
     tone(420, 180, .23);
     replacement = setTimeout(() => {
       missing = -1;
       // Rejoin the original slot so a replacement cannot drift on top of another packet forever.
       if (!motion.matches && !paused && !restoreFocus) returning = { i, start: clock };
       nodes[i].classList.remove('missing');
+      if (restoreFocus && root.activeElement === $('.readout')) {
+        selected = i;
+        nodes[i].classList.add('selected');
+        nodes[i].focus({ preventScroll: true });
+      }
+      restored = true;
       showReading();
-      $('.route').textContent = 'Transmission restored';
-      if (restoreFocus && root.activeElement === $('.readout')) nodes[i].focus({ preventScroll: true });
-      $('.announcement').textContent = packets[i].label + ' packet replaced. Transmission restored.';
+      $('.announcement').textContent = packets[i].label + ' packet replaced.';
+      noticeTimer = setTimeout(() => {
+        restored = false;
+        showReading();
+      }, 1100);
       wake();
     }, 1500);
     wake();
@@ -347,6 +401,9 @@ function mount(host, root, signal) {
   signal.addEventListener('abort', () => {
     cancelAnimationFrame(raf);
     clearTimeout(replacement);
+    clearRestored();
+    for (const { animation } of fades.values()) animation.cancel();
+    fades.clear();
     view.disconnect();
     resize.disconnect();
     audio?.close();
