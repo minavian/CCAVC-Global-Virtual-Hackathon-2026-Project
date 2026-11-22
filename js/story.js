@@ -19,9 +19,8 @@
 
   const LENGTH = 10.8;                      // screens of scrolling after the hero
   const TIME = {
-    hero: [0, .38],                         // the hero's words leave
-    drop: { start: .06, stagger: .1, span: .55 },
-    glass: [1.05, 1.4],                     // all three turn to glass
+    drop: { start: .04, stagger: .06, span: .50 },
+    glass: [1.22, 1.52],                    // all three turn to glass
     feature: [1.95, 2.55],                  // the key comes forward, the others step aside
     open: [2.55, 3.1],                      // the key opens
     pull: [4.0, 4.4],                       // scrolling pulls the battery out, if no hand did
@@ -34,16 +33,16 @@
     spell: 8.9,                             // "The changes spell the key's ID."
     breakIt: 9.35                           // scene 6
   };
-  const CHAPTERS = [['Intro', 0], ['Inside', .5], ['No battery', 1.95], ['Power', 5.85], ['Reply', 7.6], ['Break it', 9.35]];
+  const CHAPTERS = [['Intro', 0], ['Inside', .84], ['No battery', 1.95], ['Power', 5.85], ['Reply', 7.6], ['Break it', 9.35]];
 
   // The sentences that only depend on the scroll: [from, to, sentence].
   const SAY = [
-    [.5, 1.05, 'They all use RFID.'],
-    [1.05, 1.9, 'Inside each one: a coil and a chip.'],
+    [0, TIME.glass[0], 'They all use RFID.'],
+    [TIME.glass[0], 1.9, 'Inside each one: a coil and a chip.'],
     [2.55, 3.0, 'The key has a battery.'],
     [6.0, 6.45, 'This is a reader.'],
     [7.6, 7.9, 'Now the chip replies.'],
-    [7.9, 8.2, 'It has no radio.'],
+    [7.9, 8.2, 'It uses the reader’s field.'],
     [8.2, 8.55, 'It takes more power, then less.'],
     [8.55, 8.9, 'The reader feels each change.']
   ];
@@ -78,7 +77,7 @@
 
   function create() {
     const $ = s => document.querySelector(s);
-    const copy = $('.copy'), say = $('#say');
+    const say = $('#say'), track = $('.track'), frame = $('.experience-frame');
     const cue = $('.scroll-cue'), fill = $('.chapters-fill'), lines = $('.callout-lines');
     const chapterButtons = [...document.querySelectorAll('.chapters button')];
     const handle = $('.battery-handle');
@@ -98,7 +97,9 @@
     });
 
     chapterButtons.forEach((button, i) => button.addEventListener('click', () => {
-      scrollTo({ top: CHAPTERS[i][1] * innerHeight + (i ? 2 : 0), behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      const height = frame.clientHeight;
+      const start = scrollY + track.getBoundingClientRect().top - height;
+      scrollTo({ top: start + CHAPTERS[i][1] * height + 2, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
     }));
 
     // ---------- The battery, by hand ----------
@@ -145,7 +146,6 @@
       const leave = easeInOut(span(TIME.leave, s));
       return {
         s,
-        hero: easeInOut(span(TIME.hero, s)),
         drop: [0, 1, 2].map(i => clamp01((s - TIME.drop.start - i * TIME.drop.stagger) / TIME.drop.span)),
         glass: easeInOut(span(TIME.glass, s)),
         feature: easeInOut(span(TIME.feature, s)),
@@ -195,16 +195,9 @@
       const { s } = state;
       const narrow = innerWidth < 760 || innerWidth < innerHeight;
 
-      // The hero's words rise and fade as the film begins.
-      if (state.hero > 0) {
-        copy.style.transform = `translateY(${(-state.hero * 14).toFixed(2)}vh)`;
-        copy.style.opacity = (1 - state.hero).toFixed(3);
-      } else if (copy.style.transform) {
-        copy.style.transform = copy.style.opacity = '';
-      }
       cue.style.opacity = ready ? (1 - clamp01(s / .12)).toFixed(3) : '0';
 
-      const text = state.hero >= .6 ? sentence(state, lab) : '';
+      const text = sentence(state, lab);
       speak(text);
 
       // Labels: only the ones the sentence names, joined to their parts by hairlines.

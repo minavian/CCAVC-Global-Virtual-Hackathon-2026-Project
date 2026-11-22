@@ -1,0 +1,15 @@
+@font-face {
+  font-family: "Antonio";
+  font-style: normal;
+  font-weight: 700;
+  font-display: block;
+  src: url("antonio-700.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter Tight";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: block;
+  src: url("inter-tight.woff2") format("woff2");
+}

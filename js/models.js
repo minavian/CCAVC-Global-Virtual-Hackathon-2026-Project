@@ -13,6 +13,10 @@
  *     arrive   the object has settled at the front
  *     activate the visitor tapped it (or pressed Enter) while it is at the front
  *     present  it is leaving the front
+ *
+ * The carousel's card also exposes open(progress) for the scan story. If the carousel
+ * hasn't loaded, loadObject(THREE, loader, reduceMotion, index) provides a fallback model.
+ * open(progress) scrubs the built-in Explode clip from closed (0) to open (1).
  */
 (function () {
   'use strict';
@@ -55,29 +59,32 @@
 
   function load(T, GLTFLoader, reduceMotion) {
     const loader = new GLTFLoader();
-    return Promise.all(FILES.map(async ([name, url, behave]) => {
-      const gltf = await loader.loadAsync(url);
-      const model = new T.Group(), shell = gltf.scene;
-      if (name === 'Phone') addNfcChip(T, shell);
-      if (name === 'Key fob') addCoinBattery(T, shell);
-      const sealed = SEALED[name].map(n => shell.getObjectByName(n)).filter(Boolean);
-      for (const part of sealed) part.visible = false;
-      const revealed = sealed.filter(part => !STAY_HIDDEN.includes(part.name));
-      liftDecals(T, shell);
-      const box = new T.Box3().setFromObject(shell);
-      shell.position.sub(box.getCenter(new T.Vector3()));
-      const size = box.getSize(new T.Vector3());
-      model.add(shell);
-      // Nothing inside the model moves on its own except what the behaviours below animate,
-      // so skip recomputing those transforms every frame.
-      shell.traverse(part => { part.updateMatrix(); part.matrixAutoUpdate = false; });
-      const open = opener(gltf.animations.find(clip => clip.name === 'Explode'), shell, revealed);
-      // The behaviours replace some materials, so the glass look is set up after them.
-      const action = behave(T, shell, model, reduceMotion);
-      const look = looker(T, name, shell, open, revealed);
-      return { name, model, span: Math.max(size.x, size.y), open, look, rfid: RFID_PARTS[name],
-        part: n => shell.getObjectByName(n), action };
-    }));
+    return Promise.all(FILES.map((_, index) => loadObject(T, loader, reduceMotion, index)));
+  }
+
+  async function loadObject(T, loader, reduceMotion, index) {
+    const [name, url, behave] = FILES[index];
+    const gltf = await loader.loadAsync(url);
+    const model = new T.Group(), shell = gltf.scene;
+    if (name === 'Phone') addNfcChip(T, shell);
+    if (name === 'Key fob') addCoinBattery(T, shell);
+    const sealed = SEALED[name].map(n => shell.getObjectByName(n)).filter(Boolean);
+    for (const part of sealed) part.visible = false;
+    const revealed = sealed.filter(part => !STAY_HIDDEN.includes(part.name));
+    liftDecals(T, shell);
+    const box = new T.Box3().setFromObject(shell);
+    shell.position.sub(box.getCenter(new T.Vector3()));
+    const size = box.getSize(new T.Vector3());
+    model.add(shell);
+    // Nothing inside the model moves on its own except what the behaviours below animate,
+    // so skip recomputing those transforms every frame.
+    shell.traverse(part => { part.updateMatrix(); part.matrixAutoUpdate = false; });
+    const open = opener(gltf.animations.find(clip => clip.name === 'Explode'), shell, revealed);
+    // The behaviours replace some materials, so the glass look is set up after them.
+    const action = behave(T, shell, model, reduceMotion);
+    const look = looker(T, name, shell, open, revealed);
+    return { name, model, span: Math.max(size.x, size.y), open, look, rfid: RFID_PARTS[name],
+      part: n => shell.getObjectByName(n), action };
   }
 
   /*
@@ -518,5 +525,5 @@
     };
   }
 
-  window.RFIDModels = { load, readerPad, metalPlate, RFID_PARTS };
+  window.RFIDModels = { load, loadObject, readerPad, metalPlate, RFID_PARTS };
 })();

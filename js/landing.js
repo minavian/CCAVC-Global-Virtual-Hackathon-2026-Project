@@ -36,17 +36,20 @@
   const DRIFT_BACK_AFTER = 6;    // idle seconds before the carousel returns to the key fob
   const DRIFT_DURATION = 1.7;
   const NAMES = ['Key fob', 'Phone', 'Contactless card'];
+  const CARD_INDEX = 2;
   const BASE_PITCH = [.16, -.09, .11];
   const BASE_YAW = [-.42, .38, -.24];
-  const BASE_ROLL = [-.31, -.19, .14];
+  const BASE_ROLL = [-.23, -.14, .10];
   const SHADOW = [[.46, .55], [.5, .57], [.74, .4]];   // [width, drop] as fractions of pose size
   const TAU = Math.PI * 2;
 
   const root = document.documentElement;
   const $ = id => document.getElementById(id);
   const stage = $('stage'), headline = $('headline'), subline = $('subline');
+  const hero = stage.parentElement, heroHome = hero.parentElement, storyRoot = $('story');
   const copyBox = document.querySelector('.copy');
   const announcer = $('focus-name');
+  const heroPreview = stage.querySelector('.hero-preview');
   const words = [...headline.querySelectorAll('.word')];
   const dots = [...subline.querySelectorAll('.dots span')];
   const shadows = [...document.querySelectorAll('.shadows i')];
@@ -114,6 +117,10 @@
   let slot = null, dock = null;   // placeholder that holds the headline's docked place
   let gl = null;
   let lastNow = null, frameId = 0;
+  let stageVisible = true;
+  let hiddenIndex = -1;
+  let restoreCard = null;
+  let cardFeature = null;
   let skipPointer = null, skipEvent = null;
   // Five things on the stage: the key, the phone and the card (the carousel), then the
   // reader pad and the metal plate, which only the lab uses.
@@ -129,7 +136,7 @@
   const lab = window.RFIDLab ? window.RFIDLab.create() : null;
   const FEATURED = 0;                        // the key fob is the object the story opens
   const CARD = 2;
-  let scrollGoal = 0, scrollNow = 0, storyOn = false, storyState = null, labState = null, paintedAt = null;
+  let scrollGoal = 0, scrollNow = 0, storyOn = false, storyBlend = 0, storyState = null, labState = null, paintedAt = null;
 
   // ---------- Layout ----------
   // The stage covers the whole page; the objects live in the region the words leave free.
@@ -144,10 +151,10 @@
       ? { x: 0, y: copy.bottom - rect.top + h * .02, w, h: 0 }
       : { x: 0, y: 0, w: Math.max(1, copy.left - rect.left), h };
     if (narrow) region.h = Math.max(1, h - region.y);
-    // The front object is large and the other two tuck in close behind it.
+    // Give the front object room while keeping the two flanking objects readable.
     const r = narrow
-      ? { cx: .5, cy: .5, ax: .3, ay: .2, dz: .02, size: Math.min(region.w * .75, region.h * .6) }
-      : { cx: .5, cy: .48, ax: .29, ay: .27, dz: .02, size: Math.min(region.w * .7, region.h * .62) };
+      ? { cx: .5, cy: .48, ax: .34, ay: .27, dz: .01, size: Math.min(region.w * .62, region.h * .54) }
+      : { cx: .49, cy: .49, ax: .37, ay: .235, dz: .01, size: Math.min(region.w * .61, region.h * .54) };
     layout = {
       w, h, size: r.size,
       cx: (region.x + region.w * r.cx) / w, cy: (region.y + region.h * r.cy) / h,
@@ -196,10 +203,10 @@
       p.baseY = L.h * (L.cy + L.ay * side + L.dz * depth);
       p.y = p.baseY + float * L.size * .016 + leanY * near * 10;
       p.size = L.size * (1 - .56 * depth) * (.84 + .16 * entrance) * (1 + settle);
-      p.depth = depth; p.side = side; p.float = float;
+      p.depth = depth * .53; p.side = side; p.float = float;
       const sway = calm ? 0 : Math.sin(elapsed * .27 + i * 1.3);
       p.pitch = BASE_PITCH[i] + sway * .044 + leanY * near * .1;
-      p.yaw = BASE_YAW[i] + side * .49 + twist * TAU / 3 + sway * .115 + leanX * near * .15;
+      p.yaw = BASE_YAW[i] + side * .36 + twist * TAU / 3 + sway * .115 + leanX * near * .15;
       p.roll = BASE_ROLL[i] + side * .2 + float * .027 + Math.tanh(velocity * .28) * .13;
       p.lift = 0; p.shade = 1; p.visible = true;
     }
@@ -213,8 +220,18 @@
   // Positions in the film are in design pixels on the frame (see designFrame()).
   function rowPose(i, n) {
     const f = designFrame(), at = (x, y) => [f.x + x * f.u, f.y + y * f.u];
-    const [x, y] = f.tall ? at(195 + (i - (n - 1) / 2) * 122, 520) : at(720 + (i - (n - 1) / 2) * 400, 580);
-    return { x, y, size: (f.tall ? 112 : 330) * f.u, pitch: .05, yaw: -(i - (n - 1) / 2) * .28, roll: 0 };
+    const [x, y] = f.tall ? at(195 + (i - (n - 1) / 2) * 122, 445) : at(720 + (i - (n - 1) / 2) * 400, 580);
+    return { x, y, size: (f.tall ? 112 : 330) * f.u, pitch: .05,
+      yaw: i === 1 ? 0 : -(i - (n - 1) / 2) * .28, roll: i === CARD ? -.13 : 0 };
+  }
+
+  function introPose(i) {
+    const f = designFrame();
+    const [x, y, size] = (f.tall
+      ? [[76, 479, 119], [188, 449, 114], [306, 421, 124]]
+      : [[315, 574, 318], [691, 528, 300], [1090, 473, 352]])[i];
+    return { x: f.x + x * f.u, y: f.y + y * f.u, size: size * f.u, depth: [0, .07, 0][i],
+      pitch: [.10, -.04, -.10][i], yaw: [.19, .10, -.18][i], roll: [-.15, .05, .13][i] };
   }
 
   // The area the featured object fills: the right side, or the top on phones.
@@ -248,27 +265,25 @@
     return { padX: f.x + 1030 * f.u, padY: f.y + 500 * f.u, k: 4600 * f.u, tilt: .5, u: f.u, tall: false };
   }
 
-  // A fall: speeding up under gravity, then one small bounce.
-  const fall = d => d < .78 ? (d / .78) ** 2 : 1 - Math.sin(Math.PI * (d - .78) / .22) * .045;
-
   function storyPoses(st) {
     const n = 3, { w, h } = layout;
-    // 1. Each object drops out of the carousel into the line.
+    // The two supporting devices drift in within the frame as the card takes its place.
     for (let i = 0; i < n; i++) {
       const p = poses[i], d = st.drop[i];
+      const start = introPose(i);
+      const offset = i === CARD ? 0 : 1 - storyBlend;
+      const x = start.x + (i === FEATURED ? -.055 : .025) * w * offset;
+      const y = start.y + (i === FEATURED ? .026 : -.06) * h * offset;
+      Object.assign(p, start, { x, y, baseY: y, float: 0, visible: true, shade: 1 });
       if (d <= 0) continue;
-      const row = rowPose(i, n), move = easeInOutCubic(d), turn = easeOutCubic(d);
-      const down = row.y >= p.y ? fall(d) : move;
-      const tumble = calm ? 0 : Math.sin(Math.PI * d) * .22 * (i % 2 ? 1 : -1);
+      const row = rowPose(i, n), move = smoothstep(d);
       p.x = lerp(p.x, row.x, move);
-      p.y = lerp(p.y, row.y, down);
-      p.baseY = lerp(p.baseY, row.y, down);
+      p.y = p.baseY = lerp(p.y, row.y, move);
       p.size = lerp(p.size, row.size, move);
-      p.depth = lerp(p.depth, 0, turn);
-      p.float = lerp(p.float, 0, turn);
-      p.pitch = lerp(p.pitch, row.pitch, turn);
-      p.yaw = lerp(p.yaw, row.yaw, turn);
-      p.roll = lerp(p.roll, row.roll, turn) + tumble;
+      p.depth = lerp(p.depth, 0, move);
+      p.pitch = lerp(p.pitch, row.pitch, move);
+      p.yaw = lerp(p.yaw, row.yaw, move);
+      p.roll = lerp(p.roll, row.roll, move);
     }
 
     // Scene 2: all three turn to glass, with their coils and chips glowing.
@@ -558,13 +573,6 @@
     // The story's progress eases toward the scroll position.
     scrollNow += (scrollGoal - scrollNow) * (calm ? 1 : 1 - Math.exp(-7 * dt));
     if (Math.abs(scrollGoal - scrollNow) < 1e-4) scrollNow = scrollGoal;
-    const playing = scrollNow > .003;
-    if (playing !== storyOn) {
-      storyOn = playing;
-      stage.classList.toggle('is-story', storyOn);
-      if (storyOn) { drag = null; stage.classList.remove('is-dragging'); }
-      measure();
-    }
     storyState = story ? story.timeline(scrollNow) : null;
     labState = lab && layout ? lab.update(dt, storyOn ? storyState : null, labGeometry()) : null;
 
@@ -584,7 +592,7 @@
       if (flight && !drag) advanceFlight(dt);
       else if (!flight && !drag) {
         idle += dt;
-        if (focus !== 0 && idle > DRIFT_BACK_AFTER && !storyOn) bringToFront(0, DRIFT_DURATION);
+        if (!cardFeature && focus !== 0 && idle > DRIFT_BACK_AFTER && !storyOn) bringToFront(0, DRIFT_DURATION);
       }
     }
     updateFocus();
@@ -592,8 +600,8 @@
 
   function render(dt) {
     computePoses();
-    const fade = entrance;
-    light.style.opacity = fade;
+    const fade = storyOn ? storyBlend : entrance;
+    light.style.opacity = entrance;
     // Shadows wait for the models, which stream in as GLB files.
     const shown = fade * (gl?.shown ?? 0);
     shadows.forEach((el, i) => {
@@ -602,9 +610,14 @@
       const width = p.size * sw * lift, height = p.size * .075 * lift;
       const y = p.baseY + p.size * drop;
       el.style.transform = `translate(${(p.x - 50).toFixed(1)}px, ${(y - 50).toFixed(1)}px) scale(${(width / 100).toFixed(3)}, ${(height / 100).toFixed(3)})`;
-      el.style.opacity = (p.visible ? shown * (1 - p.depth) ** 2 * .85 * p.shade : 0).toFixed(3);
+      el.style.opacity = (p.visible && i !== hiddenIndex ? shown * (1 - p.depth) ** 2 * .85 * p.shade : 0).toFixed(3);
     });
-    if (gl) looks.forEach((look, i) => gl.look(i, look));
+    if (gl) looks.forEach((look, i) => { if (i !== hiddenIndex) gl.look(i, look); });
+    if (!heroPreview.hidden && storyOn) {
+      const { x, y, size, visible, roll } = poses[CARD];
+      Object.assign(heroPreview.style, { left: x + 'px', top: y + 'px', width: size * 1.19 + 'px',
+        transform: `translate(-50%, -50%) rotate(${-roll}rad)`, visibility: visible && storyBlend === 1 ? '' : 'hidden' });
+    }
     gl?.draw(dt, fade);
     paintStory();
   }
@@ -636,19 +649,24 @@
 
   function frame(now) {
     frameId = 0;
-    if (document.hidden) { lastNow = null; return; }
+    if (document.hidden || !stageVisible) { lastNow = null; return; }
     const raw = lastNow === null ? 0 : Math.max(0, (now - lastNow) / 1000);
     // Clamp the step so a hitch slows the motion down instead of skipping it.
     const dt = Math.min(.1, raw);
     lastNow = now;
     step(dt);
     render(dt);
+    if (cardFeature && !gl) releaseFeature();
+    else if (cardFeature && !cardFeature.ready && focus === CARD_INDEX && !flight && entrance >= .999 && gl.shown >= .999) {
+      cardFeature.ready = true;
+      cardFeature.resolve(true);
+    }
     gl?.tune(raw);
     frameId = requestAnimationFrame(frame);
   }
 
   function wake() {
-    if (!frameId && started && !document.hidden) frameId = requestAnimationFrame(frame);
+    if (!frameId && started && stageVisible && !document.hidden) frameId = requestAnimationFrame(frame);
   }
 
   // ---------- Input ----------
@@ -667,6 +685,7 @@
     const r = stage.getBoundingClientRect(), x = clientX - r.left, y = clientY - r.top;
     let best = -1, bestScore = Infinity;
     poses.slice(0, 3).forEach((p, i) => {
+      if (i === hiddenIndex) return;
       const score = Math.hypot(x - p.x, y - p.y) / (p.size * .5) + p.depth * .35;
       if (score < bestScore) { bestScore = score; best = i; }
     });
@@ -674,7 +693,7 @@
   }
 
   stage.addEventListener('pointerdown', e => {
-    if (!e.isPrimary || e.button !== 0 || !started || intro !== null || storyOn || e.pointerId === skipPointer) return;
+    if (!e.isPrimary || e.button !== 0 || !started || intro !== null || cardFeature || storyOn || e.pointerId === skipPointer) return;
     try { stage.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
     drag = { id: e.pointerId, x: e.clientX, y: e.clientY, from: phase, moved: false, time: performance.now(), v: 0 };
     flight = null;   // catch the carousel where it is
@@ -718,8 +737,8 @@
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) stage.addEventListener(type, release);
   addEventListener('pointerup', e => { if (e.pointerId === skipPointer) skipPointer = null; });
 
-  addEventListener('keydown', e => {
-    if (e === skipEvent || intro !== null || !started || storyOn || e.altKey || e.ctrlKey || e.metaKey) return;
+  stage.addEventListener('keydown', e => {
+    if (e === skipEvent || intro !== null || !started || cardFeature || storyOn || e.altKey || e.ctrlKey || e.metaKey) return;
     // Left and right turn the objects; up and down are left to scroll the story.
     const direction = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
     if (direction) { e.preventDefault(); stepCarousel(direction); return; }
@@ -737,17 +756,22 @@
   document.addEventListener('pointerleave', () => { aimX = aimY = 0; });
 
   document.addEventListener('visibilitychange', () => { lastNow = null; wake(); });
+  const stageObserver = new IntersectionObserver(([entry]) => {
+    stageVisible = entry.intersectionRatio > 0;
+    if (!stageVisible && intro !== null) finishIntro(false);
+    if (!stageVisible) releaseFeature();
+    wake();
+  });
+  stageObserver.observe(stage);
   reduced.addEventListener('change', () => {
     calm = reduced.matches;
     if (calm) { finishIntro(false); flight = null; phase = Math.round(phase); velocity = twist = 0; }
+    if (cardFeature) bringToFront(CARD_INDEX, .62);
   });
-  // Scrolling plays the story. Every visit starts at the top, and scrolling (even by
-  // dragging the scrollbar) ends the opening first.
+  // Scrolling away from the landing scene ends the opening first.
   if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
-  scrollTo(0, 0);
   addEventListener('scroll', () => {
-    scrollGoal = scrollY / Math.max(1, viewH());
-    if (intro !== null && started && frozenAt === null && scrollGoal > .01) finishIntro(true);
+    if (intro !== null && started && frozenAt === null && scrollY > 1) finishIntro(true);
     wake();
   }, { passive: true });
 
@@ -773,7 +797,8 @@
       if (intro === null && focus === 0 && !flight) arrive(0);
     } catch (error) {
       gl = null;
-      console.warn('The 3D models could not load; showing the words only.', error);
+      heroPreview.hidden = false;
+      console.warn('The 3D models could not load; showing the card preview.', error);
     }
   }
 
@@ -806,6 +831,7 @@
       scene.add(lamp);
     }
     const stands = objects.map(o => { const g = new T.Group(); g.add(o.model); scene.add(g); return g; });
+    const inverseRestRotations = objects.map(o => o.model.quaternion.clone().invert());
     if (params.has('debug')) window.__three = { scene, renderer };
     renderer.info.autoReset = false;
     const stats = { calls: 0, triangles: 0 };
@@ -958,11 +984,13 @@
       if (!wide || !high) return;
       objects.forEach((o, i) => {
         const p = poses[i], g = stands[i];
-        g.visible = p.visible;
+        g.visible = p.visible && i !== hiddenIndex;
+        if (i === hiddenIndex) return;
         g.position.set(p.x - left, high - (p.y - top), -325 * p.depth + p.lift);
         g.scale.setScalar(p.size / o.span);
         g.rotation.set(p.pitch, p.yaw, p.roll, 'YXZ');
-        o.action.update(clock, dt, o.model);
+        if (storyOn) o.model.quaternion.copy(inverseRestRotations[i]).invert();
+        else o.action.update(clock, dt, o.model);
       });
       shown = Math.min(1, shown + dt / .6);
       canvas.style.opacity = fade * easeOutCubic(shown);
@@ -1042,7 +1070,10 @@
     const actionClock = () => {
       for (let k = pending.length - 1; k >= 0; k--) {
         const { i, at, kind } = pending[k];
-        if (clock >= at) { objects[i].action[kind]?.(clock); pending.splice(k, 1); }
+        if (clock >= at) {
+          if (i !== hiddenIndex) objects[i].action[kind]?.(clock);
+          pending.splice(k, 1);
+        }
       }
     };
     const baseDraw = draw;
@@ -1050,6 +1081,7 @@
     canvas.addEventListener('webglcontextlost', e => {
       e.preventDefault();
       gl = null; canvas.remove();
+      heroPreview.hidden = false;
     });
     stage.insertBefore(canvas, announcer);
 
@@ -1059,6 +1091,35 @@
       get ratio() { return ratio; },
       tune,
       warm,
+      getPose(index) {
+        const pose = poses[index];
+        const stand = stands[index];
+        const bounds = stage.getBoundingClientRect();
+        // Include the current flip so the scan can start with the model at its rest rotation.
+        const rotation = stand.quaternion.clone().multiply(objects[index].model.quaternion)
+          .multiply(inverseRestRotations[index]);
+        const { x: pitch, y: yaw, z: roll } = new T.Euler().setFromQuaternion(rotation, 'YXZ');
+        return { index, x: bounds.left + pose.x, y: bounds.top + pose.y, size: pose.size, pitch, yaw, roll };
+      },
+      takeCard() {
+        const card = objects[CARD_INDEX];
+        const rotation = card.model.quaternion.clone();
+        card.look({});
+        card.model.removeFromParent();
+        card.model.quaternion.copy(inverseRestRotations[CARD_INDEX]).invert();
+        return {
+          card,
+          restore() {
+            card.open(0);
+            card.model.quaternion.copy(rotation);
+            stands[CARD_INDEX].add(card.model);
+          }
+        };
+      },
+      setHidden(index) {
+        stands.forEach((stand, i) => { stand.visible = i !== index; });
+        trailing = false;
+      },
       fit,
       points,
       open(i, e, push) { objects[i].open?.(e, push); },
@@ -1082,7 +1143,7 @@
       draw(dt, fade) { actionClock(); baseDraw(dt, fade); },
       arrive(i, at) { queue(i, at, 'arrive'); },
       activate(i, at) { queue(i, at, 'activate'); },
-      present(i) { objects[i].action.present?.(); }
+      present(i) { if (i !== hiddenIndex) objects[i].action.present?.(); }
     };
   }
 
@@ -1098,7 +1159,7 @@
     window.__heroStarted = true;
     const scene = loadScene();
     await fontsReady();
-    const playing = root.hasAttribute('data-intro') && !calm;
+    const playing = root.hasAttribute('data-intro') && !calm && stageVisible;
     if (playing) {
       slot = document.createElement('div');
       slot.className = 'headline-slot';
@@ -1119,6 +1180,87 @@
     wake();
     await scene;
   }
+
+  function setHiddenObject(index) {
+    if (index === hiddenIndex) return;
+    hiddenIndex = index;
+    gl?.setHidden(index);
+    // Clear the source on this frame, when the scan copy takes over.
+    if (gl && (stageVisible || storyOn) && !document.hidden) render(0);
+  }
+
+  function releaseFeature() {
+    if (cardFeature && !cardFeature.ready) cardFeature.resolve(false);
+    cardFeature = null;
+  }
+
+  window.RFIDLanding = {
+    setStoryProgress(blend, screens) {
+      const active = blend > 0;
+      storyBlend = smoothstep(clamp01((blend - .22) / .78));
+      scrollGoal = story ? clamp(screens, 0, story.length) : 0;
+      if (active !== storyOn) {
+        storyOn = active;
+        scrollNow = 0;
+        storyState = story?.timeline(0);
+        if (active) {
+          finishIntro(false);
+          releaseFeature();
+          drag = null;
+          stage.classList.remove('is-dragging');
+          storyRoot.before(hero);
+        } else {
+          heroHome.append(hero);
+          heroPreview.removeAttribute('style');
+        }
+        hero.classList.toggle('is-film', active);
+        stage.classList.toggle('is-story', active);
+        if (active) stage.setAttribute('inert', '');
+        else stage.removeAttribute('inert');
+        measure();
+      }
+      wake();
+      return active ? introPose(CARD) : null;
+    },
+    getPose(index = focus) {
+      if (index === hiddenIndex || !stageVisible || !gl?.shown || entrance <= .01 || !poses[index]?.size) return null;
+      return gl.getPose(index);
+    },
+    featureCard() {
+      if (cardFeature) return cardFeature.promise;
+      if (!started || !stageVisible || !gl || restoreCard) return Promise.resolve(false);
+      if (drag) {
+        const { id } = drag;
+        drag = null;
+        stage.classList.remove('is-dragging');
+        if (stage.hasPointerCapture(id)) stage.releasePointerCapture(id);
+      }
+      const request = {};
+      request.promise = new Promise(resolve => { request.resolve = resolve; });
+      cardFeature = request;
+      finishIntro(false);
+      bringToFront(CARD_INDEX, .62);
+      wake();
+      return request.promise;
+    },
+    borrowCard() {
+      if (!gl || restoreCard) return null;
+      const { card, restore } = gl.takeCard();
+      restoreCard = restore;
+      releaseFeature();
+      setHiddenObject(CARD_INDEX);
+      return card;
+    },
+    releaseFeature,
+    returnCard() {
+      if (!restoreCard) return;
+      restoreCard();
+      restoreCard = null;
+      setHiddenObject(-1);
+    },
+    hideObject: setHiddenObject,
+    showObject: () => setHiddenObject(-1)
+  };
 
   begin();
 

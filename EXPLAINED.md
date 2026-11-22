@@ -35,6 +35,9 @@ Written by <who> · <date> · Issue #<n>
 - [3D rendering pipeline](#3d-rendering-pipeline-jslandingjs-createscene)
 - [The three 3D objects](#the-three-3d-objects-jsmodelsjs-models)
 - [The phone's lock screen](#the-phones-lock-screen-jslockscreenjs)
+- [The RFID scan and reveal](#the-rfid-scan-and-reveal-jsscanjs-jsscan-scenejs-jsscan-timingjs)
+- [The 3D hand](#the-3d-hand-jsscan-handjs-modelsscan-handglb)
+- [Bit River transmission](#bit-river-transmission-bit-river)
 - [The story: a film played by scrolling](#the-story-a-film-played-by-scrolling-jsstoryjs-jslandingjs)
 - [The simulation: physics, protocol and reader](#the-simulation-physics-protocol-and-reader-jsrfid)
 - [The lab: Power, Reply, Break it](#the-lab-power-reply-break-it-jslabjs)
@@ -50,17 +53,20 @@ Owner: Mina Vian · 2026-11-20, updated 2026-11-21 · Issues #3, #5, #9
 **What it does.** The first screen: on the left, the three everyday RFID objects (key fob, phone, contactless card) in 3D; on the right, the headline "Those are the things you use every day." and the line "and almost nobody knows how it works…". On phones the words sit on top and the objects below. Scrolling then plays the story (see its own entry).
 
 **How it works.**
-- `index.html` holds the words as real text (an `h1` and a `p`), an empty `#stage` for the 3D canvas, the story's words (`.story`) and an empty `.track` that only gives the page its scroll length. It loads four scripts: `js/lockscreen.js`, `js/models.js`, `js/story.js`, `js/landing.js`. Three.js 0.170 comes from the jsDelivr CDN through an import map; the fonts (Inter Tight, and Antonio for the phone's clock) come from Google Fonts.
+- `index.html` holds the words as real text (an `h1` and a `p`), an empty `#stage` for the 3D canvas, and loads `js/lockscreen.js`, `js/models.js` and `js/landing.js`.
 - A tiny script in `<head>` adds `data-intro` to the page before anything is drawn, so the opening can start from a blank state without a flash. If the visitor prefers reduced motion, it is not added and the page simply appears finished.
-- `styles.css` pins the hero and the 3D stage to the screen (`position: fixed`), like a video frame, and hides the scrollbar; the page underneath still scrolls normally. It uses a two-column grid on wide screens and a stacked layout when the window is taller than wide or narrower than 760 px. The stage covers the whole page behind the words, so objects are never cut off by a column edge. A faint SVG noise texture over everything gives a printed-paper feel.
+- `styles.css` uses a two-column grid on wide screens and a stacked layout when the window is taller than wide or narrower than 760 px. The stage covers the whole page behind the words, so objects are never cut off by a column edge. A faint SVG noise texture over everything gives a printed-paper feel.
+- Codex for Akris Luno · 2026-11-21 · Issue #16. The link below the headline brings the contactless card to the front and carries it into the scan. The carousel only captures arrow keys while focused and stops rendering when it leaves the viewport.
+- Codex for the project team · 2026-11-21. The import maps on the landing page and the standalone Bit River page load the same bundled Three.js 0.170 files. `vendor/fonts/fonts.css` supplies Inter Tight and Antonio for the English text and phone clock. The original licenses are bundled alongside the assets. `index.html` detects `file://` and shows the setup link before the intro starts.
+- Codex for the project team · 2026-11-21. If the browser cannot create a 3D context or loses it, `loadScene()` and the context-loss handler show the card image from Bit River in the landing stage. The scan also has a static preview and a button to continue.
 
 **Why it is built this way.** The words are real HTML (not drawn in 3D) so they are sharp, selectable and readable by screen readers. No build step, so anyone can open the folder and serve it.
 
-**How to check it.** Serve the folder (for example `python -m http.server`) and open it. The `.glb` models do not load from `file://`, so double-clicking `index.html` shows the words only.
+**How to check it.** Follow the server command in `README.md`. With internet access disabled, open the landing page and standalone Bit River through that server. Both should load their models and fonts. Open `index.html` from disk to check the setup note.
 
 **Likely questions.**
 - Q: Why does the page need a server? A: Browsers block loading model files straight from disk for security; any static host works.
-- Q: Why Google Fonts with `display=block`? A: The headline is measured for the animation; swapping fonts mid-animation would make it jump, so the page waits up to 3 seconds for the real font.
+- Q: Why does the intro wait for the fonts? A: The headline is measured for the animation. The page waits up to 3 seconds for the bundled font so the text keeps its shape as it moves.
 
 ---
 
@@ -74,6 +80,7 @@ Owner: Mina Vian · 2026-11-20 · Issues #3, #5
 - **Word pops** use `pop()`, a damped spring (it overshoots about 3% and settles).
 - **The glide** lays the headline out at its large size and scales it down to its final place (`placeHeadline`), so the text is never blurry. A hidden copy (`slot`) holds the final position so nothing reflows when it lands.
 - **The carousel** is a small physics model: a position `phase` (0 = key fob in front, 1 = phone, 2 = card) and a `velocity`. Each object's screen position comes from its angle on a tilted circle (`computePoses`): the front object is large and sharp; the other two sit behind it, bottom-left and top-right.
+- OpenAI Codex for the project team spaced the carousel across the area beside the headline, or below it on phones. The support slots have lighter depth blur so the phone and card read clearly. The next heading fades in as the reader scene approaches.
 - **Moves** use a Hermite curve (`travel`, `advanceFlight`) that starts at the current position *and speed*, so a new input never makes anything jump.
 - **Interrupting the opening** (`finishIntro(true)`): any click, key, wheel or touch freezes every element where it is and blends it to its final state. The headline's blend starts at the speed it was already moving (its easing curve is computed from that speed), and the spinning carousel lands on the key fob from its current speed.
 - **Dragging** follows the diagonal between the back objects; releasing with speed flings it on (`release`). The left and right arrow keys turn it (up and down are left for scrolling). Once the story starts playing, the carousel stops taking input.
@@ -155,10 +162,75 @@ Owner: Mina Vian · 2026-11-20 · Issue #5
 
 ---
 
+### The RFID scan and reveal (`js/scan.js`, `js/scan-scene.js`, `js/scan-timing.js`)
+Written by OpenAI Codex for Akris Luno · 2026-11-21 · Issue #16
+
+**What it does.** The contactless card from the carousel slides into the scan. A short gesture suggests moving it toward the reader. The reader’s contactless symbol brightens as the card approaches. Moving it close enough, or focusing the card and pressing Enter, triggers the simulated scan. The shockwave sweeps the reader away and carries the card toward the center as “How It Works?” fades in behind it. Scroll or choose **Continue** to join the key and phone.
+
+**How it works.**
+
+- The carousel supplies the card’s screen position, size and rotation through `getPose()`. `borrowCard()` moves that same Three.js object from the landing scene to the scan scene. `drawHandoff()` starts with its rendered pose and blends it into the scan while the page scrolls.
+- `scan.js` projects the card and reader into screen coordinates. `paintGuidance()` moves a gesture cue toward the reader and passes pointer position, attention and distance to `drawScan()`. The card tilts with the pointer and gently rocks while hovered. The reader light responds as the card approaches. The card follows a captured mouse or touch pointer and returns to rest if released too far away. The simulated read unlocks the film and the deeper experiments. Reduced motion keeps the instruction and light feedback while removing the gesture and tilt.
+- `drawScan()` follows the card from contact through the expanding wave to the centered reveal. The keyboard path places the hand around a point on the card so the grip moves with it. `SCAN_TIMING` aligns the chime, reader indicator, wave and heading fade.
+- OpenAI Codex for the project team · 2026-11-21. The scan and the film share a sticky viewport. The reveal leaves space above the card for the complete title. `setStoryProgress()` moves the landing stage into that viewport and gives `drawStory()` the card's next screen position, size and rotation. The card and its shadow travel into position as the key, phone and first film caption fade into the frame. The chapter buttons become interactive once the card is back on the landing stage. Scrolling backwards reverses the handoff.
+- If 3D setup fails, `scan.js` shows stills of the reader and card from Bit River. The **Scan card** button advances to the title and the chapters.
+
+**Why it is built this way.** Visitors control the distance to the reader before the scan succeeds. Preserving one model lets each transition start at the previous scene’s pose. A scan button and the text explanation remain available if 3D fails to load. Reduced motion uses still poses for the landing flight, wave and scroll transitions.
+
+**How to check it.** Serve the repo with `python -m http.server` and follow “Try an RFID scan.” Wait for the short visual cue. Bring the card near the reader and watch the light respond. Release the card out of range to see it return, then move it close enough to scan. Choose **Continue** at the title and watch the card join the key and phone. Scroll back to the title and replay with Enter on the focused card.
+
+**Likely questions.**
+
+- Q: Is a real reader involved? A: The browser plays a simulated successful read. The wave marks that moment. A real scan uses an electromagnetic field and the three devices can use different frequencies and protocols.
+- Q: What if someone opens the scan directly? A: The scan loads the same card asset into its own scene because the visitor starts at the reader.
+
+---
+
+### The 3D hand (`js/scan-hand.js`, `models/scan-hand.glb`)
+Integration by OpenAI Codex for Akris Luno · 2026-11-21 · Issue #16
+
+**What it does.** A right hand reaches in and closes its fingers around the item.
+
+**How it works.** `createScanHand()` loads the hand, converts it from meters to centimeters around the wrist, and adds a cuff. `grip()` bends three joints in each finger and rotates the thumb toward the fingers. Each pose starts from the same saved rest angles, so replay resets cleanly. [CC0 Innerscene hand based on MakeHuman](https://www.innerscene.com/tools/library/3d-parts/posable-anatomical-right-hand-f6098b4f)
+
+**Why it is built this way.** The mesh bends continuously at the knuckles because each vertex is attached to nearby bones. The scan scene can pose it with a single value from zero to one.
+
+**How to check it.** Focus the card and press Enter. Watch the fingers close before the wrist moves toward the reader.
+
+**Likely questions.**
+
+- Q: Does the hand track a camera feed? A: Its motion is scripted around a grip point on the card.
+
+---
+
+### Bit River transmission (`bit-river/`)
+Written by OpenAI Codex for Akris Luno · 2026-11-21 · Issue #12. Embedded in the scan story for Issue #16.
+
+**What it does.** Follow a passive card's simulated reply to the reader and inspect example packets. The reader's field supplies energy to the card. The chip varies the load on its antenna, and the reader detects those changes as a reply.
+
+**How it works.**
+
+- `bit-river.js` registers `<rfid-bit-river>`. The element's scroll position sets the chapter and camera view. The chapter buttons move along the same scroll track. The paper background stays the same throughout.
+- `river.js` draws the reader's charging pulse and the card's copper reply. Drawing, packet positions, and drag checks use the same curve. `replyFront()` extends the reply as the visitor scrolls. `replySample()` illustrates the load modulation for byte `7B` of the simulated ID, least significant bit first. [NXP PN512 data sheet](https://www.nxp.com/docs/en/data-sheet/PN512.pdf)
+- Packet buttons drift along the curve, fade as they wrap, and pause in place while they have visible keyboard focus. `fadeText()` eases changes to the chapter copy and packet readout. Lifting a packet shows a missing notice followed by a replacement confirmation. Reduced motion keeps the packet effects static.
+- OpenAI Codex for the project team merged `feat/12-bit-river` at `1ca893a`. The mobile readout reserves space across chapters so the plot stays in place when packet text changes. The bonus page loads bundled assets and fades from the card poster to the model after the first rendered frame.
+
+**Why it is built this way.** The illustrated packet interaction lives on the bonus page at `/bit-river/`. OpenAI Codex for the project team brought the copper signal treatment into the live lab, where it responds to the simulation.
+
+**How to check it.** Open `/bit-river/`. Watch the reader's field form, then the illustrated copper reply. Choose “Transmit,” then hover, tap, or use Tab to inspect a packet. Drag the packet away, use **Lift packet**, or press Delete while it has focus. Run `node --test bit-river/river.test.mjs` with Node 22.7 or newer to check the path, reveal, and sample bit timing.
+
+**Likely questions.**
+
+- Q: How does the card stay lined up with the signal? A: Bit River computes both positions from the same chapter progress and plot dimensions.
+- Q: Does the demo read or replace a real packet? A: The values come from a local array, and packet replacement is an effect within the demo.
+
+---
+
 ### The story: a film played by scrolling (`js/story.js`, `js/landing.js`)
 Owner: Mina Vian · 2026-11-21, updated 2026-11-21 · Issues #9, #19
 
-**What it does.** After the first screen, scrolling plays the first two minutes of `SCRIPT.md`. One plain sentence is on screen at a time, always top left, and a part is labelled only while the sentence names it:
+**What it does.** After the scan reveal, scrolling plays the first two minutes of `SCRIPT.md`. One plain sentence is on screen at a time, always top left, and a part is labelled while the sentence names it.
+- **Intro:** The three objects fill the frame in a staggered row under “They all use RFID.” The models glide into alignment before the shells turn to glass.
 - **Inside:** "They all use RFID." Then the objects turn to glass: "Inside each one: a coil and a chip." Each object gets `Coil` and `Chip` labels.
 - **No battery:**
   - "The key has a battery." and "Pull it out.": the visitor drags the battery (or scrolling pulls it).
@@ -166,10 +238,10 @@ Owner: Mina Vian · 2026-11-21, updated 2026-11-21 · Issues #9, #19
   - The card comes back: "Your bank card has no battery at all." and "So what powers its chip?"
 - **Power, Reply, Break it:** the lab (`js/lab.js`) runs these, and supplies the sentences that depend on what the visitor does.
 
-The chapter bar at the bottom reads Intro, Inside, No battery, Power, Reply and Break it. On phones it shows the current chapter's name and a dot for each of the others.
+The chapter bar links Intro, Inside, No battery, Power, Reply and Break it. Scrolling past Break it takes the visitor straight to Take it apart. The chapter names fit on phones as well.
 
 **How it works.**
-- **Progress in screens.** `landing.js` turns the scroll position into `scrollNow`, in screens (1 = one window height), and eases it toward the real scroll position, so a mouse wheel's steps feel like smooth playback.
+- **Progress in screens.** OpenAI Codex for the project team merged the film after the scan on 2026-11-21. The start of the film track is the zero point for the chapter buttons and the 3D timeline. `landing.js` eases `scrollNow` toward that local scroll position so mouse wheel steps feel like smooth playback.
 - **One timeline.** `story.js` holds the timing (`TIME`), and `timeline(s)` turns `s` into progress values for the 3D. The sentences that depend only on the scroll are a list of ranges (`SAY`, and `AFTER` for after the battery is out). `sentence()` picks the one for the moment. In the lab scenes, it takes the lab's sentence instead. `speak()` swaps the text and replays a short fade-in.
 - **Labels** (`CALLOUTS`) each name the sentences that show them (`when`). They fade in and out with the sentence, and each sits outside its object, joined to its part by a thin line.
 - **The battery handle** is a real button over the battery. Dragging it more than 22 mm (in the key's own size) frees the battery; Enter, Space or an arrow key does the same.
@@ -231,21 +303,22 @@ Owner: Mina Vian · 2026-11-21, updated 2026-11-21 · Issue #19
   3. "The field makes electricity in the coil."
   4. "Enough power wakes the chip."
   5. "The reader is the battery."
-- **Reply.** "Now the chip replies." "It has no radio." "It takes more power, then less." With each change, the key's coil glows brighter or dimmer. A trace under the reader, labelled "What the reader feels", dips with each change. The ID display fills in `3F 9A 12 C7`, decoded from those dips: "That's the 'ID' in RFID."
+- **Reply.** "Now the chip replies." "It uses the reader’s field." "It takes more power, then less." OpenAI Codex for the project team used the copper treatment from Bit River to highlight the coupled field lines and coils. The trace under the reader, labelled "What the reader feels", follows the same reply samples. The ID display fills in `3F 9A 12 C7`, decoded from those dips.
 - **Break it.** Three buttons (Turn it, Add metal, Use a card) and the drag. The sentence says what broke ("Too far. Not enough power.", "Turned. The field misses the coil.", "Metal pushes the field away.") and asks for the next way to break it. Then: "That's why you tap close and flat." After 4 idle seconds, a ghost hand lifts the key once.
 
 **How it works.**
 - **Every frame**, `update` calls `physics.solve` with the key's distance (plus about a millimetre of hand drift), angle and metal.
 - **The power sentences** come from the physics: out of reach, field only, electricity, awake. They only move forward one step at a time, and each stays at least 1.5 s, so a fast scroll can't skip one.
-- **The key's reply** is made one bit at a time, slowed to 70 ms per bit (really 512 µs). The reader decides each bit from those samples. When a whole message has passed, `reader.hearKey` checks it from the samples alone before the display turns green. At the "spell" moment the reader starts listening afresh, from the end of one message into the next one's header.
-- **The card** replies only when asked: each time it wakes, a whole conversation runs through `channel` and `reader.activate`, and the trace plays the samples back.
+- **The key's reply** is slowed to 70 ms per bit (really 512 µs). `sampleKey()` fills the current bit as it plays and uses its latest switch position to light the coils. When a whole message has passed, `reader.hearKey` checks it from the samples alone before the display turns green. The same reply continues from Reply into Break it.
+- **The card** replies when asked. The lab runs a conversation through `channel` and `reader.activate`, then plays the recording back in the trace. The recorded card switch pattern lights the coils during the card's part of the exchange.
+- **When the tag loses power**, the trace returns to its baseline, the copper response stops and the ID clears. The reader’s field remains visible. Reduced motion keeps the waveform and steady copper colour while suppressing the pulsing highlights.
 - **What broke** (`reasonFor`) is the one change that would fix the read: metal first, then the turn, then the distance.
 - **Timings people see** (how long a sentence stays, idle time) use real seconds. The simulation uses the frame clock.
 - **Sizes** come from the design frame (`geo.u`), like the rest of the film.
 
 **Why it is built this way.** The first hands-on part should teach by doing. Each sentence only appears when the thing it says is really happening in the simulation.
 
-**How to check it.** Scroll to Power and drag the key. With `?debug`, `__lab.bits` shows the bits the reader decided, and `__lab.fastForward(70)` plays 70 bits at once.
+**How to check it.** Go to Reply, then pull the key away or focus it and press Page Up. The copper response and waveform should stop together. Move it back to resume, then try Break it and **Use a card**. With `?debug`, `__lab.bits` shows the bits the reader decided, and `__lab.fastForward(70)` plays 70 bits at once.
 
 **Likely questions.**
 - Q: Is the ID really decoded? A: Yes. The display only shows what the reader read from the samples, and turns green only when the message passes its checks.

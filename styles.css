@@ -1,5 +1,4 @@
-/* Landing page. The hero and the 3D stage are pinned like a video frame; scrolling plays
-   the story on top of them (js/story.js). */
+/* The landing scene scrolls into a sticky frame shared by the scan and the film. */
 
 :root {
   --paper: #f5f2ec;
@@ -11,13 +10,12 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
-/* The page scrolls (that is how the story plays), but without a visible scrollbar. */
 html {
   background: var(--paper);
-  scrollbar-width: none;
+  overflow-anchor: none;
+  scrollbar-width: thin;
+  scrollbar-color: #b9b1a5 var(--paper);
 }
-
-html::-webkit-scrollbar { display: none; }
 
 body {
   margin: 0;
@@ -56,11 +54,12 @@ body::after {
   white-space: nowrap;
 }
 
+/* The home slot keeps its height when the stage moves into the film. */
+.hero-home { height: 100vh; height: 100lvh; }
+
 /* Layout: objects on the left, words on the right. */
 .hero {
-  position: fixed;
-  top: 0;
-  left: 0;
+  position: relative;
   z-index: 1;
   width: 100%;
   height: 100vh;
@@ -71,6 +70,9 @@ body::after {
   align-items: center;
   padding: 0 var(--gutter) 0 0;
 }
+
+.hero.is-film { position: absolute; inset: 0; height: 100%; padding: 0; }
+.hero.is-film .copy { visibility: hidden; pointer-events: none; }
 
 /* The stage spans the page behind the words, so objects are never clipped by a column.
    landing.js sets --region-* to the area the objects occupy. */
@@ -134,6 +136,16 @@ body::after {
 
 .stage canvas { display: block; }
 
+.hero-preview:not([hidden]) {
+  position: absolute;
+  left: calc(var(--region-x, 0px) + var(--region-w, 100vw) * .08);
+  top: calc(var(--region-y, 0px) + var(--region-h, 100vh) * .18);
+  width: calc(var(--region-w, 100vw) * .84);
+  height: calc(var(--region-h, 100vh) * .64);
+  object-fit: contain;
+  pointer-events: none;
+}
+
 /* Words. */
 .copy {
   grid-area: copy;
@@ -183,13 +195,17 @@ html[data-intro] #headline:not([data-docked]) {
 html[data-intro] #subline,
 html[data-intro] .stage-light { opacity: 0; }
 
+html[data-intro] .copy .scan-link { visibility: hidden; }
 /* ---------- The story ---------- */
 
-/* Gives the page its scroll length: the hero screen plus the story's screens. */
-.track { height: calc((var(--story-length, 4.9) + 1) * 100vh); }
+/* One scan-height offset makes the anchor land at the start of the film. */
+.track {
+  height: calc(var(--story-length, 10.8) * 100svh);
+  scroll-margin-top: 100svh;
+}
 
 .story {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 3;
   pointer-events: none;
@@ -466,7 +482,10 @@ html[data-intro] .chapters { opacity: 0; pointer-events: none; }
 
 .chapters button {
   appearance: none;
-  padding: 6px 0;
+  display: inline-grid;
+  place-items: center;
+  min-height: 44px;
+  padding: 0;
   border: 0;
   background: none;
   font: inherit;
@@ -476,12 +495,12 @@ html[data-intro] .chapters { opacity: 0; pointer-events: none; }
   text-transform: uppercase;
   white-space: nowrap;
   color: var(--muted);
-  opacity: .62;
   cursor: pointer;
-  transition: opacity .3s ease, color .3s ease;
+  transition: color .3s ease;
 }
 
-.chapters button:hover, .chapters button[aria-current] { color: var(--ink); opacity: 1; }
+.chapters button:hover, .chapters button[aria-current] { color: var(--ink); }
+.chapters button[aria-current] { font-weight: 800; }
 .chapters button:focus-visible { outline: 1.5px solid var(--ink); outline-offset: 4px; border-radius: 4px; }
 
 /* Phones and tall windows: words on top, objects below. */
@@ -511,27 +530,14 @@ html[data-intro] .chapters { opacity: 0; pointer-events: none; }
   .callout span { display: none; }
 
   .scroll-cue { bottom: 64px; }
-  .chapters { bottom: calc(env(safe-area-inset-bottom) + 10px); }
-
-  /* Six chapter names don't fit: the current one, and a dot for each of the others. */
-  .chapters { gap: 10px; align-items: center; }
-  .chapters button:not([aria-current]) {
-    width: 7px;
-    height: 7px;
-    padding: 0;
-    border-radius: 50%;
-    background: currentColor;
-    font-size: 0;
-    opacity: .35;
-  }
-  .chapters button:not([aria-current])::after { content: ""; position: absolute; inset: -12px; }
-  .chapters button { position: relative; }
+  .chapters { bottom: calc(env(safe-area-inset-bottom) + 6px); gap: clamp(4px, 1.3vw, 9px); width: max-content; max-width: calc(100% - 24px); }
+  .chapters button { min-width: 32px; font-size: 11px; letter-spacing: .015em; }
 
   .lab-fine { display: none; }
 }
 
 /* ---------- Part 2: take it apart ---------- */
-/* It scrolls up over the pinned film, on its own paper. */
+/* The deeper experiments are ordinary document sections. */
 .deep {
   --copper: #b8652a;
   --green: #1f7a4a;
@@ -644,6 +650,264 @@ html[data-intro] .chapters { opacity: 0; pointer-events: none; }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
+  .story *, .story *::after { animation-duration: .01s !important; transition-duration: .01s !important; }
+}
+
+.scan-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  gap: .55em;
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration-thickness: 1px;
+  text-underline-offset: .28em;
+}
+
+.scan-link::after {
+  content: "";
+  width: .46em;
+  height: .46em;
+  border: solid currentColor;
+  border-width: 0 1.5px 1.5px 0;
+  transform: translateY(-.1em) rotate(45deg);
+}
+
+.copy .scan-link {
+  position: relative;
+  z-index: 7;
+  margin-top: .85rem;
+}
+.copy .scan-link[aria-busy="true"] { cursor: progress; }
+
+.local-file-note { display: none; }
+html[data-local-file] .local-file-note { display: block; color: var(--muted); }
+html[data-local-file] .local-file-note a { color: var(--ink); }
+html[data-local-file] .copy .scan-link, html[data-local-file] .scan-sequence { display: none; }
+
+.experience-frame {
+  position: sticky;
+  top: 0;
+  height: 100svh;
+  isolation: isolate;
+  overflow: clip;
+  background: radial-gradient(ellipse at 50% 42%, #fbf9f4, var(--paper) 72%);
+}
+
+.scan-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  pointer-events: none;
+  text-align: center;
+}
+
+.scan-intro {
+  grid-row: 1;
+  grid-column: 1;
+  z-index: 2;
+  margin: 0 auto;
+  padding: clamp(20px, 5svh, 60px) 16px 0;
+}
+
+.scan-intro h2 {
+  margin: 0;
+  font-size: clamp(1.75rem, 4.5vw, 3.5rem);
+  font-weight: 800;
+  line-height: 1.02;
+  letter-spacing: -.035em;
+}
+
+.scan-intro p {
+  margin: .55rem 0 0;
+  color: var(--muted);
+}
+
+.scan-view {
+  grid-row: 1 / -1;
+  grid-column: 1;
+  z-index: 1;
+  min-width: 0;
+  min-height: 0;
+  pointer-events: none;
+}
+
+.scan-view canvas { display: block; width: 100%; height: 100%; }
+
+.scan-preview {
+  grid-area: 1 / 1 / -1;
+  align-self: center;
+  display: flex;
+  justify-content: center;
+  gap: clamp(16px, 9vw, 160px);
+  pointer-events: none;
+}
+
+.scan-preview img { width: min(35vw, 48svh, 360px); height: auto; object-fit: contain; }
+
+.scan-reveal-preview {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(73vw, 48svh, 390px);
+  height: auto;
+  transform: translate(-50%, -44%);
+}
+
+.scan-view.is-handoff {
+  position: fixed;
+  inset: 0;
+  z-index: 11;
+}
+
+.scan-gesture {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  width: 24px;
+  height: 24px;
+  border: 1px solid #f9f6ef;
+  border-radius: 50%;
+  background: #413a31;
+  box-shadow: 0 3px 9px #31281c60, 0 0 0 5px #f5f2ecb3;
+  pointer-events: none;
+}
+
+.scan-gesture::after {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border-radius: 50%;
+  background: #fffaf1;
+}
+
+.scan-grab {
+  position: absolute;
+  z-index: 2;
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  border-radius: 12px;
+  color: var(--ink);
+  touch-action: none;
+  cursor: grab;
+  pointer-events: auto;
+}
+
+.scan-grab:active { cursor: grabbing; }
+.scan-grab[aria-disabled="true"] { pointer-events: none; }
+.scan-grab:not(.is-fallback) span { position: absolute; clip-path: inset(50%); white-space: nowrap; }
+.scan-grab.is-fallback {
+  top: 72%;
+  left: 50%;
+  padding: .7em 1.3em;
+  transform: translateX(-50%);
+  border-radius: 99px;
+  background: var(--ink);
+  color: var(--paper);
+  font: inherit;
+  cursor: pointer;
+}
+
+.scan-reveal {
+  position: absolute;
+  top: 28%;
+  left: 50%;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  transform: translate(-50%, -50%);
+  margin: 0;
+  padding: .03em .05em;
+  border-radius: .04em;
+  font-size: min(14.5vw, 21svh, 18rem);
+  font-weight: 800;
+  line-height: .9;
+  letter-spacing: -.04em;
+  opacity: var(--reveal-opacity, 0);
+}
+.scan-reveal span { white-space: nowrap; }
+
+.scan-controls {
+  grid-row: 3;
+  grid-column: 1;
+  z-index: 2;
+  min-width: 0;
+  padding: 0 16px max(1.25rem, env(safe-area-inset-bottom));
+  opacity: var(--scan-controls-opacity, 1);
+}
+
+.scan-next {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: .55rem;
+}
+.scan-next:not([inert]) > * { pointer-events: auto; }
+
+.scan-intro { opacity: calc(var(--scan-chrome, 1) * var(--scan-arrival, 1)); }
+.scan-keyboard {
+  margin: 0;
+  color: var(--muted);
+  font-size: .9rem;
+  opacity: 0;
+}
+
+.scan-stage:has(.scan-grab:focus-visible) .scan-keyboard { opacity: var(--scan-chrome, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .scan-gesture { display: none; }
+}
+
+.scan-status {
+  min-height: 1.25em;
+  margin: 0 0 .65rem;
+  color: var(--muted);
+}
+
+.scan-status[data-success] { color: #126044; font-weight: 700; opacity: var(--scan-chrome, 1); }
+
+.scan-controls button {
+  min-height: 44px;
+  padding: .5em .95em;
+  border: 1px solid #c7bfb1;
+  border-radius: 99px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.scan-controls button:hover {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.scan-link:focus-visible, .scan-controls button:focus-visible, .scan-grab:focus-visible,
+.scan-stage h2:focus-visible {
+  outline: 2px solid #09573d;
+  outline-offset: 4px;
+}
+
+.scan-next { column-gap: 1rem; }
+
+.scan-stage[hidden], .scan-stage [hidden] { display: none; }
+.scan-stage[data-view="reveal"] .scan-intro { visibility: hidden; }
+.scan-depth { height: 55svh; }
+
+@media (max-height: 560px) {
+  .scan-intro { padding-top: 12px; }
+  .scan-controls { padding-bottom: 10px; }
+}
+
+@media (max-width: 600px) and (min-height: 540px) {
+  .scan-reveal { top: 26%; font-size: min(18vw, 12svh); }
+  .scan-reveal span { display: block; }
 }
 
 /* ---------- The film's frame ----------

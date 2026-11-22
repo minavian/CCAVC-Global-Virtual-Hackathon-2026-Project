@@ -22,7 +22,7 @@
 (function () {
   'use strict';
 
-  const { physics, lf, tag: tags, channel, reader, air } = window.RFID;
+  const { physics, iso, lf, tag: tags, channel, reader, air } = window.RFID;
   const clamp = (v, lo, hi) => v < lo ? lo : v > hi ? hi : v;
   const clamp01 = v => clamp(v, 0, 1);
   const lerp = (a, b, t) => a + (b - a) * t;
@@ -60,18 +60,24 @@
     };
 
     // ---------- The key's reply, as samples ----------
-    // While awake, the key repeats its message. Samples are made one bit at a time, with the
-    // size of the change at that moment and the reader's noise.
+    // Fill the current bit as it plays so the trace and the coil show the same moment.
     const key = tags.keyChip(), message = key.message, B = lf.BIT;
-    let played = [], bitClock = 0, bitIndex = 0, bitsHeard = [], idDigits = '', idOk = false, idAt = -1;
+    const keySwitch = lf.manchesterSwitch(message);
+    let played = [], bitClock = 0, bitIndex = message.length - 1, sampled = 0;
+    let bitsHeard = [], idDigits = '', idOk = false, idAt = -1, replyGlow = 0;
     const noise = air.gaussian(tags.random(4242));
-    function playKeyBit(depth) {
-      const bit = message[bitIndex % message.length];
-      bitIndex++;
-      for (let k = 0; k < B; k++) {
-        const closed = depth > 0 && (bit ? k < lf.HALF : k >= lf.HALF);
-        played.push((closed ? 1 - depth : 1) + NOISE * noise());
+    function sampleKey(count, depth) {
+      const start = (bitIndex % message.length) * B;
+      while (sampled < count) {
+        const dip = keySwitch[start + sampled++] * depth;
+        played.push(1 - dip + NOISE * noise());
       }
+      return keySwitch[start + count - 1] * depth;
+    }
+    function playKeyBit(depth) {
+      sampleKey(B, depth);
+      sampled = 0;
+      bitIndex++;
       if (played.length > 4 * 64 * B) played = played.slice(-3 * 64 * B);
       const n = played.length - B;
       let a = 0, b = 0;
@@ -106,7 +112,10 @@
     }
     // Listen afresh, from the end of one message (its last bit, a 0) into the header of the
     // next, so the reader can find the header straight away.
-    function listenAgain() { played = []; bitsHeard = []; idDigits = ''; idOk = false; idAt = -1; bitIndex = message.length - 1; bitClock = 0; card = null; }
+    function listenAgain() {
+      played = []; bitsHeard = []; idDigits = ''; idOk = false; idAt = -1;
+      bitIndex = message.length - 1; bitClock = 0; sampled = 0; card = null; replyGlow = 0;
+    }
 
     // The card replies only when asked: each time it wakes, the reader runs a whole
     // conversation through the simulated air, and the trace plays its samples back.
@@ -115,14 +124,17 @@
     function startCard(depth) {
       const link = channel.cardChannel([{ chip: cardChip, depth, awake: true }], { noise: NOISE, seed: 1 + Math.floor(Math.random() * 1e6) });
       const run = reader.activate(link);
-      const total = link.recording.reduce((a, r) => a + r.samples.length, 0), samples = new Float32Array(total);
+      const total = link.recording.reduce((a, r) => a + r.samples.length, 0);
+      const samples = new Float32Array(total), switches = new Uint8Array(total);
       let at = 0, uidFrom = Infinity;
       link.recording.forEach((r, i) => {
         samples.set(r.samples, at);
+        // Reader commands also dip, but the card's load only changes during its answers.
+        if (r.answers.length) switches.set(iso.manchesterSwitch(r.answers[0].bits), at + r.begin);
         if (run.steps[i]?.label === 'ANTICOLLISION' && run.steps[i].bytes) uidFrom = at + r.begin + 46 * 32;
         at += r.samples.length;
       });
-      card = { samples, at: 0, uid: run.uid, ok: run.ok, uidFrom: Math.min(uidFrom, total) };
+      card = { samples, switches, depth, at: 0, uid: run.uid, ok: run.ok, uidFrom: Math.min(uidFrom, total) };
     }
 
     // ---------- Field lines ----------
@@ -243,19 +255,18 @@
         state.active = on;
         root.classList.toggle('is-on', on);
         root.setAttribute('aria-hidden', String(!on));
-        if (!on) listenAgain();
+        if (!on) {
+          listenAgain();
+          state.awakeSince = Infinity;
+        }
       }
       if (!on) return null;
       clock += dt;
       const mode = st.mode;
       if (mode !== state.mode) {
-        // Entering the reply's "spell" moment, or a new scene: listen from the next header.
-        if (mode === 'reply' || mode === 'break') listenAgain();
         if (mode === 'break') { state.breakSince = now(); state.lastInput = now(); state.payoffAt = null; state.found = { far: false, turned: false, metal: false }; }
         state.mode = mode;
       }
-      if (mode === 'reply' && st.spell && !state.spelling) { state.spelling = true; listenAgain(); }
-      if (!st.spell) state.spelling = false;
       root.dataset.mode = mode;
 
       // Until the visitor takes the key, scrolling brings it closer.
@@ -280,33 +291,28 @@
       const d = Math.max(.0015, state.distance + ghostLift + state.jitter);
       const options = { tag: state.tag, reader: readerKey, distance: d, angle: state.angle, metal: state.metal ? METAL_GAP : null };
       const solved = state.solved = physics.solve(options);
-      if (!solved.awake) state.awakeSince = Infinity; else if (state.awakeSince === Infinity) state.awakeSince = now();
+      if (!solved.awake) {
+        if (state.awakeSince !== Infinity) listenAgain();
+        state.awakeSince = Infinity;
+      } else if (state.awakeSince === Infinity) state.awakeSince = now();
 
       // The reply.
-      let closed = false;
-      if (state.tag === 'key') {
+      let replyDepth = 0;
+      if (solved.awake && state.tag === 'key') {
         bitClock += dt;
-        let guard = 0;
-        while (bitClock >= BIT_SECONDS && guard++ < 6) { bitClock -= BIT_SECONDS; playKeyBit(solved.awake ? solved.dip : 0); }
-        const bit = message[bitIndex % message.length];
-        closed = solved.awake && ((bitClock / BIT_SECONDS < .5) === (bit === 1));
-        if (!solved.awake) idOk = false;
-      } else {
-        if (solved.awake && !card) startCard(solved.dip);
-        if (card) {
-          card.at += dt;
-          const upTo = Math.min(card.samples.length, Math.floor(card.at / CARD_SECONDS * card.samples.length));
-          played = Array.from(card.samples.subarray(Math.max(0, upTo - 900), upTo));
-          closed = played.length > 0 && played[played.length - 1] < 1 - solved.dip / 2;
-          if (upTo >= card.uidFrom && card.uid) { idDigits = card.uid.map(hex).join(''); idOk = card.ok; }
-          if (card.at > CARD_SECONDS + 1.2) card = null;
-          if (!solved.awake) { card = null; idOk = false; idDigits = ''; }
-        } else {
-          played.push(...Array.from({ length: 6 }, () => 1 + NOISE * noise()));
-          if (played.length > 900) played = played.slice(-900);
-          idDigits = ''; idOk = false;
-        }
+        while (bitClock >= BIT_SECONDS) { bitClock -= BIT_SECONDS; playKeyBit(solved.dip); }
+        replyDepth = sampleKey(1 + Math.floor(bitClock / BIT_SECONDS * B), solved.dip);
+      } else if (solved.awake) {
+        if (!card) startCard(solved.dip);
+        card.at += dt;
+        const upTo = Math.min(card.samples.length, Math.floor(card.at / CARD_SECONDS * card.samples.length));
+        played = card.samples.subarray(Math.max(0, upTo - 700), upTo);
+        if (card.switches[upTo - 1]) replyDepth = card.depth;
+        if (upTo >= card.uidFrom && card.uid) { idDigits = card.uid.map(hex).join(''); idOk = card.ok; }
+        if (card.at > CARD_SECONDS + 1.2) card = null;
       }
+      const targetGlow = reduced.matches ? 0 : clamp01(replyDepth / .12);
+      replyGlow = solved.awake ? lerp(replyGlow, targetGlow, 1 - Math.exp(-dt / .028)) : 0;
 
       // The sentence for this moment.
       const reason = reasonFor(options, solved);
@@ -321,19 +327,19 @@
       idBox.querySelector('b').textContent = shown.padEnd(8, '·').match(/.{2}/g).join(' ');
       idBox.classList.toggle('is-ok', idOk && solved.awake && (st.spell || mode === 'break'));
 
-      draw(solved, readerKey, options, closed);
-      const glow = clamp01(solved.rawVolts / solved.wake) * .7;
+      draw(solved, readerKey, options, replying);
+      const glow = replying ? (solved.awake ? .36 + .64 * replyGlow : 0) : clamp01(solved.rawVolts / solved.wake) * .7;
       return {
         tag: state.tag, distance: d, angle: state.angle, metal: state.metal, metalGap: METAL_GAP,
         chip: solved.awake ? 1 : 0,
-        glow: replying && solved.awake ? (closed ? 1 : .35) : glow,
-        readerGlow: .55 + .45 * Math.abs(Math.sin(clock * 3.1)),
+        glow,
+        readerGlow: replying ? .52 + .36 * replyGlow : .55 + .45 * Math.abs(Math.sin(clock * 3.1)),
         say: state.say, awake: solved.awake, idOk: idOk && solved.awake
       };
     }
 
     // ---------- Drawing ----------
-    function draw(solved, readerKey, options, closed) {
+    function draw(solved, readerKey, options, replying) {
       const dpr = Math.min(devicePixelRatio || 1, 2);
       const w = canvas.clientWidth, h = canvas.clientHeight;
       if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
@@ -349,25 +355,32 @@
       const sig = readerKey + '|' + (options.metal !== null ? Math.round(d * 2000) : 'free');
       if (sig !== linesFor) { lines = traceLines(readerKey, d, options.metal !== null); linesFor = sig; }
       const tagR = physics.TAGS[state.tag].radius * Math.abs(Math.cos(state.angle));
-      const flow = reduced.matches ? 0 : clock * 26 * (Math.sin(clock * Math.PI / 1.1) >= 0 ? 1 : -1);
+      const flow = replying || reduced.matches ? 0 : Math.sin(clock * Math.PI / 1.1) * 12;
       for (const pts of lines) {
         let through = false;
         for (let i = 1; i < pts.length; i++) {
           const [r0, z0] = pts[i - 1], [, z1] = pts[i];
           if ((z0 - d) * (z1 - d) <= 0 && Math.abs(r0) < tagR) { through = true; break; }
         }
+        const copper = through && (solved.awake || !replying);
         const fade = ctx.createRadialGradient(padX, padY, 0, padX, padY, .12 * k);
-        const strong = through && closed ? .95 : through ? .7 : 0;
-        fade.addColorStop(0, through ? `rgba(196, 112, 44, ${strong})` : 'rgba(13, 13, 12, .28)');
-        fade.addColorStop(.55, through ? `rgba(196, 112, 44, ${strong * .7})` : 'rgba(13, 13, 12, .16)');
+        const strength = .56 + .44 * replyGlow;
+        fade.addColorStop(0, copper ? `rgba(182, 101, 42, ${strength})` : 'rgba(13, 13, 12, .28)');
+        fade.addColorStop(.55, copper ? `rgba(196, 112, 44, ${strength * .7})` : 'rgba(13, 13, 12, .16)');
         fade.addColorStop(1, 'rgba(13, 13, 12, 0)');
-        ctx.lineWidth = (through && closed ? 2.6 : 1.6) * u;
         for (const side of [1, -1]) {
           ctx.beginPath();
           pts.forEach(([rho, z], i) => { const [x, y] = toScreen(side * rho, z); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
           ctx.strokeStyle = fade;
-          ctx.setLineDash(through ? [9 * u, 9 * u] : [4 * u, 9 * u]);
+          ctx.setLineDash(copper && replying ? [] : copper ? [9 * u, 9 * u] : [4 * u, 9 * u]);
           ctx.lineDashOffset = -flow * side * u;
+          if (copper && replying && replyGlow > .02) {
+            ctx.lineWidth = 5 * u;
+            ctx.globalAlpha = .18 * replyGlow;
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+          }
+          ctx.lineWidth = (1.25 + (copper ? .7 * replyGlow : 0)) * u;
           ctx.stroke();
         }
       }
@@ -375,7 +388,7 @@
 
       // Copper sparks running round the key's coil: electricity, faster with more power.
       const power = clamp01(solved.rawVolts / solved.wake);
-      if (power > .2) {
+      if (power > .2 && !replying) {
         const rx = physics.TAGS[state.tag].radius * k * 1.05, ry = rx * Math.abs(Math.sin(tilt + state.angle)) + 2;
         const speed = reduced.matches ? 0 : clock * (1.2 + 5 * power);
         ctx.fillStyle = `rgba(214, 128, 58, ${(.35 + .65 * power).toFixed(2)})`;
@@ -404,7 +417,7 @@
       const below = padY + .047 * k * Math.sin(tilt) + 30 * u;
       trace.style.transform = `translate(${(padX - trace.offsetWidth / 2).toFixed(1)}px, ${below.toFixed(1)}px)`;
       idBox.style.transform = `translate(${(padX - idBox.offsetWidth / 2).toFixed(1)}px, ${(below + trace.offsetHeight + 14 * u).toFixed(1)}px)`;
-      drawTrace(solved);
+      if (replying) drawTrace(solved);
     }
 
     // What the reader feels: its coil current, zoomed in so a few percent fills the strip.
@@ -415,18 +428,41 @@
       if (traceCanvas.width !== Math.round(w * dpr) || traceCanvas.height !== Math.round(h * dpr)) { traceCanvas.width = Math.round(w * dpr); traceCanvas.height = Math.round(h * dpr); }
       tctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       tctx.clearRect(0, 0, w, h);
-      const count = state.tag === 'key' ? 16 * B : 700;
-      const data = played.slice(-count);
-      const zoom = state.tag === 'key' ? .16 : .12;
-      const y = v => 4 + (1 - v) / zoom * (h - 8);
-      tctx.strokeStyle = solved.awake ? '#a85a1c' : 'rgba(13, 13, 12, .45)';
-      tctx.lineWidth = 2 * (geo.u || 1);
+      const u = geo.u || 1, edge = w - 6 * u;
+      const baseline = h * .22;
       tctx.beginPath();
-      data.forEach((v, i) => {
-        const x = w - (data.length - i) * (w / count), yy = clamp(y(v), 1, h - 1);
-        i ? tctx.lineTo(x, yy) : tctx.moveTo(x, yy);
-      });
+      tctx.moveTo(0, baseline);
+      tctx.lineTo(edge, baseline);
+      tctx.lineWidth = 1;
+      tctx.strokeStyle = 'rgba(70, 55, 40, .22)';
       tctx.stroke();
+      if (!solved.awake || !played.length) return;
+
+      const count = state.tag === 'key' ? 16 * B : 700;
+      const data = state.tag === 'key' ? played.slice(-count) : played;
+      const zoom = state.tag === 'key' ? .16 : .12;
+      const y = v => clamp(baseline + (1 - v) / zoom * (h - baseline - 6 * u), 2, h - 6 * u);
+      const ink = tctx.createLinearGradient(0, 0, edge, 0);
+      ink.addColorStop(0, 'rgba(168, 83, 29, .24)');
+      ink.addColorStop(.64, '#a8531d');
+      ink.addColorStop(1, '#88451d');
+      tctx.beginPath();
+      tctx.moveTo(edge - (data.length - 1) * edge / count, y(data[0]));
+      for (let i = 1; i < data.length; i++) tctx.lineTo(edge - (data.length - 1 - i) * edge / count, y(data[i]));
+      tctx.lineJoin = 'round';
+      tctx.strokeStyle = ink;
+      tctx.lineWidth = Math.max(1.4, 1.8 * u);
+      tctx.stroke();
+
+      const tip = y(data[data.length - 1]);
+      tctx.beginPath();
+      tctx.arc(edge, tip, (3.5 + replyGlow * 2) * u, 0, Math.PI * 2);
+      tctx.fillStyle = `rgba(184, 101, 42, ${.13 + .16 * replyGlow})`;
+      tctx.fill();
+      tctx.beginPath();
+      tctx.arc(edge, tip, 1.8 * u, 0, Math.PI * 2);
+      tctx.fillStyle = '#88451d';
+      tctx.fill();
     }
 
     // Dev aid (?debug): what the reader has heard so far, and a way to skip ahead.
