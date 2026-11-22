@@ -57,6 +57,7 @@ button { font: inherit; }
   letter-spacing: -.038em;
   line-height: .96;
 }
+.cinema-initial { font-size: 1.23em; line-height: 0; }
 .cinema-title em { font-weight: 480; }
 .card-poster { position: relative; width: min(70vw, 24rem); }
 .card-poster img { display: block; width: 100%; height: auto; }
