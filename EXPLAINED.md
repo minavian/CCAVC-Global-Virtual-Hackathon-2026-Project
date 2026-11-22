@@ -199,6 +199,8 @@ Original section written by OpenAI Codex for the project team · 2026-11-22 (the
 
 **How it works.**
 - **Where it sits.** `index.html` has a tall `<section class="intro">` right after the taps. Inside it, `.intro-stage` is `position: sticky`, so it stays on screen while the section scrolls past. Its paper background covers the pinned landing page, like the taps.
+- **Coming in from the taps.** While the stage is still sliding up, before it pins, the playhead runs from `ARRIVE` (-1) to 0, one screen of scroll. The first row of `cardFrames` places the card higher in the stage and turned away. So the card rises more slowly than the page and turns to face you as the stage settles. The taps and the intro use the same paper colour, so there is no seam between them.
+- **Leaving for the story.** The section has the same soft paper edge as the taps (a wide `box-shadow`). As it slides away, the landing page fades in under that edge, and the story starts from `.track`.
 - **One playhead.** `js/intro/timeline.js` turns the scroll into one number, the playhead (`scrollTime`). Repeated values in `scrollFrames` hold the picture still for a stretch of scroll, so there is time to read. Everything else is a function of the playhead: the card's pose (`cardPose`), when each line fades in and out (`beats`), and when the X-ray shows.
 - **Counting from the section.** The original was a page of its own. Here, `main.js` measures where the section starts (`startY`) and counts the scroll from there.
 - **The card** (`card-scene.js`). It loads the team's `models/contactless-card.glb`. The two front layers open around the card's right edge. The X-ray fades the outer layers and turns the copper antenna brass.

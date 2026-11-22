@@ -82,7 +82,7 @@
     const cue = $('.scroll-cue'), fill = $('.chapters-fill'), lines = $('.callout-lines');
     const chapterButtons = [...document.querySelectorAll('.chapters button')];
     const handle = $('.battery-handle');
-    const track = $('.track');   // the story's scroll starts here, after the everyday taps
+    const track = $('.track');   // the story's scroll starts here, after the taps and the card intro
     document.documentElement.style.setProperty('--story-length', LENGTH);
 
     const svg = 'http://www.w3.org/2000/svg';

@@ -3,7 +3,7 @@
 // the letters spell the name, an X-ray shows the antenna and chip, and the visitor drags
 // the card onto a reader. See EXPLAINED.md.
 import { springProgress } from './easing.js';
-import { HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose, clamp, ease, mix, measureStage, restingFrame, scrollTime } from './timeline.js';
+import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose, clamp, ease, mix, measureStage, restingFrame, scrollTime } from './timeline.js';
 import { renderSignals } from './signals.js';
 
 const root = document.querySelector('.intro');
@@ -177,8 +177,10 @@ function intro(experience) {
     const elapsed = nowBefore === undefined ? 1000 / 60 : now - nowBefore;
     const dt = Math.min(.05, elapsed / 1000);
     nowBefore = now;
-    const fraction = clamp((window.scrollY - startY) / scrollDistance);
-    const target = scrollTime(fraction);
+    const into = window.scrollY - startY;
+    const fraction = clamp(into / scrollDistance);
+    // Before the stage pins, it is still sliding up over the taps: play the card's arrival.
+    const target = into < 0 ? Math.max(ARRIVE, ARRIVE * -into / layout.height) : scrollTime(fraction);
     stage.style.setProperty('--progress', fraction);
     const current = playhead ?? target;
     const response = target <= MOUTH_CLOSED && current <= MOUTH_CLOSED ? 9.5 : 11;

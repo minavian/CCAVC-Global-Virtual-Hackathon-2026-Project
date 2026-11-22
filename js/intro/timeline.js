@@ -4,6 +4,8 @@ export const HERO = .94;
 export const MOUTH_CLOSED = 1.23;
 export const END = 5.94;
 export const DROP_READY = 5.66;
+// While the section slides up over the taps, the playhead runs from ARRIVE to 0.
+export const ARRIVE = -1;
 export const clamp = (n, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, n));
 export const mix = (a, b, t) => a + (b - a) * t;
 export { ease };
@@ -11,6 +13,9 @@ export { ease };
 // Positions on the scroll timeline. Each row poses the same card.
 // time, wide x/y, compact x/y, size, pitch, yaw, roll, mouth
 const cardFrames = [
+  // Arriving: higher in the stage than at rest, so it rises more slowly than the page,
+  // and turned away, so it turns to face you as the stage settles.
+  [ARRIVE, .500, .420, .500, .420, .80, .58, -.66, .10, 0],
   [0,   .500, .501, .500, .485, .88,  .19, -.19, -.10, 0],
   [.13, .501, .498, .500, .484, .94,  .21, -.13, -.12, 0],
   [.41, .757, .542, .614, .601, .99,  .28,  .60, -.22, 0],

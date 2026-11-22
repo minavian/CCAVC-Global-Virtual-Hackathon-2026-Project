@@ -381,6 +381,8 @@ html[data-intro] .stage-light { opacity: 0; }
   z-index: 5;
   background: var(--paper);
   color: var(--ink);
+  /* The same soft paper edge as the taps: the landing page fades in under it as it leaves. */
+  box-shadow: 0 48px 80px rgba(245, 242, 236, .92);
 }
 
 .intro [hidden] { display: none !important; }

@@ -768,7 +768,7 @@
   // dragging the scrollbar) ends the opening first.
   if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
   scrollTo(0, 0);
-  // The story starts where its track starts: after the everyday taps section (js/taps.js).
+  // The story starts where its track starts: after the everyday taps (js/taps.js) and the card intro (js/intro/).
   const track = document.querySelector('.track');
   addEventListener('scroll', () => {
     scrollGoal = Math.max(0, scrollY - (track ? track.offsetTop : 0)) / Math.max(1, viewH());
