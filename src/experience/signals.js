@@ -95,10 +95,10 @@ function radio(ctx, layout, card, opacity, clock) {
 function internals(ctx, opacity, labels) {
   if (opacity <= .001) return;
   ctx.strokeStyle = ctx.fillStyle = BRASS;
-  ctx.lineWidth = 1.2;
-  ctx.globalAlpha = opacity * .81;
+  ctx.lineWidth = 1.3;
+  ctx.globalAlpha = opacity * .9;
   for (const { part, tip } of labels) {
-    stroke(ctx, [part, { x: tip.x, y: part.y }, tip]);
+    stroke(ctx, [part, tip]);
     dot(ctx, part.x, part.y, 3.1);
   }
 }

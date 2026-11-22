@@ -3,13 +3,13 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 const cardURL = new URL('../assets/models/contactless-card.glb', import.meta.url);
-const brass = new THREE.Color('#735633');
+const brass = new THREE.Color('#624725');
 
 function getShellLayers(card) {
   const fades = [
     ['front-protective-overlay', .07], ['front-printed-pvc', .065],
     ['rear-protective-overlay', .24], ['rear-printed-pvc', .095],
-    ['contact-plate', .07], ['inlay-carrier', .35],
+    ['contact-plate', .045], ['module-substrate', .13], ['die-underfill', .24], ['inlay-carrier', .35],
     ['inlay-pocket-collar', .32], ['die-pocket-floor', .32],
   ];
   const layers = [];
@@ -158,7 +158,7 @@ export async function createCardScene(canvas) {
       for (const { material, original, metalness } of copper) {
         material.color.copy(original).lerp(brass, glass * .83);
         material.emissive.copy(brass);
-        material.emissiveIntensity = glass * .065;
+        material.emissiveIntensity = glass * .04;
         material.metalness = metalness * (1 - glass * .71);
       }
       edge.visible = glass > 0;

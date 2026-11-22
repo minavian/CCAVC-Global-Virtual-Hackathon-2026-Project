@@ -106,23 +106,20 @@ function paintLetters(time, visual, mouth) {
 }
 
 function paintLabels(pose, opacity) {
-  const { height, gutter, compact } = layout;
+  if (opacity <= .001) {
+    for (const label of labels) label.style.opacity = 0;
+    return [];
+  }
+  const antenna = fromCard(pose, -.017, .0246, .0001);
+  const chip = fromCard(pose, -.02774, .0031, .0001);
   const entries = [
-    {
-      x: compact ? gutter : pose.x - pose.width * .43,
-      y: Math.max(height * .098, pose.y - pose.width * .35 - 30),
-      part: fromCard(pose, -.034, .0215, .0003),
-    },
-    {
-      x: gutter,
-      y: compact ? pose.y + pose.width * .37 : pose.y + pose.width * .013,
-      part: fromCard(pose, -.0277, .0031, .0003),
-    },
+    { x: antenna.x, y: antenna.y - 42, part: antenna },
+    { x: chip.x + clamp(pose.width * .128, 34, 92), y: chip.y - 10, part: chip },
   ];
   return entries.map(({ x, y, part }, i) => {
     labels[i].style.opacity = opacity;
-    labels[i].style.transform = `translate3d(${x}px, ${y}px, 0)`;
-    return { part, tip: { x: i && !compact ? x + 40 : x + 4, y: i ? y - 4 : y + 23 } };
+    labels[i].style.transform = `translate3d(${x}px, ${y}px, 0)${i === 0 ? ' translateX(-50%)' : ''}`;
+    return { part, tip: i === 0 ? { x, y: y + 24 } : { x: x - 8, y: part.y } };
   });
 }
 
@@ -134,6 +131,7 @@ function paint(time, pose, visual) {
   panels['cinema-title'].style.scale = .94 + visual.cinema * .06;
   panels.question.style.opacity = visual.question;
   panels.question.style.translate = `0 ${(1 - visual.question) * 14}px`;
+  stage.classList.toggle('show-callouts', visual.callouts > .001);
   panels.instruction.style.opacity = visual.instruction;
   reader.style.opacity = visual.reader;
   scrollGuide.style.opacity = 1 - ease(5.14, 5.62, time);

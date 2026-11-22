@@ -185,6 +185,7 @@ button { font: inherit; }
 }
 
 .signal { z-index: 2; }
+.show-callouts .signal { z-index: 4; }
 .reader { z-index: 2; opacity: 0; }
 .reader img { display: block; width: 100%; height: auto; }
 .enhanced .card-poster {
@@ -204,8 +205,8 @@ button { font: inherit; }
   left: 0;
   top: 0;
   color: var(--ink);
-  font-size: clamp(.875rem, 1.3vw, 1.1rem);
-  font-weight: 630;
+  font-size: clamp(.9rem, 1.45vw, 1.12rem);
+  font-weight: 650;
   white-space: nowrap;
   opacity: 0;
 }
@@ -220,6 +221,16 @@ button { font: inherit; }
   letter-spacing: -.033em;
   text-wrap: pretty;
 }
+
+.question span, .question strong { display: block; }
+.question span {
+  margin-bottom: .55em;
+  font-size: max(1rem, .74em);
+  font-weight: 540;
+  letter-spacing: -.015em;
+}
+
+.question strong { font-weight: 720; text-wrap: balance; }
 
 .instruction {
   z-index: 4;
