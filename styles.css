@@ -619,31 +619,198 @@ html[data-intro] .stage-light { opacity: 0; }
 
 .intro .dragging .drag-card { cursor: grabbing; }
 .intro .drag-card:focus-visible { outline-offset: 2px; }
-.intro .feedback {
+/* The 3D reader stands in for its picture once the 3D card is ready. */
+.intro .has-card .reader { visibility: hidden; }
+
+/* ---- The close-up after the drop (js/intro/cinema.js) ----
+   The backdrop sits between the 2D layers and the 3D canvas, so the lights go down
+   behind the card and the reader. The words sit above everything. */
+.intro .cine-backdrop {
   position: absolute;
-  z-index: 5;
-  left: var(--gutter);
-  top: 32%;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: .6rem 1.1rem;
-  color: var(--ink);
+  inset: 0;
+  z-index: 2;
+  opacity: 0;
+  pointer-events: none;
+  background: radial-gradient(120% 95% at 50% 52%, #1e1d1b 0%, #0e0e0d 60%, #060606 100%);
 }
 
-.intro .status { font-weight: 690; }
+.intro .cine { position: absolute; inset: 0; z-index: 5; pointer-events: none; color: #f3f0ea; }
+.intro .cine-lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.intro .cine-lines g { opacity: 0; }
+.intro .cine-lines path { fill: none; stroke: rgba(243, 240, 234, .7); stroke-width: 1.2; stroke-dasharray: 1; }
+.intro .cine-lines circle { fill: #f3f0ea; }
+
+/* Slow motion, with the real time the exchange has taken so far. */
+.intro .cine-badge {
+  position: absolute;
+  top: clamp(1.4rem, 5dvh, 3rem);
+  right: var(--gutter);
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: .35rem;
+  opacity: 0;
+  font-size: .74rem;
+  font-weight: 600;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: rgba(243, 240, 234, .66);
+}
+.intro .cine-badge span::before {
+  content: "";
+  display: inline-block;
+  width: .5rem;
+  height: .5rem;
+  margin-right: .55rem;
+  border-radius: 50%;
+  background: #ff5a48;
+  vertical-align: .02em;
+}
+.intro .cine-clock {
+  font: 600 clamp(1.4rem, 2.6vw, 2.2rem)/1 "JetBrains Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #f3f0ea;
+}
+
+/* "This is a reader." and "This is a passive tag." */
+.intro .cine-note { position: absolute; width: min(30vw, 25rem); opacity: 0; }
+.intro .cine-note p {
+  margin: 0;
+  font-size: clamp(1rem, 1.5vw, 1.25rem);
+  font-weight: 500;
+  line-height: 1.38;
+  color: rgba(243, 240, 234, .8);
+}
+.intro .cine-note .cine-note-title {
+  margin-bottom: .5rem;
+  font-size: clamp(1.7rem, 3.2vw, 2.9rem);
+  font-weight: 800;
+  line-height: 1.02;
+  letter-spacing: -.035em;
+  color: #fff;
+}
+.intro .cine-note-reader { left: 63%; top: 28%; }
+.intro .cine-note-tag { left: var(--gutter); top: 24%; }
+
+/* One caption per step of the exchange. */
+.intro .cine-step {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(4.5rem, 13dvh, 8rem);
+  width: min(90%, 42rem);
+  transform: translateX(-50%);
+  text-align: center;
+  opacity: 0;
+}
+.intro .cine-step-number {
+  display: block;
+  margin-bottom: .55rem;
+  font: 600 .78rem/1 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: .14em;
+  color: rgba(243, 240, 234, .58);
+}
+.intro .cine-step-text {
+  margin: 0;
+  font-size: clamp(1.35rem, 2.7vw, 2.3rem);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -.028em;
+  color: #fff;
+}
+
+/* The check mark: the green disc grows, then the tick draws itself. --draw runs 0 to 1. */
+.intro .cine-check {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: clamp(56px, 7vw, 96px);
+  height: auto;
+  opacity: 0;
+  overflow: visible;
+  filter: drop-shadow(0 0 18px rgba(47, 191, 113, .5));
+}
+.intro .cine-check circle {
+  fill: #2fbf71;
+  transform-box: fill-box;
+  transform-origin: center;
+  scale: min(1, calc(var(--draw, 0) * 1.7));
+}
+.intro .cine-check path {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 5.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: calc(1 - clamp(0, (var(--draw, 0) - .35) * 1.54, 1));
+}
+
+/* The explanation, on paper again once the lights come up. */
+.intro .cine-explain {
+  position: absolute;
+  left: 56%;
+  top: 50%;
+  width: min(36vw, 30rem);
+  transform: translateY(-50%);
+  opacity: 0;
+  visibility: hidden;
+  color: var(--ink);
+  pointer-events: auto;
+}
+.intro .cine-explain.is-shown { visibility: visible; }
+.intro .cine-explain h3 {
+  margin: .35rem 0 .9rem;
+  font-size: clamp(2rem, 4.2vw, 3.6rem);
+  font-weight: 800;
+  line-height: .98;
+  letter-spacing: -.04em;
+}
+.intro .cine-explain p { margin: 0 0 .7rem; font-size: clamp(1rem, 1.45vw, 1.2rem); font-weight: 500; line-height: 1.42; }
+.intro .cine-explain .cine-fine { margin-top: 1rem; font-size: .9rem; color: var(--muted); }
+.intro .cine-explain .status {
+  margin: 0;
+  font-size: .78rem;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: #1f9d5c;
+}
 .intro .status:empty { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); }
-.intro .retry {
+.intro .feedback { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1.3rem; }
+.intro :is(.retry, .replay) {
   min-height: 2.75rem;
-  padding: .35rem .9rem;
-  border: 1px solid currentColor;
-  border-radius: 2px;
+  padding: .35rem 1.1rem;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
   color: var(--ink);
   background: transparent;
+  font-weight: 600;
   cursor: pointer;
 }
+.intro .replay { color: var(--paper); background: var(--ink); }
+.intro .retry:hover { color: var(--paper); background: var(--ink); }
+.intro .replay:hover { background: #2a2926; }
 
-.intro .retry:hover { background: var(--ink); color: white; }
+.intro .cine-skip {
+  position: absolute;
+  right: var(--gutter);
+  bottom: clamp(1rem, 3.25dvh, 2.75rem);
+  min-height: 2.6rem;
+  padding: .3rem 1.1rem;
+  border: 1px solid rgba(243, 240, 234, .42);
+  border-radius: 999px;
+  color: #f3f0ea;
+  background: rgba(13, 13, 12, .4);
+  font-size: .92rem;
+  font-weight: 600;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.intro .cine-skip:hover { background: rgba(243, 240, 234, .14); }
+.intro .cine-skip:focus-visible { outline-color: #f3f0ea; }
 
 .intro.enhanced .hud {
   z-index: 6;
@@ -706,13 +873,22 @@ html[data-intro] .stage-light { opacity: 0; }
     bottom: 19%;
     font-size: clamp(1.38rem, min(5.8vw, 5.4dvh), 2.6rem);
   }
+  /* The close-up on a phone: the parts stay at the top, the words go underneath. */
+  .intro .cine-note { left: var(--gutter); right: var(--gutter); top: auto; bottom: 22%; width: auto; }
+  .intro .cine-note .cine-note-title { font-size: clamp(1.5rem, 7.2vw, 2.3rem); }
+  .intro .cine-note p { font-size: clamp(.98rem, 4.2vw, 1.15rem); }
+  .intro .cine-step { bottom: 11.5%; }
+  .intro .cine-step-text { font-size: clamp(1.25rem, 6vw, 1.8rem); }
+  .intro .cine-badge { top: clamp(1rem, 3dvh, 2rem); font-size: .66rem; }
+  .intro .cine-explain { left: var(--gutter); right: var(--gutter); top: 5%; width: auto; transform: none; }
+  .intro .cine-explain h3 { font-size: clamp(1.8rem, 8.4vw, 2.6rem); }
+  .intro .cine-explain p { font-size: clamp(.95rem, 4vw, 1.08rem); }
 }
 
 @media (max-height: 480px) {
   .intro .instruction { top: 9%; }
   .intro .instruction h2 { font-size: min(7vw, 13dvh); }
   .intro-stage #drag-instruction { margin-top: .35rem; }
-  .intro .feedback { top: 31%; }
 }
 
 /* ---------- The story ---------- */

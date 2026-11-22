@@ -5,6 +5,7 @@
 import { follow, settle, smoother, spring } from './easing.js';
 import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose, clamp, ease, mix, measureStage, restingFrame, scrollTime } from './timeline.js';
 import { renderSignals } from './signals.js';
+import { LENGTH, SKIP_TO, STEPS, beats as shotBeats, camera as shotCamera } from './cinema.js';
 
 const root = document.querySelector('.intro');
 if (root) intro(root);
@@ -29,6 +30,15 @@ function intro(experience) {
   const panels = Object.fromEntries(['meaning', 'definition', 'cinema-title', 'question', 'instruction']
     .map(name => [name, $('.' + name)]));
   const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+  const hud = $('.hud');
+  // The close-up after the drop (cinema.js): its backdrop, notes, step captions, check
+  // mark, explanation and buttons.
+  const film = {
+    backdrop: $('.cine-backdrop'), root: $('.cine'), badge: $('.cine-badge'), clock: $('.cine-clock'),
+    notes: [$('.cine-note-reader'), $('.cine-note-tag')], lines: [...experience.querySelectorAll('.cine-lines g')],
+    step: $('.cine-step'), stepNumber: $('.cine-step-number'), stepText: $('.cine-step-text'),
+    check: $('.cine-check'), explain: $('.cine-explain'), skip: $('.cine-skip'), replay: $('.replay'),
+  };
   // The letters' weight in flight: thinnest leaving the card, full (as in styles.css) once out.
   const THIN = 100, FULL = 800;
   const weights = glyph.map(() => undefined);
@@ -42,6 +52,10 @@ function intro(experience) {
   // Everything that moves follows its target through a critically damped spring
   // (easing.js), so its speed never jumps: the playhead, the drag offset, the lift and the tilt.
   const motion = { time: null, x: spring(), y: spring(), lift: spring(), pitch: spring(), yaw: spring() };
+  // The close-up's clock and camera, while it runs or holds its last frame. `veil` eases
+  // to 1 while there is a close-up and back to 0 after, and fades whatever it covers.
+  let shot = null, lastBeats = null, shownStep = -2, noteBoxes = [];
+  const veil = spring();
 
   function wake() {
     if (!raf && onScreen) raf = requestAnimationFrame(frame);
@@ -77,9 +91,15 @@ function intro(experience) {
     signal?.setTransform(ratio, 0, 0, ratio, 0, 0);
     if (available) scene.resize(w, h);
     place(reader, layout.reader.x, layout.reader.y, layout.reader.width, layout.reader.height);
+    if (shot) shot.track = cameraFor(layout);
+    // The notes' boxes, so their pointer lines can start at their edges without
+    // measuring the page every frame.
+    noteBoxes = film.notes.map(note => ({ left: note.offsetLeft, top: note.offsetTop, width: note.offsetWidth, height: note.offsetHeight }));
     needsMeasure = false;
     return true;
   }
+
+  const cameraFor = box => shotCamera({ x: box.reader.x / box.width, y: box.reader.y / box.height }, box.compact);
 
   function place(node, x, y, width, height, rotation = 0) {
     node.style.width = width + 'px';
@@ -174,7 +194,8 @@ function intro(experience) {
     });
   }
 
-  function paint(time, pose, visual) {
+  function paint(time, pose, visual, beat) {
+    const hidden = veil.value;
     panels.meaning.style.opacity = visual.meaning;
     panels.definition.style.opacity = visual.definition;
     panels.definition.style.translate = `0 ${(1 - visual.definition) * 12}px`;
@@ -183,19 +204,99 @@ function intro(experience) {
     panels.question.style.opacity = visual.question;
     panels.question.style.translate = `0 ${(1 - visual.question) * 14}px`;
     stage.classList.toggle('show-callouts', visual.callouts > .001);
-    panels.instruction.style.opacity = visual.instruction;
+    // The instructions make way for the close-up and its explanation.
+    panels.instruction.style.opacity = visual.instruction * (1 - hidden);
     reader.style.opacity = visual.reader;
     scrollGuide.style.opacity = 1 - ease(5.14, 5.62, time);
+    hud.style.opacity = 1 - (beat?.dark ?? 0) * hidden;
 
     const faceWidth = pose.width * Math.cos(pose.yaw);
     const faceHeight = pose.width * .63 * Math.cos(pose.pitch);
     place(poster, pose.x, pose.y, faceWidth, faceHeight, -pose.roll);
     poster.style.setProperty('--xray', pose.xray);
     place(shadow, pose.x + 10, pose.y + pose.width * .33, pose.width * .87, pose.width * .15);
-    shadow.style.opacity = 1 - pose.xray * .8;
+    shadow.style.opacity = (1 - pose.xray * .8) * (1 - hidden);
     if (canDrop) place(dropButton, pose.x, pose.y, faceWidth + 8, faceHeight + 8, -pose.roll);
-    if (available) scene.draw(pose);
+    if (available) {
+      scene.setReader({ x: layout.reader.x, y: layout.reader.y, width: layout.reader.width, opacity: visual.reader });
+      scene.draw(pose, shot && beat ? { ...beat, view: shot.track(beat.c) } : null);
+    }
     paintedPose = pose;
+  }
+
+  // The close-up's words and marks, laid over the 3D. `b` is the shot's beats, `v` the veil.
+  function paintFilm(b, v) {
+    const show = (node, amount, lift = 10) => {
+      node.style.opacity = amount;
+      node.style.translate = `0 ${(1 - amount) * lift}px`;
+    };
+    film.backdrop.style.opacity = b.dark * v;
+    film.badge.style.opacity = b.badge * v;
+    const ms = b.ms.toFixed(2) + ' ms';
+    if (film.clock.textContent !== ms) film.clock.textContent = ms;
+
+    // The two notes, each with a line to the part it names.
+    const anchors = available
+      ? [scene.anchor('readerCoil'), scene.anchor('cardCoil')]
+      : [layout.reader, layout.reader];
+    [b.noteReader, b.noteTag].forEach((amount, i) => {
+      const value = amount * v;
+      show(film.notes[i], value);
+      const box = noteBoxes[i], line = film.lines[i];
+      line.style.opacity = value;
+      if (!box || value < .002) return;
+      const end = anchors[i];
+      const fromLeft = end.x < box.left;
+      const start = layout.compact
+        ? { x: Math.min(Math.max(end.x, box.left + 12), box.left + box.width - 12), y: box.top - 8 }
+        : { x: fromLeft ? box.left - 12 : box.left + box.width + 12, y: box.top + 22 };
+      const [path, dot] = line.children;
+      path.setAttribute('d', `M${start.x} ${start.y}L${end.x} ${end.y}`);
+      dot.setAttribute('cx', end.x);
+      dot.setAttribute('cy', end.y);
+      path.style.strokeDashoffset = 1 - value;
+    });
+
+    // One step caption at a time, at the bottom.
+    if (b.step !== shownStep) {
+      shownStep = b.step;
+      film.stepNumber.textContent = b.step < 0 ? '' : `${b.step + 1} / ${STEPS.length}`;
+      film.stepText.textContent = b.step < 0 ? '' : STEPS[b.step][1];
+    }
+    show(film.step, b.stepIn * v, 12);
+
+    // The check mark, drawn over the reader, and the explanation at the end.
+    const top = available ? scene.anchor('readerTop') : { x: layout.reader.x, y: layout.reader.y - layout.reader.height * .3 };
+    film.check.style.transform = `translate(${top.x}px, ${top.y - layout.reader.width * .16}px) translate(-50%, -100%)`;
+    film.check.style.opacity = Math.min(1, b.check * 3) * v;
+    film.check.style.setProperty('--draw', b.check);
+    show(film.explain, b.explain * v, 16);
+    film.explain.classList.toggle('is-shown', b.explain * v > .02);
+    film.skip.hidden = !shot || b.c >= SKIP_TO;
+    if (b.check > .5 && status.textContent === '') status.textContent = 'Card detected.';
+    const done = b.explain > .3 && v > .5;
+    if (retry.hidden === done) {
+      retry.hidden = film.replay.hidden = !done;
+    }
+  }
+
+  // Starts the close-up (or replays it). With reduced motion, or no 3D, it goes straight
+  // to its last frame: the card on the reader, the check mark and the explanation.
+  function startFilm() {
+    const still = reduce.matches || !available;
+    shot = { c: still ? LENGTH : 0, hold: false, track: cameraFor(layout) };
+    shownStep = -2;
+    if (available) scene.capture();
+    stage.classList.add('in-film');
+    invalidate();
+  }
+
+  function stopFilm() {
+    if (!shot) return;
+    shot = null;
+    if (available) scene.release();
+    status.textContent = '';
+    stage.classList.remove('in-film');
   }
 
   function readerDistance(x, y) {
@@ -249,12 +350,19 @@ function intro(experience) {
       width: base.width * (1 + lift * .07), pitch: base.pitch + lift * .22 + hoverPitch,
       yaw: base.yaw + lift * .18 + hoverYaw, roll: base.roll + lift * .085 };
     const visual = beats(time);
+    // The close-up runs on its own clock, not the scroll. Its veil eases in and out.
+    if (shot && !shot.hold && shot.c < LENGTH) shot.c = Math.min(LENGTH, shot.c + dt);
+    const veilTarget = shot ? 1 : 0;
+    chase(veil, veilTarget, 6, dt, .001);
+    const beat = shot ? (lastBeats = shotBeats(shot.c)) : lastBeats;
+    const filming = Boolean(shot) || !resting(veil, veilTarget) || (available && scene.busy());
     // Where the letters and the spray leave from: the gap of the open mouth.
     const mouthPoint = () => available ? scene.mouth() : fromCard(pose, -.039, .002, .003 + pose.mouth * .010);
-    if (dirty || readyChanged || time !== playhead || changed) {
+    if (dirty || readyChanged || time !== playhead || changed || filming) {
       dirty = false;
-      paint(time, pose, visual);
+      paint(time, pose, visual, beat);
       paintLetters(time, visual, mouthPoint());
+      if (beat) paintFilm(beat, veil.value);
     }
     if (signal) {
       const mouth = mouthPoint();
@@ -270,7 +378,8 @@ function intro(experience) {
     }
     const moving = (!reduce.matches && !resting(motion.time, target)) ||
       !resting(motion.x, x - base.x) || !resting(motion.y, y - base.y) || !resting(motion.lift, liftTarget) ||
-      !resting(motion.pitch, tilt.pitch) || !resting(motion.yaw, tilt.yaw);
+      !resting(motion.pitch, tilt.pitch) || !resting(motion.yaw, tilt.yaw) ||
+      (shot && !shot.hold && shot.c < LENGTH) || !resting(veil, veilTarget) || (available && scene.busy());
     const liveSignals = !document.hidden && signal && (visual.definition > 0 || visual.reader > 0);
     if (!reduce.matches && (moving || liveSignals)) wake();
   }
@@ -284,23 +393,66 @@ function intro(experience) {
 
   function resetDrop() {
     stopPointer();
+    stopFilm();
     wasDragged = false;
     detected = false;
     status.textContent = '';
-    retry.hidden = true;
+    retry.hidden = film.replay.hidden = true;
     dropButton.hidden = !canDrop;
     invalidate();
   }
 
+  // The card is on the reader: play the close-up.
   function confirmDrop() {
     if (!canDrop || detected) return;
     detected = true;
     const refocus = document.activeElement === dropButton;
     dropButton.hidden = true;
-    status.textContent = 'Card detected.';
-    retry.hidden = false;
-    if (refocus) retry.focus({ preventScroll: true });
+    startFilm();
+    if (refocus) {
+      focusWhenDone = true;
+      if (!reduce.matches && available) {
+        film.skip.hidden = false;
+        film.skip.focus({ preventScroll: true });
+      }
+    }
     invalidate();
+  }
+
+  let focusWhenDone = false;
+  film.skip.addEventListener('click', () => {
+    if (!shot) return;
+    shot.c = Math.max(shot.c, SKIP_TO);
+    focusWhenDone = true;
+    invalidate();
+  });
+  film.replay.addEventListener('click', () => {
+    if (!detected) return;
+    focusWhenDone = false;
+    startFilm();
+  });
+  // Keyboard users land on the buttons when the explanation appears.
+  new MutationObserver(() => {
+    if (focusWhenDone && !retry.hidden) {
+      focusWhenDone = false;
+      film.replay.focus({ preventScroll: true });
+    }
+  }).observe(retry, { attributes: true, attributeFilter: ['hidden'] });
+
+  // With ?debug in the address: __intro.shot(16) freezes the close-up at 16 s, __intro.play() runs it.
+  if (new URLSearchParams(location.search).has('debug')) {
+    window.__intro = {
+      shot(c) {
+        if (!shot) { detected = true; dropButton.hidden = true; startFilm(); }
+        shot.c = c;
+        shot.hold = true;
+        veil.value = 1;
+        veil.velocity = 0;
+        invalidate();
+      },
+      play() { if (shot) shot.hold = false; invalidate(); },
+      scene: () => scene,
+    };
   }
 
   stage.addEventListener('pointermove', event => {

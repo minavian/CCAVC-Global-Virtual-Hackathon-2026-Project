@@ -37,6 +37,7 @@ Written by <who> · <date> · Issue #<n>
 - [The phone's lock screen](#the-phones-lock-screen-jslockscreenjs)
 - [Every day: three taps](#every-day-three-taps-jstapsjs-modelssubway-cardglb)
 - [What RFID is: the card intro](#what-rfid-is-the-card-intro-jsintro)
+- [The close-up: how a tap works](#the-close-up-how-a-tap-works-jsintrocinemajs)
 - [The story: a film played by scrolling](#the-story-a-film-played-by-scrolling-jsstoryjs-jslandingjs)
 - [The simulation: physics, protocol and reader](#the-simulation-physics-protocol-and-reader-jsrfid)
 - [The lab: Power, Reply, Break it](#the-lab-power-reply-break-it-jslabjs)
@@ -214,14 +215,14 @@ Original section written by OpenAI Codex for the project team · 2026-11-22 (the
 - **The letters** (`main.js`, `paintLetters`). Four real HTML letters fly out of the gap in the card's mouth, then spell the full name in three lines: **R**adio-, **F**requency, **ID**entification. I and D share the last line (`STACK_ROW`), and D moves one I-width to the right. On phones, the line under the name sits right below those three lines (`meaningY` in `timeline.js`). Each flight (`settle`) leaves from rest, overshoots by about 4% and lands with no speed left. The rise is a sine squared, so it lifts off and touches down level.
 - **The big type.** The letters R, F, I, D use the site's Inter Tight, a variable font: its weight can be any number, not just a few fixed steps. `index.html` loads the full range (100 to 900). Each letter leaves the card at the thinnest weight (100) and fills out to 800, like the taps' title (`THIN`, `FULL` and `weights` in `main.js`, `paintLetters`). The weight follows the distance the letter has travelled, not the clock. So it starts thickening the moment the letter leaves the mouth and is full as it arrives, all while it moves. It thins again if you scroll back. `measure` takes the letters' widths at full weight, so the layout is right even mid-flight. The "How It *Works*" title uses Instrument Serif from Google Fonts (`--display` in `styles.css`), which has a real italic for "Works".
 - **The lines** (`signals.js`). One 2D canvas draws the spray from the mouth, the radio wave, the label lines and the reader's rings.
-- **The reader.** You can drag the card or press it with the keyboard. A drop near the reader says "Card detected." and shows **Try again**.
+- **The reader.** With WebGL on, the reader is a 3D model (`reader-model.js`) standing where the picture `images/intro/reader.webp` was, at the same angle. You can drag the card onto it or press the card with the keyboard. A drop near the reader plays the close-up ([The close-up](#the-close-up-how-a-tap-works-jsintrocinemajs)).
 - **Only when needed.** The 3D card loads when the section is about one and a half screens away. Frames are drawn only while the stage is on screen.
 
 **Why it is built this way.** The pinned stage keeps one card on screen through the whole idea, so nobody loses track of it. Real HTML text stays sharp and screen readers can read it. Every CSS rule starts with `.intro`, and the two class names the page already used are renamed (`.intro-stage`, `.intro-callouts`), so this section cannot change the landing page or the story.
 
 The first version eased each keyframe in and out separately (smoothstep), and followed the scroll with a one-step lag. So the card stopped for an instant at every keyframe, and its speed jumped whenever the scroll started. The opening was a stiff flap on a hinge, with a curl that had no vertices to bend. The changes above fix those three things. A scripted wheel scroll through the opening, measured at 60 frames a second, showed peak acceleration 3 times lower and peak jerk (the sudden kick) 4.3 times lower.
 
-**What is simplified.** The reader is a picture. "Card detected" is a check that the card was dropped close to it, not a radio link.
+**What is simplified.** "Card detected" is a check that the card was dropped close to the reader, not a radio link.
 
 **How to check it.** Serve the folder and scroll past the three taps. The card opens and the letters fly out. Keep scrolling to the X-ray, then drag the card onto the reader. Press Tab first on the section to find **Skip to the card and reader**.
 
@@ -230,6 +231,44 @@ The first version eased each keyframe in and out separately (smoothstep), and fo
 - Q: What if WebGL is off? A: Two pictures of the same card (`images/intro/credit-card-*.webp`) stand in for the 3D card.
 - Q: Why does the card trail the scroll a little? A: That is the spring. It is what makes a sudden scroll look smooth. It catches up within about a third of a second.
 - Q: Is the bend physically right? A: It is a sheet that bends without stretching, with the bend we chose. Real card layers are glued all over and don't open at all. The mouth is a picture, not a teardown.
+
+---
+
+### The close-up: how a tap works (`js/intro/cinema.js`, `effects.js`, `reader-model.js`)
+
+Owner: Mina Vian · 2026-11-23
+
+**What it does.** The moment the card is dropped on the reader, time slows right down and the camera dives in. In about 25 seconds it shows the whole tap, which really takes about 5 thousandths of a second:
+1. The lights go down. The card keeps moving, slower and slower, and floats over the reader.
+2. The card fades. The reader turns see-through: "This is a reader. It emits a signal." Its copper coil glows and gold rings rise from it.
+3. The reader fades. The card turns see-through: "This is a passive tag. It receives the reader's signal. Electricity flows into its coil and powers the chip. No battery needed."
+4. The exchange, one caption per step: the reader's coil sends out the signal; the card's coil catches it (light runs round the coil); sparks jump across to the chip; the chip blinks; the chip answers through its coil (blue rings and bits fall to the reader); the reader's coil and its own chip light up as it reads and checks; a green check mark appears.
+5. The lights come back up, the card rests on the reader, and the explanation appears with **Watch again** and **Try again**.
+
+**How it works.**
+- **One clock** (`cinema.js`, `beats`). `main.js` runs the shot's clock `c` in seconds, on its own, not from the scroll. Every look on screen is a pure function of `c`: when the lights dim, when each part fades, when the rings, sparks, bits and check mark show. So **Skip** just moves the clock to 22.8 s, and **Watch again** sets it back to 0.
+- **Slow motion.** The card's last bit of travel is an exponential ease-out (`dock`): it keeps the speed it was dropped with, then slows almost to a stop. A badge says "about 2,000× slower" and a clock counts the real time of the exchange, 0 to 5 ms, across the 11 seconds that show it.
+- **The camera** (`camera`). A shot list gives, at set times, the zoom (up to 10.5× on the chip), the point looked at (the reader, the gap, the card's coil, the chip, the reader's chip) and the viewing angle. Every number glides between shots on the same monotone curves as the rest of the intro, so the camera never stops dead or swings past a mark. The zoom glides in log steps, so 1× to 10× feels even. The camera is the 3D scene's own camera (`card-scene.js`, `draw`), so zooming re-draws the 3D sharp, never blown up.
+- **One table.** The reader stands in a group, `table`, at its place on the stage. The camera's angle turns that group. The card leaves its scroll pose and docks onto the table: `dockPose` places it flat over the reader, and the card's shown place blends from where it was dropped to there (`capture`, `blend`). If you scroll away mid-shot, `release` glides the card and the camera back in 0.9 s.
+- **The reader** (`reader-model.js`). Rounded boxes for the body, a glossy top with the contactless mark and an amber light. Inside: a green circuit board, the reader's chip with a light on it, and a five-turn copper coil (a tube along a rounded-square spiral). `flowShader` makes pulses of light run along the coil, using how far along the wire each point is.
+- **The card's current** (`currentShader` in `card-scene.js`). The card's own copper glows with pulses that run round the coil, using the angle round the card's centre. That way the glow follows the model's real traces. Warm gold is the reader's power coming in; blue is the answer going out.
+- **The effects** (`effects.js`). Rings are thin rounded-square bands that rise from the reader's coil and spread (the signal), or leave in the card's shape and land in the reader's (the answer). The sparks are jagged lines from the big coil's coupling loop to the chip's little coil, redrawn 24 times a second from a seeded random source, so a frame always looks the same when replayed. The falling bits are the start of the card's real first answer to a reader, ATQA `0x0044`, in the order it is sent (lowest bit first).
+- **The words** (`index.html` `.cine`, `paintFilm` in `main.js`). Notes, captions, the check mark and the explanation are HTML on top of the 3D, so they stay sharp and screen readers get them. The step captions are a polite live region. Each note's line runs from its edge to a point on the part it names, found by projecting that 3D point to the screen (`anchor`).
+- **The dark** is an HTML layer (`.cine-backdrop`) between the 2D drawings and the 3D, so it dims everything behind the card and the reader. A cool light from behind (`rim`) keeps the dark reader's edges. The card's shell goes clearer in the dark, so the copper stands out.
+
+**Why it is built this way.** The close-up re-uses the same 3D card and the same camera, so it is one continuous shot, not a cut to a video. A real video would be blurry when zoomed and couldn't follow the card from wherever it was dropped. Doing everything from one clock keeps Skip, Watch again and a mid-shot cancel simple and exact.
+
+**What is simplified.**
+- The waves, sparks and bits are pictures of what happens, not a field simulation. The real physics is in the story further down the page, from the same simulation as its numbers.
+- The card doesn't really broadcast an answer. It answers by soaking up more or less of the reader's field, and the reader feels the change. The explanation says so.
+- "About 5 ms" is a typical time for a reader to power a card and get its first answers. "About 2,000×" is 11 seconds of film for those 5 ms. Both are round numbers.
+
+**How to check it.** Scroll to the end of the card intro and drag the card onto the reader (or Tab to it and press Enter). Press **Skip** to jump to the end, then **Watch again** and **Try again**. With reduced motion turned on, a drop goes straight to the last frame. With `?debug` in the address, run `__intro.shot(16.5)` in the console to freeze the shot at 16.5 s (the chip blinking), and `__intro.play()` to let it run. Drawing any frame of the shot took under 1.5 ms on our test machine.
+
+**Likely questions.**
+- Q: Why does the reader look like the picture? A: Its sizes, colours and resting angle (`REST` in `cinema.js`) were matched to `reader.webp` side by side.
+- Q: Where is the chip's processing? A: Two places: the card's chip blinks while it works out its answer, and the reader's chip glows while it checks the answer.
+- Q: Can I leave in the middle? A: Yes. Press Skip, or scroll up: the shot glides back and the instructions return.
 
 ---
 

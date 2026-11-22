@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
-  <link rel="stylesheet" href="styles.css?v=8">
+  <link rel="stylesheet" href="styles.css?v=9">
   <script type="importmap">
     {"imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -42,7 +42,7 @@
   <script src="js/deep.js" defer></script>
   <script src="js/landing.js?v=6" defer></script>
   <script type="module" src="js/taps.js"></script>
-  <script type="module" src="js/intro/main.js?v=4"></script>
+  <script type="module" src="js/intro/main.js?v=12"></script>
 </head>
 <body>
   <main class="hero">
@@ -115,6 +115,8 @@
         <img src="images/intro/credit-card-face.webp" alt="" width="520" height="328" draggable="false">
         <img src="images/intro/credit-card-xray.webp" alt="" width="520" height="328" draggable="false">
       </div>
+      <!-- The close-up after the drop (js/intro/cinema.js): the lights go down behind the 3D. -->
+      <div class="cine-backdrop" aria-hidden="true"></div>
       <canvas class="card-scene" aria-hidden="true"></canvas>
       <div class="intro-callouts" aria-hidden="true">
         <span class="antenna-label">Antenna</span>
@@ -127,9 +129,42 @@
         <noscript><p>Turn on JavaScript to try the card.</p></noscript>
       </div>
       <button class="drag-card" type="button" aria-label="Tap the card on the reader" aria-describedby="drag-instruction" hidden></button>
-      <div class="feedback">
-        <p class="status" role="status"></p>
-        <button class="retry" type="button" hidden>Try again</button>
+      <!-- The close-up's words: two notes, one caption per step, a check mark and the
+           explanation, all placed by js/intro/main.js (paintFilm). -->
+      <div class="cine">
+        <svg class="cine-lines" aria-hidden="true">
+          <g><path pathLength="1"/><circle r="3.5"/></g>
+          <g><path pathLength="1"/><circle r="3.5"/></g>
+        </svg>
+        <p class="cine-badge" aria-hidden="true"><span>Slow motion · about 2,000× slower</span><b class="cine-clock">0.00 ms</b></p>
+        <div class="cine-note cine-note-reader">
+          <p class="cine-note-title">This is a reader.</p>
+          <p>It emits a signal.</p>
+        </div>
+        <div class="cine-note cine-note-tag">
+          <p class="cine-note-title">This is a passive tag.</p>
+          <p>It receives the reader’s signal. Electricity flows into its coil and powers the chip. No battery needed.</p>
+        </div>
+        <div class="cine-step" aria-live="polite">
+          <span class="cine-step-number"></span>
+          <p class="cine-step-text"></p>
+        </div>
+        <svg class="cine-check" viewBox="0 0 64 64" aria-hidden="true">
+          <circle cx="32" cy="32" r="27" pathLength="1"/>
+          <path d="M20 33.5l8.5 8.5L45 24.5" pathLength="1"/>
+        </svg>
+        <div class="cine-explain">
+          <p class="status" role="status"></p>
+          <h3>That’s how it works.</h3>
+          <p>The reader’s signal powers the tag. The tag uses that power to answer. The reader reads the answer.</p>
+          <p>No battery. No contact. All in about five thousandths of a second.</p>
+          <p class="cine-fine">Strictly, the tag doesn’t broadcast. It answers by soaking up more or less of the reader’s field, and the reader feels the change.</p>
+          <div class="feedback">
+            <button class="replay" type="button" hidden>Watch again</button>
+            <button class="retry" type="button" hidden>Try again</button>
+          </div>
+        </div>
+        <button class="cine-skip" type="button" hidden>Skip <span aria-hidden="true">→</span></button>
       </div>
       <div class="hud" aria-hidden="true">
         <span class="scroll-guide">
