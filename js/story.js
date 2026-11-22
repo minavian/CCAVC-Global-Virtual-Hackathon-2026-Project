@@ -82,6 +82,7 @@
     const cue = $('.scroll-cue'), fill = $('.chapters-fill'), lines = $('.callout-lines');
     const chapterButtons = [...document.querySelectorAll('.chapters button')];
     const handle = $('.battery-handle');
+    const track = $('.track');   // the story's scroll starts here, after the everyday taps
     document.documentElement.style.setProperty('--story-length', LENGTH);
 
     const svg = 'http://www.w3.org/2000/svg';
@@ -98,7 +99,7 @@
     });
 
     chapterButtons.forEach((button, i) => button.addEventListener('click', () => {
-      scrollTo({ top: CHAPTERS[i][1] * innerHeight + (i ? 2 : 0), behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      scrollTo({ top: track.offsetTop + CHAPTERS[i][1] * innerHeight + (i ? 2 : 0), behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
     }));
 
     // ---------- The battery, by hand ----------

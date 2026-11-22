@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Inter+Tight:wght@400;500;600;800&family=JetBrains+Mono:wght@400;600&display=block">
-  <link rel="stylesheet" href="styles.css?v=4">
+  <link rel="stylesheet" href="styles.css?v=5">
   <script type="importmap">
     {"imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -37,10 +37,11 @@
   <script src="js/rfid/channel.js" defer></script>
   <script src="js/lockscreen.js" defer></script>
   <script src="js/models.js" defer></script>
-  <script src="js/story.js" defer></script>
+  <script src="js/story.js?v=5" defer></script>
   <script src="js/lab.js" defer></script>
   <script src="js/deep.js" defer></script>
-  <script src="js/landing.js?v=4" defer></script>
+  <script src="js/landing.js?v=5" defer></script>
+  <script type="module" src="js/taps.js"></script>
 </head>
 <body>
   <main class="hero">
@@ -59,6 +60,31 @@
       <p id="subline">and almost nobody knows how it works<span class="dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></p>
     </div>
   </main>
+
+  <!-- Every day: three taps, one after another (js/taps.js). It slides up over the
+       landing page; the story below starts where this section ends. -->
+  <section class="taps" id="taps" aria-labelledby="taps-title">
+    <h2 class="taps-title" id="taps-title">One tap, and it just works.</h2>
+    <div class="taps-row">
+      <canvas class="taps-canvas" aria-hidden="true"></canvas>
+      <figure class="tap">
+        <div class="tap-view" role="img" aria-label="A metro ticket taps the reader on a ticket gate. The gate opens."></div>
+        <figcaption class="tap-say"><b>Tap.</b> The gate opens.</figcaption>
+        <span class="tap-bar" aria-hidden="true"><i></i></span>
+      </figure>
+      <figure class="tap">
+        <div class="tap-view" role="img" aria-label="A bank card taps a payment terminal. The payment is approved."></div>
+        <figcaption class="tap-say"><b>Tap.</b> The payment goes through.</figcaption>
+        <span class="tap-bar" aria-hidden="true"><i></i></span>
+      </figure>
+      <figure class="tap">
+        <div class="tap-view" role="img" aria-label="The unlock button on a car key is pressed. The car's lights blink and its door opens."></div>
+        <figcaption class="tap-say"><b>Click.</b> The car opens.</figcaption>
+        <span class="tap-bar" aria-hidden="true"><i></i></span>
+      </figure>
+    </div>
+    <button class="taps-pause" type="button" aria-pressed="false"><i aria-hidden="true"></i><span>Pause</span></button>
+  </section>
 
   <!-- The story after the hero. It is pinned over the stage and played by scrolling
        (see js/story.js); the empty track below only gives the page its scroll length. -->

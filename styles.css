@@ -186,6 +186,188 @@ html[data-intro] #headline:not([data-docked]) {
 html[data-intro] #subline,
 html[data-intro] .stage-light { opacity: 0; }
 
+/* ---------- Every day: three taps under the landing page (js/taps.js) ----------
+   Three panels side by side, split by hairlines. One canvas lies under the row and
+   taps.js draws each panel's scene into that panel's .tap-view box.
+   The landing page is pinned, so this section starts one screen down and slides up
+   over it like a sheet of paper. It is at least a screen tall, so it covers the landing
+   page completely before the story (which starts where this section ends) begins. */
+.taps {
+  position: relative;
+  z-index: 5;
+  margin-top: 100vh;
+  margin-top: 100lvh;
+  min-height: 100vh;
+  min-height: 100lvh;
+  background: var(--paper);
+  box-shadow: 0 -48px 80px rgba(245, 242, 236, .92), 0 48px 80px rgba(245, 242, 236, .92);
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: clamp(28px, 5.5vh, 72px);
+  padding: clamp(72px, 12vh, 150px) var(--gutter);
+}
+
+.taps-title {
+  margin: 0;
+  font-weight: 800;
+  font-size: clamp(34px, min(4.6vw, 8vh), 80px);
+  line-height: .98;
+  letter-spacing: -.042em;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.taps-row {
+  position: relative;
+  width: 100%;
+  max-width: 1480px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.taps-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 1.1s cubic-bezier(.16, 1, .3, 1);
+}
+.taps.is-ready .taps-canvas { opacity: 1; }
+
+.tap {
+  position: relative;
+  margin: 0;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 14px;
+  padding: 0 clamp(6px, 1.2vw, 20px);
+}
+
+/* The hairlines between the panels, as in the sketch. */
+.tap + .tap::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6%;
+  bottom: 6%;
+  width: 1px;
+  background: linear-gradient(rgba(13, 13, 12, 0), rgba(13, 13, 12, .14) 22%, rgba(13, 13, 12, .14) 78%, rgba(13, 13, 12, 0));
+}
+
+.tap-view {
+  width: 100%;
+  height: clamp(300px, 54vh, 600px);
+}
+
+.tap-say {
+  margin: 0;
+  font-weight: 600;
+  font-size: clamp(17px, 1.45vw, 23px);
+  line-height: 1.25;
+  letter-spacing: -.015em;
+  text-align: center;
+  color: var(--muted);
+  opacity: .62;
+  transition: color .6s ease, opacity .6s ease;
+}
+.tap-say b { font-weight: 800; color: var(--ink); }
+.tap.is-on .tap-say { color: var(--ink); opacity: 1; }
+
+/* Fills while its panel plays, and empties when the three reset. */
+.tap-bar {
+  width: min(140px, 46%);
+  height: 2px;
+  border-radius: 2px;
+  background: rgba(13, 13, 12, .1);
+  overflow: hidden;
+}
+.tap-bar i {
+  display: block;
+  height: 100%;
+  background: var(--ink);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+}
+
+.taps-pause {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  padding: 0 18px 0 16px;
+  border: 1px solid rgba(13, 13, 12, .18);
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color .25s ease, border-color .25s ease, background-color .25s ease;
+}
+.taps-pause:hover { color: var(--ink); border-color: var(--ink); }
+.taps-pause:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+.taps-pause[hidden] { display: none; }
+
+/* Pause: two bars. Play: a triangle. */
+.taps-pause i { position: relative; width: 10px; height: 11px; }
+.taps-pause i::before, .taps-pause i::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 3px;
+  height: 11px;
+  border-radius: 1px;
+  background: currentColor;
+}
+.taps-pause i::before { left: 1px; }
+.taps-pause i::after { right: 1px; }
+.taps-pause[aria-pressed="true"] i::before {
+  left: 1px;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 5.5px 0 5.5px 9px;
+  border-color: transparent transparent transparent currentColor;
+  border-radius: 0;
+  background: none;
+}
+.taps-pause[aria-pressed="true"] i::after { display: none; }
+
+/* Reduced motion: every panel shows its finished scene and stays still. */
+.taps.is-still .tap-say { color: var(--ink); opacity: 1; }
+.taps.is-still .tap-bar { visibility: hidden; }
+
+/* Without 3D the words stand on their own. */
+.taps.is-static .tap-view { height: clamp(40px, 8vh, 80px); }
+.taps.is-static .tap-bar { visibility: hidden; }
+
+@media (max-width: 760px) {
+  .taps { gap: 28px; }
+  .taps-row { grid-template-columns: minmax(0, 1fr); row-gap: 44px; }
+  .tap { padding: 0; }
+  .tap + .tap { padding-top: 44px; }
+  .tap + .tap::before {
+    left: 12%;
+    right: 12%;
+    top: 0;
+    bottom: auto;
+    width: auto;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(13, 13, 12, 0), rgba(13, 13, 12, .14) 22%, rgba(13, 13, 12, .14) 78%, rgba(13, 13, 12, 0));
+  }
+  .tap-view { height: min(92vw, 56svh); }
+  .tap-say { font-size: 19px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .taps-canvas, .tap-say { transition: none; }
+}
+
 /* ---------- The story ---------- */
 
 /* Gives the page its scroll length: the hero screen plus the story's screens. */

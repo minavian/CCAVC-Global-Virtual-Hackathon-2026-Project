@@ -35,6 +35,7 @@ Written by <who> · <date> · Issue #<n>
 - [3D rendering pipeline](#3d-rendering-pipeline-jslandingjs-createscene)
 - [The three 3D objects](#the-three-3d-objects-jsmodelsjs-models)
 - [The phone's lock screen](#the-phones-lock-screen-jslockscreenjs)
+- [Every day: three taps](#every-day-three-taps-jstapsjs-modelssubway-cardglb)
 - [The story: a film played by scrolling](#the-story-a-film-played-by-scrolling-jsstoryjs-jslandingjs)
 - [The simulation: physics, protocol and reader](#the-simulation-physics-protocol-and-reader-jsrfid)
 - [The lab: Power, Reply, Break it](#the-lab-power-reply-break-it-jslabjs)
@@ -155,6 +156,40 @@ Owner: Mina Vian · 2026-11-20 · Issue #5
 
 ---
 
+### Every day: three taps (`js/taps.js`, `models/subway-card.glb`)
+
+Owner: Mina Vian · 2026-11-22. Metro ticket model by Akris Luno (`nduchuy348-art`, branch `create-new-model`).
+
+**What it does.** The section right under the landing page. Three small 3D scenes play one after another: a metro ticket taps a ticket gate and the gate opens; a bank card taps a payment terminal and the payment is approved; a car key's unlock button is pressed and the car opens. Each has one short line under it: "Tap. The gate opens.", "Tap. The payment goes through.", "Click. The car opens."
+
+**How it works.**
+- **Where it sits.** The landing page is pinned to the screen, so the section starts one screen down. It has a paper background and slides up over the landing page like a sheet. It is at least one screen tall, so it covers the landing page fully. When it scrolls away, the landing page shows again and the story starts from its first frame: `landing.js` counts the story's scroll from the top of `.track`, which comes right after this section.
+- **One canvas, three cameras.** `index.html` has a `.taps-row` with three `.tap-view` boxes and one `<canvas>` under them. `js/taps.js` keeps the three scenes in one Three.js scene, 60 m apart, and gives each its own camera. Every frame, it measures each box and draws that scene into it with a scissor box (`draw`). One WebGL context serves all three.
+- **Pure functions of time.** Each scene has `apply(t, r)`. `t` is the panel's time (0 to `PLAY`, 3.4 s) and `r` is the reset (0 to 1). The pose is computed from these two numbers alone, so the loop can stop, restart or jump at any point. The timings are in the `PLAY`, `HOLD`, `RESET` and `ARRIVE`/`LEAVE` constants at the top.
+- **The order.** On wide screens one clock (`cycle`) plays the gate, then the payment, then the car. All three hold their finished state, reset together, and the loop starts again. On phones the panels are stacked, so each one plays its own loop while at least half of it is on screen (`own`, `shown`). The thin bar under each line fills while its panel plays.
+- **The card's flight** (`glider`). The card floats with a slow bob, follows a curve to the reader and lands straight down onto it. It presses once and floats back. The flight eases in and out (`inOut`), and the turn finishes before it lands.
+- **The gate** (`gateSet`). It has two rounded cabinets and a dark reader pad. Two glass flaps turn on hinges at the cabinets. Copper rings spread from the pad while the ticket is read (`ripples`: the reader's field, the same copper as the rest of the site). Then the lights turn green, a tick appears on the front display, and the flaps swing open toward the exit.
+- **The terminal** (`terminalSet`). The screen is a canvas texture, redrawn only when it changes (`drawScreen`). Four status lights come on one after another while the card is read, like on real card terminals. "Approved" appears as the card leaves.
+- **The car** (`carSet`). The body is one side outline extruded across the car with rounded edges. The windscreen and rear window follow the outline's curves (`ribbon`). The near front door is a separate panel on a hinge, with a dark opening behind it that lights up warm. The key is the team's fob model, shown large. Its unlock button moves in by 0.9 mm, rings travel toward the car, the light bar blinks amber twice, and the door swings open.
+- **Models** (`loadModel`). The ticket, the bank card and the key are the team's GLB files, loaded and centred here. Parts sealed inside them (coils, chips) can never be seen, so they are not drawn. Flat printed layers get the same depth nudge as in `models.js` (`liftDecals`), so they don't flicker. The gate, terminal and car are built in code from simple shapes. The ticket is drawn 3.6 times its real size so it can be seen next to a full-size gate. The key is drawn 19 times its real size. The terminal and bank card are at true size.
+- **Only when needed.** The models load when the section is about one screen away. Frames are drawn only while the section is on screen, the tab is visible and the loop isn't paused.
+
+**Why it is built this way.**
+- One shared canvas instead of three: one WebGL context, one set of lights, one frame loop.
+- The gate, terminal and car are made from simple shapes rather than detailed models. They are the backdrop: the real models (ticket, card, key) stay the focus. They also stay neutral and look like no real brand.
+- The section slides over the pinned landing page rather than pushing it away, because the landing page and the story share one pinned stage. Counting the story from `.track` keeps the film exactly as it was, only later on the page.
+
+**What is simplified.** This section is a picture, not the simulation. Nothing here is computed from RFID physics; the copper rings only show that the reader's field is there. The key's button is powered by the key's own battery, as scene 3 of the story says. The amount on the terminal is made up.
+
+**How to check it.** Serve the folder, scroll one screen down from the landing page, and watch the three scenes play in turn. Press **Pause**: everything stops where it is. With reduced motion turned on in the system, all three show their finished state and nothing moves. Keep scrolling: the landing page comes back and the story starts. Add `?debug` to the address and run `__taps.seek(4.5)` in the console to freeze the loop at 4.5 s.
+
+**Likely questions.**
+- Q: Why are the ticket and key bigger than life? A: At true size, a ticket next to a 1 m gate, or a key next to a car, would be a few pixels. The scenes are illustrations, so the hero object is scaled up and the backdrop stays at true size.
+- Q: What happens on a phone? A: The panels stack, and each plays its own loop while it is on screen, so nobody misses one that played off screen.
+- Q: Does it slow the page down? A: All three scenes together took about 3 ms per frame on our test machine. Nothing is drawn while the section is off screen.
+
+---
+
 ### The story: a film played by scrolling (`js/story.js`, `js/landing.js`)
 Owner: Mina Vian · 2026-11-21, updated 2026-11-21 · Issues #9, #19
 
@@ -169,7 +204,7 @@ Owner: Mina Vian · 2026-11-21, updated 2026-11-21 · Issues #9, #19
 The chapter bar at the bottom reads Intro, Inside, No battery, Power, Reply and Break it. On phones it shows the current chapter's name and a dot for each of the others.
 
 **How it works.**
-- **Progress in screens.** `landing.js` turns the scroll position into `scrollNow`, in screens (1 = one window height), and eases it toward the real scroll position, so a mouse wheel's steps feel like smooth playback.
+- **Progress in screens.** `landing.js` turns the scroll position into `scrollNow`, in screens (1 = one window height), and eases it toward the real scroll position, so a mouse wheel's steps feel like smooth playback. The count starts at the top of the empty `.track`, which comes after the everyday taps section, so the film begins once that section has scrolled away. The chapter buttons add the same offset.
 - **One timeline.** `story.js` holds the timing (`TIME`), and `timeline(s)` turns `s` into progress values for the 3D. The sentences that depend only on the scroll are a list of ranges (`SAY`, and `AFTER` for after the battery is out). `sentence()` picks the one for the moment. In the lab scenes, it takes the lab's sentence instead. `speak()` swaps the text and replays a short fade-in.
 - **Labels** (`CALLOUTS`) each name the sentences that show them (`when`). They fade in and out with the sentence, and each sits outside its object, joined to its part by a thin line.
 - **The battery handle** is a real button over the battery. Dragging it more than 22 mm (in the key's own size) frees the battery; Enter, Space or an arrow key does the same.
