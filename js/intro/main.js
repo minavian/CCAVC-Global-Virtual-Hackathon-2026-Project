@@ -143,9 +143,11 @@ function intro(experience) {
       const arc = Math.sin(flight * Math.PI) ** 2 * (compact ? 38 : 48);
       const spin = (1 - travel) * (.3 - i * .105);
       const scale = mix(.12, size / 100, travel);
-      // Inter Tight is a variable font, so the weight can change smoothly: each letter
-      // leaves the mouth at its thinnest and fills out to full weight as it lands.
-      const weight = mix(THIN, FULL, smoother(.1, 1, flight)).toFixed(1);
+      // Inter Tight is a variable font, so the weight can change smoothly. It follows the
+      // distance travelled, not the clock: a letter starts filling out the moment it leaves
+      // the mouth (thinnest there) and reaches full weight as it arrives. Smootherstep ends
+      // the change with no speed left, and the small overshoot past its place stays at full.
+      const weight = mix(THIN, FULL, smoother(0, 1, travel)).toFixed(1);
       if (weights[i] !== weight) glyph[i].style.fontWeight = weights[i] = weight;
       const unfold = ease(MOUTH_CLOSED + .01 + i * .07, 1.74 + i * .038, time) * (1 - ease(2.15, 2.65, time));
       letters[i].style.opacity = ease(launch, launch + .08, time) * visual.letters;
