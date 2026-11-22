@@ -26,7 +26,6 @@ const reduce = matchMedia('(prefers-reduced-motion: reduce)');
 let scene, available = false, layout, scrollDistance;
 let raf = 0, needsMeasure = true, dirty = true, nowBefore, playhead;
 let pointer, wasDragged = false, canDrop = false, detected = false, focusCard = false;
-let detectedAt = 0;
 let paintedPose, offsetX = 0, offsetY = 0, lift = 0;
 
 function wake() {
@@ -193,11 +192,10 @@ function frame(now) {
     const mouth = fromCard(pose, -.039, .002, .003 + pose.mouth * .010);
     paintLetters(time, visual, mouth);
   }
-  const burstTime = detected ? (now - detectedAt) / 1000 : Infinity;
   if (signal) {
     const mouth = fromCard(pose, -.039, .002, .003 + pose.mouth * .010);
     const callouts = paintLabels(pose, visual.callouts);
-    const clock = reduce.matches ? 0 : detected ? Math.min(burstTime, 1.6) : now / 1000;
+    const clock = reduce.matches ? 0 : now / 1000;
     renderSignals(signal, { layout, time, clock,
       mouth, card: pose, visual, labels: callouts, proximity, confirmed: Number(detected) });
   }
@@ -208,7 +206,7 @@ function frame(now) {
   }
   const moving = time !== target || offsetX !== x - base.x || offsetY !== y - base.y ||
     lift !== (detected ? -1 : pointer?.moved ? .5 - proximity * .75 : 0);
-  const liveSignals = !document.hidden && (visual.definition > 0 || proximity > 0 || burstTime < 1.6);
+  const liveSignals = !document.hidden && signal && (visual.definition > 0 || visual.reader > 0);
   if (!reduce.matches && (moving || liveSignals)) wake();
 }
 
@@ -232,7 +230,6 @@ function resetDrop() {
 function confirmDrop() {
   if (!canDrop || detected) return;
   detected = true;
-  detectedAt = performance.now();
   const refocus = document.activeElement === dropButton;
   dropButton.hidden = true;
   status.textContent = 'Card detected.';

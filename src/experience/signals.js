@@ -108,11 +108,11 @@ function readerField(ctx, target, opacity, proximity, clock, confirmed) {
   const { x, y, width, height } = target;
   ctx.strokeStyle = BRASS;
   ctx.lineWidth = confirmed ? 1.8 : 1.25;
-  const motion = proximity > 0 || confirmed ? clock * (confirmed ? .9 : .43) : 0;
+  const motion = (clock * .43) % 1;
   for (let ring = 0; ring < 3; ring++) {
-    const p = (ring / 3 + motion % 1) % 1;
+    const p = (ring / 3 + motion) % 1;
     const size = .85 + .48 * p;
-    ctx.globalAlpha = opacity * (1 - p) * (.10 + .29 * proximity + .28 * confirmed);
+    ctx.globalAlpha = opacity * (1 - p) * (.30 + .24 * proximity + .18 * confirmed);
     ctx.beginPath();
     ctx.ellipse(x + width * .035, y + height * .12, width * size * .56, height * size * .39, -.04, 0, TAU);
     ctx.stroke();
