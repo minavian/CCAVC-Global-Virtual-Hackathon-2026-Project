@@ -376,7 +376,8 @@ html[data-intro] .stage-light { opacity: 0; }
   --brass: #80623d;
   --night: #111111;
   --light: #fafaf8;
-  --display: "Bodoni Moda", Georgia, serif;
+  /* Instrument Serif: a tall, narrow display serif with a real italic (for "work"). */
+  --display: "Instrument Serif", Georgia, serif;
   position: relative;
   z-index: 5;
   background: var(--paper);
@@ -412,7 +413,7 @@ html[data-intro] .stage-light { opacity: 0; }
 }
 
 .intro-stage :where(h1, h2, p) { margin: 0; }
-.intro .story-title { font: 660 clamp(4rem, 16vw, 9rem)/1 var(--display); }
+.intro .story-title { font: 400 clamp(4rem, 16vw, 9rem)/1 var(--display); }
 .intro :is(.definition, .question, .instruction, .cinema-title) { margin-block: 2rem; }
 .intro .definition-lead { max-width: 30ch; font-size: clamp(2rem, 6vw, 4rem); font-weight: 750; line-height: 1; }
 .intro-stage .aside { margin-top: .7em; font-size: clamp(1.1rem, 2.1vw, 1.65rem); font-weight: 520; }
@@ -423,8 +424,7 @@ html[data-intro] .stage-light { opacity: 0; }
   font-family: var(--display);
   font-size: clamp(3rem, min(14.1vw, 25dvh), 14rem);
   font-weight: 400;
-  font-variation-settings: "opsz" 45;
-  letter-spacing: -.038em;
+  letter-spacing: -.02em;
   line-height: .96;
 }
 .intro .card-poster { position: relative; width: min(70vw, 24rem); }
@@ -486,9 +486,8 @@ html[data-intro] .stage-light { opacity: 0; }
 }
 
 .intro .letter b {
-  font: 660 100px/1 var(--display);
-  font-variation-settings: "opsz" 64;
-  letter-spacing: -.03em;
+  font: 400 100px/1 var(--display);
+  letter-spacing: -.01em;
 }
 .intro .letter > span {
   padding-left: 3px;
