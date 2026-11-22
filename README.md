@@ -1,9 +1,30 @@
 # CCAVC-Global-Virtual-Hackathon-2026-Project
 
-## Three.js models
+The RFID demo is a static site. The 3D code, fonts, models and images ship with the site, so it can run offline once you have the files.
 
-- [RFID key fob](models/rfid-fob.glb)
-- [OPPO Find X9 Ultra](models/oppo-find-x9-ultra.glb)
-- [Contactless card](models/contactless-card.glb)
+## Run it on your computer
 
-Copy the GLB you need into your project and load it with Three.js `GLTFLoader`. Each model has embedded textures, a centered origin, and named parts. Units are meters, Y is up, and the front faces +Z. The `Explode` clip moves the parts from the assembled pose.
+Get the `feat/16-hand-scan` branch or extract the site ZIP. Open a terminal in the folder that contains `index.html` and run one of these commands.
+
+**Windows**
+
+```powershell
+py -3 -m http.server 8000 --bind 127.0.0.1
+```
+
+**macOS or Linux**
+
+```sh
+python3 -m http.server 8000 --bind 127.0.0.1
+```
+
+Keep the terminal open and visit [http://127.0.0.1:8000/](http://127.0.0.1:8000/). If port 8000 is in use, change it in both the command and address. Opening `index.html` directly from disk prevents the browser from loading the JavaScript modules and models.
+
+Bit River is a bonus demo at [http://127.0.0.1:8000/bit-river/](http://127.0.0.1:8000/bit-river/). Scroll from the contactless card into its illustrated RFID reply. [Bit River walkthrough](EXPLAINED.md#bit-river-transmission-bit-river)
+
+## Share it with someone else
+
+- **Same Wi-Fi.** Run the server from the extracted ZIP and use `--bind 0.0.0.0` in the command above. Share `http://YOUR-LOCAL-IP:8000/` using your computer’s local network address. Allow Python through the firewall on the private network if prompted. `127.0.0.1` always points to the computer that opens the link.
+- **Different networks.** Send the ZIP so they can run it locally, or upload the extracted site files to a static host. Keep `index.html`, `styles.css`, `js/`, `models/`, `vendor/` and `bit-river/` together. Give them the host’s URL.
+
+The full 3D demo needs a browser with WebGL 2. If the scan view cannot start 3D, the static preview and **Scan card** button let visitors continue to the explanation and Live Lab.

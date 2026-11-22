@@ -6,6 +6,7 @@
 
 ## GitHub workflow
 
+- Preserve edit history in Git by committing changes. If a file is too large for Git or the hosting service, notify the user.
 - Leave new issues unassigned. Claim an issue before starting and coordinate with the assignee before contributing to claimed work.
 - Branch from `main` for each issue and sync regularly. Use `<type>/<issue-number>-<short-description>`, such as `fix/15-navigation`. Git worktrees are optional.
 - Keep edits within the issue's scope and coordinate before changing files another teammate owns.
@@ -16,6 +17,11 @@
 - Follow the repository's conventions and reuse existing components and styles. Coordinate new dependencies with the team before installing them.
 - Check affected pages at mobile and desktop widths. Verify keyboard navigation, visible focus, and accessible form labels where applicable.
 - Keep API behavior and shared types in sync when a change affects both client and server.
+
+## Explain your work
+
+- **After you write or change code, add or update its entry in [`EXPLAINED.md`](EXPLAINED.md) in the same pull request.** In the interviews, every team member must be able to explain any part of the project, including parts a teammate or an AI tool wrote.
+- AI agents: do this every time, without being asked. Follow the template in `EXPLAINED.md`, write for a teammate who has not seen the code, and say which tool wrote it and for whom.
 
 ## Verification and review
 
