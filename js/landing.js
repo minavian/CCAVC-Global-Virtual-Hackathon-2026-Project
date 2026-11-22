@@ -66,6 +66,7 @@
   const viewH = () => root.clientHeight || innerHeight;
   const smoothstep = p => p * p * (3 - 2 * p);
   const easeOutCubic = p => 1 - (1 - p) ** 3;
+  const easeInOutCubic = p => p < .5 ? 4 * p * p * p : 1 - (-2 * p + 2) ** 3 / 2;
   const easeOutQuint = p => 1 - (1 - p) ** 5;
 
   // CSS-equivalent cubic-bezier easing.
@@ -114,12 +115,29 @@
   let gl = null;
   let lastNow = null, frameId = 0;
   let skipPointer = null, skipEvent = null;
-  const poses = [0, 1, 2].map(() => ({ x: 0, y: 0, baseY: 0, size: 0, depth: 0, side: 0, roll: 0, leanX: 0, leanY: 0 }));
+  // Five things on the stage: the key, the phone and the card (the carousel), then the
+  // reader pad and the metal plate, which only the lab uses.
+  const READER = 3, PLATE = 4;
+  const poses = [0, 1, 2, 3, 4].map(() => ({ x: 0, y: 0, baseY: 0, size: 0, depth: 0, side: 0, roll: 0, pitch: 0, yaw: 0,
+    lift: 0, shade: 1, visible: true, float: 0 }));
+  const looks = [{}, {}, {}, {}, {}];
+
+  // ---------- Story state ----------
+  // Scrolling plays the story (js/story.js). Its progress `scrollNow` is measured in screens
+  // and eases toward the real scroll position, so wheel steps still feel like a film.
+  const story = window.RFIDStory ? window.RFIDStory.create() : null;
+  const lab = window.RFIDLab ? window.RFIDLab.create() : null;
+  const FEATURED = 0;                        // the key fob is the object the story opens
+  const CARD = 2;
+  let scrollGoal = 0, scrollNow = 0, storyOn = false, storyState = null, labState = null, paintedAt = null;
 
   // ---------- Layout ----------
   // The stage covers the whole page; the objects live in the region the words leave free.
   function measure() {
-    const rect = stage.getBoundingClientRect(), copy = copyBox.getBoundingClientRect();
+    // Offsets, not bounding boxes: the story moves the words with transforms, and the
+    // layout must not follow them.
+    const rect = { left: 0, top: 0, width: stage.clientWidth, height: stage.clientHeight };
+    const copy = { left: copyBox.offsetLeft, bottom: copyBox.offsetTop + copyBox.offsetHeight };
     const w = Math.max(1, rect.width), h = Math.max(1, rect.height);
     const narrow = stacked.matches;
     const region = narrow
@@ -147,9 +165,12 @@
     const cx = layout.cx * w, cy = layout.cy * h, s = layout.size;
     const halfW = Math.max(layout.ax * w + .45 * s, .6 * s), halfH = Math.max(layout.ay * h + .45 * s, .6 * s) + layout.dz * h;
     const left = Math.max(0, Math.floor(cx - halfW)), top = Math.max(0, Math.floor(cy - halfH));
-    layout.box = { x: left, y: top, w: Math.min(w, Math.ceil(cx + halfW)) - left, h: Math.min(h, Math.ceil(cy + halfH)) - top };
+    layout.heroBox = { x: left, y: top, w: Math.min(w, Math.ceil(cx + halfW)) - left, h: Math.min(h, Math.ceil(cy + halfH)) - top };
+    // During the story the objects travel across the whole screen.
+    layout.box = storyOn ? { x: 0, y: 0, w: Math.round(w), h: Math.round(h) } : layout.heroBox;
     measureHeadline();
     gl?.resize(layout.box);
+    setFrame();
   }
 
   function measureHeadline() {
@@ -176,8 +197,160 @@
       p.y = p.baseY + float * L.size * .016 + leanY * near * 10;
       p.size = L.size * (1 - .56 * depth) * (.84 + .16 * entrance) * (1 + settle);
       p.depth = depth; p.side = side; p.float = float;
+      const sway = calm ? 0 : Math.sin(elapsed * .27 + i * 1.3);
+      p.pitch = BASE_PITCH[i] + sway * .044 + leanY * near * .1;
+      p.yaw = BASE_YAW[i] + side * .49 + twist * TAU / 3 + sway * .115 + leanX * near * .15;
       p.roll = BASE_ROLL[i] + side * .2 + float * .027 + Math.tanh(velocity * .28) * .13;
-      p.leanX = leanX * near; p.leanY = leanY * near;
+      p.lift = 0; p.shade = 1; p.visible = true;
+    }
+    poses[READER].visible = poses[PLATE].visible = false;
+    for (const look of looks) for (const k in look) delete look[k];
+    if (storyOn && storyState) storyPoses(storyState);
+  }
+
+  // ---------- Story poses ----------
+  // Where object i of n stands in the straight line.
+  // Positions in the film are in design pixels on the frame (see designFrame()).
+  function rowPose(i, n) {
+    const f = designFrame(), at = (x, y) => [f.x + x * f.u, f.y + y * f.u];
+    const [x, y] = f.tall ? at(195 + (i - (n - 1) / 2) * 122, 520) : at(720 + (i - (n - 1) / 2) * 400, 580);
+    return { x, y, size: (f.tall ? 112 : 330) * f.u, pitch: .05, yaw: -(i - (n - 1) / 2) * .28, roll: 0 };
+  }
+
+  // The area the featured object fills: the right side, or the top on phones.
+  function featureRect() {
+    const f = designFrame(), box = (x, y, w, h) => ({ x: f.x + x * f.u, y: f.y + y * f.u, w: w * f.u, h: h * f.u });
+    return f.tall ? box(16, 230, 358, 440) : box(780, 120, 600, 700);
+  }
+
+  // The film is laid out on one design frame, 1440 × 900 on wide screens and 390 × 844 on
+  // phones, scaled by a single factor `u` to fit the window and centred. Every size and
+  // place in the film comes from it (CSS reads --u, --fx and --fy), so each screen of the
+  // same shape shows exactly the same picture, only bigger or smaller.
+  function designFrame() {
+    const { w, h } = layout, tall = stacked.matches;
+    const W = tall ? 390 : 1440, H = tall ? 844 : 900, u = Math.min(w / W, h / H);
+    return { u, x: (w - W * u) / 2, y: (h - H * u) / 2, tall };
+  }
+  function setFrame() {
+    const f = designFrame();
+    root.style.setProperty('--u', f.u.toFixed(4) + 'px');
+    root.style.setProperty('--fx', f.x.toFixed(1) + 'px');
+    root.style.setProperty('--fy', f.y.toFixed(1) + 'px');
+  }
+
+  // The lab: where the reader pad sits on screen, how many pixels a meter is, and how far
+  // the camera looks down onto it (radians). Room above the pad for the key at its farthest,
+  // and below it for what the reader feels and the ID.
+  function labGeometry() {
+    const f = designFrame();
+    if (f.tall) return { padX: f.x + 195 * f.u, padY: f.y + 470 * f.u, k: 2500 * f.u, tilt: .5, u: f.u, tall: true };
+    return { padX: f.x + 1030 * f.u, padY: f.y + 500 * f.u, k: 4600 * f.u, tilt: .5, u: f.u, tall: false };
+  }
+
+  // A fall: speeding up under gravity, then one small bounce.
+  const fall = d => d < .78 ? (d / .78) ** 2 : 1 - Math.sin(Math.PI * (d - .78) / .22) * .045;
+
+  function storyPoses(st) {
+    const n = 3, { w, h } = layout;
+    // 1. Each object drops out of the carousel into the line.
+    for (let i = 0; i < n; i++) {
+      const p = poses[i], d = st.drop[i];
+      if (d <= 0) continue;
+      const row = rowPose(i, n), move = easeInOutCubic(d), turn = easeOutCubic(d);
+      const down = row.y >= p.y ? fall(d) : move;
+      const tumble = calm ? 0 : Math.sin(Math.PI * d) * .22 * (i % 2 ? 1 : -1);
+      p.x = lerp(p.x, row.x, move);
+      p.y = lerp(p.y, row.y, down);
+      p.baseY = lerp(p.baseY, row.y, down);
+      p.size = lerp(p.size, row.size, move);
+      p.depth = lerp(p.depth, 0, turn);
+      p.float = lerp(p.float, 0, turn);
+      p.pitch = lerp(p.pitch, row.pitch, turn);
+      p.yaw = lerp(p.yaw, row.yaw, turn);
+      p.roll = lerp(p.roll, row.roll, turn) + tumble;
+    }
+
+    // Scene 2: all three turn to glass, with their coils and chips glowing.
+    const f = st.feature;
+    for (let i = 0; i < n; i++) looks[i] = { glass: st.glass * (i === FEATURED ? 1 - f : 1), glow: st.glass * (i === FEATURED ? 1 - f : 1) };
+
+    // Scene 3: the key comes forward; the others step aside.
+    if (f > 0) {
+      for (let i = 0; i < n; i++) {
+        if (i === FEATURED) continue;
+        const p = poses[i], away = i % 2 ? -1 : 1;
+        p.x += away * f * w * .34;
+        p.y += f * h * .05;
+        p.size *= 1 - .25 * f;
+        p.depth = lerp(p.depth, 1, f);
+        p.shade = 1 - f;
+        p.visible = f < .985;
+      }
+      // It opens; its pose is fitted so the open parts always fill the frame.
+      const p = poses[FEATURED], open = st.open;
+      const breathe = calm ? 0 : Math.sin(elapsed * .35) * .05;
+      const pitch = .12 + .1 * open, yaw = -.42 + .06 * open + breathe, roll = 0;
+      looks[FEATURED] = { open, glass: 0, glow: open * .35, battery: st.battery, power: open > 0 ? st.power : 0 };
+      const rect = featureRect();
+      const fit = gl ? (gl.look(FEATURED, looks[FEATURED]), gl.fit(FEATURED, rect, pitch, yaw, roll))
+        : { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2, size: rect.h };
+      p.x = lerp(p.x, fit.x, f);
+      p.y = lerp(p.y, fit.y, f);
+      p.baseY = p.y;
+      p.size = lerp(p.size, fit.size, f);
+      p.pitch = lerp(p.pitch, pitch, f);
+      p.yaw = lerp(p.yaw, yaw, f);
+      p.roll = lerp(p.roll, roll, f);
+      p.depth = lerp(p.depth, 0, f);
+      p.lift = 300 * f;                        // closer to the camera, so it stays sharp
+      p.shade = 1 - f;
+    }
+
+    // The card comes back, small and in glass: it has no battery either.
+    if (st.cardBack > 0) {
+      const p = poses[CARD], q = st.cardBack;
+      const f = designFrame(), to = f.tall ? { x: f.x + 100 * f.u, y: f.y + 720 * f.u, size: 130 * f.u } : { x: f.x + 420 * f.u, y: f.y + 640 * f.u, size: 230 * f.u };
+      p.x = lerp(w * -.2, to.x, q); p.y = to.y; p.baseY = p.y; p.size = to.size;
+      p.pitch = .15; p.yaw = .35; p.roll = -.08; p.depth = 0; p.lift = 280; p.shade = 1; p.visible = true;
+      looks[CARD] = { glass: 1, glow: 1 };
+    }
+
+    // Scenes 4–5: the key closes, stays in glass, and moves over the reader as it rises.
+    const r = st.reader;
+    if (st.leave > 0 || r > 0) {
+      const g = labGeometry(), squash = Math.cos(g.tilt), lift = Math.sin(g.tilt);
+      const ls = labState || { tag: 'key', distance: .095, angle: 0, metal: false, chip: 0, glow: .2, readerGlow: .5, metalGap: .006 };
+      const tagIndex = ls.tag === 'card' ? CARD : FEATURED;
+      const swap = ls.tag === 'card' ? 1 : 0;
+      // The reader pad.
+      const pad = poses[READER];
+      Object.assign(pad, { x: g.padX, y: g.padY + (1 - r) * h * .45, size: g.k * .094, pitch: g.tilt, yaw: 0, roll: 0,
+        depth: 0, lift: 300, shade: 1, visible: r > 0 });
+      looks[READER] = { glow: r * ls.readerGlow };
+      // The tag: above the pad, its long side across the screen.
+      const tagY = g.padY - ls.distance * g.k * squash, tagLift = 300 + ls.distance * g.k * lift;
+      const key = poses[FEATURED], e = easeInOutCubic(st.leave);
+      const labPose = { x: g.padX, y: tagY, size: g.k * (tagIndex === CARD ? .0856 : .059), pitch: -Math.PI / 2 + g.tilt + ls.angle,
+        yaw: 0, roll: tagIndex === CARD ? 0 : Math.PI / 2 };
+      // The key leaves the stage if the card is the tag.
+      const keyTo = swap ? { ...labPose, x: -w * .3 } : labPose;
+      key.x = lerp(key.x, keyTo.x, e); key.y = lerp(key.y, keyTo.y, e); key.baseY = key.y;
+      key.size = lerp(key.size, g.k * .059, e);
+      key.pitch = lerp(key.pitch, keyTo.pitch, e); key.yaw = lerp(key.yaw, 0, e); key.roll = lerp(key.roll, keyTo.roll, e);
+      key.lift = lerp(key.lift, tagLift, e); key.depth = 0; key.shade = 1;
+      key.visible = !(swap && e >= 1);
+      looks[FEATURED] = { open: st.open, glass: e, glow: lerp(st.open * .35, ls.tag === 'key' ? ls.glow : .3, e),
+        chip: ls.tag === 'key' ? ls.chip * e : 0, battery: { out: 1, x: 0, y: 0 }, power: 0 };
+      if (swap && st.lab) {
+        const c = poses[CARD];
+        Object.assign(c, labPose, { baseY: labPose.y, lift: tagLift, depth: 0, shade: 1, visible: true });
+        looks[CARD] = { glass: 1, glow: ls.glow, chip: ls.chip };
+      }
+      // The metal plate, just behind the tag.
+      const plate = poses[PLATE];
+      Object.assign(plate, { x: g.padX, y: g.padY - (ls.distance + ls.metalGap) * g.k * squash, size: g.k * .07, pitch: g.tilt,
+        yaw: 0, roll: 0, depth: 0, lift: 300 + (ls.distance + ls.metalGap) * g.k * lift, shade: 1, visible: !!(st.lab && ls.metal) });
     }
   }
 
@@ -382,6 +555,19 @@
     leanX += ((calm ? 0 : aimX) - leanX) * follow;
     leanY += ((calm ? 0 : aimY) - leanY) * follow;
 
+    // The story's progress eases toward the scroll position.
+    scrollNow += (scrollGoal - scrollNow) * (calm ? 1 : 1 - Math.exp(-7 * dt));
+    if (Math.abs(scrollGoal - scrollNow) < 1e-4) scrollNow = scrollGoal;
+    const playing = scrollNow > .003;
+    if (playing !== storyOn) {
+      storyOn = playing;
+      stage.classList.toggle('is-story', storyOn);
+      if (storyOn) { drag = null; stage.classList.remove('is-dragging'); }
+      measure();
+    }
+    storyState = story ? story.timeline(scrollNow) : null;
+    labState = lab && layout ? lab.update(dt, storyOn ? storyState : null, labGeometry()) : null;
+
     if (intro !== null) {
       intro = frozenAt !== null ? frozenAt : intro + dt;
       applyIntro(intro);
@@ -398,7 +584,7 @@
       if (flight && !drag) advanceFlight(dt);
       else if (!flight && !drag) {
         idle += dt;
-        if (focus !== 0 && idle > DRIFT_BACK_AFTER) bringToFront(0, DRIFT_DURATION);
+        if (focus !== 0 && idle > DRIFT_BACK_AFTER && !storyOn) bringToFront(0, DRIFT_DURATION);
       }
     }
     updateFocus();
@@ -416,9 +602,36 @@
       const width = p.size * sw * lift, height = p.size * .075 * lift;
       const y = p.baseY + p.size * drop;
       el.style.transform = `translate(${(p.x - 50).toFixed(1)}px, ${(y - 50).toFixed(1)}px) scale(${(width / 100).toFixed(3)}, ${(height / 100).toFixed(3)})`;
-      el.style.opacity = (shown * (1 - p.depth) ** 2 * .85).toFixed(3);
+      el.style.opacity = (p.visible ? shown * (1 - p.depth) ** 2 * .85 * p.shade : 0).toFixed(3);
     });
+    if (gl) looks.forEach((look, i) => gl.look(i, look));
     gl?.draw(dt, fade);
+    paintStory();
+  }
+
+  // The story's words, labels and chapter bar. Repainted only when the scroll position
+  // moved or the labels have parts to follow.
+  function paintStory() {
+    if (!story || !storyState) return;
+    const st = storyState, ready = intro === null && started;
+    // While the film plays, the sentence and the labels follow the lab and the battery as
+    // well as the scroll, so it repaints every frame; on the hero it waits for scrolling.
+    const key = `${scrollNow.toFixed(5)}|${ready}`;
+    if (key === paintedAt && !storyOn) return;
+    paintedAt = key;
+    const points = {};
+    if (gl && storyOn) {
+      const wanted = new Map();
+      for (const [object, part, frame] of st.callouts) {
+        if (!wanted.has(object)) wanted.set(object, new Set());
+        wanted.get(object).add(part).add(frame);
+      }
+      for (const [object, names] of wanted) {
+        const found = gl.points(object, [...names]);
+        for (const name in found) points[object + ':' + name] = found[name];
+      }
+    }
+    story.paint(st, points, ready, labState);
   }
 
   function frame(now) {
@@ -453,7 +666,7 @@
   function hitTest(clientX, clientY) {
     const r = stage.getBoundingClientRect(), x = clientX - r.left, y = clientY - r.top;
     let best = -1, bestScore = Infinity;
-    poses.forEach((p, i) => {
+    poses.slice(0, 3).forEach((p, i) => {
       const score = Math.hypot(x - p.x, y - p.y) / (p.size * .5) + p.depth * .35;
       if (score < bestScore) { bestScore = score; best = i; }
     });
@@ -461,7 +674,7 @@
   }
 
   stage.addEventListener('pointerdown', e => {
-    if (!e.isPrimary || e.button !== 0 || !started || intro !== null || e.pointerId === skipPointer) return;
+    if (!e.isPrimary || e.button !== 0 || !started || intro !== null || storyOn || e.pointerId === skipPointer) return;
     try { stage.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
     drag = { id: e.pointerId, x: e.clientX, y: e.clientY, from: phase, moved: false, time: performance.now(), v: 0 };
     flight = null;   // catch the carousel where it is
@@ -506,8 +719,9 @@
   addEventListener('pointerup', e => { if (e.pointerId === skipPointer) skipPointer = null; });
 
   addEventListener('keydown', e => {
-    if (e === skipEvent || intro !== null || !started || e.altKey || e.ctrlKey || e.metaKey) return;
-    const direction = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 }[e.key];
+    if (e === skipEvent || intro !== null || !started || storyOn || e.altKey || e.ctrlKey || e.metaKey) return;
+    // Left and right turn the objects; up and down are left to scroll the story.
+    const direction = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
     if (direction) { e.preventDefault(); stepCarousel(direction); return; }
     if (e.target === stage && (e.key === 'Enter' || e.key === ' ')) {
       e.preventDefault();
@@ -527,6 +741,16 @@
     calm = reduced.matches;
     if (calm) { finishIntro(false); flight = null; phase = Math.round(phase); velocity = twist = 0; }
   });
+  // Scrolling plays the story. Every visit starts at the top, and scrolling (even by
+  // dragging the scrollbar) ends the opening first.
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  scrollTo(0, 0);
+  addEventListener('scroll', () => {
+    scrollGoal = scrollY / Math.max(1, viewH());
+    if (intro !== null && started && frozenAt === null && scrollGoal > .01) finishIntro(true);
+    wake();
+  }, { passive: true });
+
   addEventListener('resize', measure);
   const resized = new ResizeObserver(() => measure());
   resized.observe(stage);
@@ -541,6 +765,7 @@
         import('three/addons/environments/RoomEnvironment.js')
       ]);
       const objects = await window.RFIDModels.load(T, GLTFLoader, reduced);
+      objects.push(window.RFIDModels.readerPad(T), window.RFIDModels.metalPlate(T));
       const scene = createScene(T, objects, RoomEnvironment);
       if (layout) scene.resize(layout.box);
       await scene.warm();
@@ -732,11 +957,11 @@
     function draw(dt, fade) {
       if (!wide || !high) return;
       objects.forEach((o, i) => {
-        const p = poses[i], g = stands[i], sway = calm ? 0 : Math.sin(elapsed * .27 + i * 1.3);
-        g.position.set(p.x - left, high - (p.y - top), -325 * p.depth);
+        const p = poses[i], g = stands[i];
+        g.visible = p.visible;
+        g.position.set(p.x - left, high - (p.y - top), -325 * p.depth + p.lift);
         g.scale.setScalar(p.size / o.span);
-        g.rotation.set(BASE_PITCH[i] + sway * .044 + p.leanY * .1,
-          BASE_YAW[i] + p.side * .49 + twist * TAU / 3 + sway * .115 + p.leanX * .15, p.roll, 'YXZ');
+        g.rotation.set(p.pitch, p.yaw, p.roll, 'YXZ');
         o.action.update(clock, dt, o.model);
       });
       shown = Math.min(1, shown + dt / .6);
@@ -772,6 +997,45 @@
       }
     }
 
+    // The story's three hooks into the scene.
+    const box3 = new T.Box3(), size3 = new T.Vector3(), centre3 = new T.Vector3();
+
+    // Pose object i at `rotation` and find where it must stand, and how big, so that all of
+    // it (open parts included), or only the parts named in `names`, fills `rect` (stage
+    // pixels). Returns a pose { x, y, size }.
+    const partBox = new T.Box3();
+    function fit(i, rect, pitch, yaw, roll, names) {
+      const g = stands[i], o = objects[i];
+      g.position.set(0, 0, 0);
+      g.scale.setScalar(1);
+      g.rotation.set(pitch, yaw, roll, 'YXZ');
+      g.updateMatrixWorld(true);
+      if (names) {
+        box3.makeEmpty();
+        for (const name of names) { const part = o.part(name); if (part) box3.union(partBox.setFromObject(part)); }
+      } else box3.setFromObject(g);
+      box3.getSize(size3); box3.getCenter(centre3);
+      const s = Math.min(rect.w / Math.max(size3.x, 1e-6), rect.h / Math.max(size3.y, 1e-6));
+      return { x: rect.x + rect.w / 2 - centre3.x * s, y: rect.y + rect.h / 2 + centre3.y * s, size: s * o.span };
+    }
+
+    // Where each named part of object i is on screen: [x, y, halfWidth, halfHeight] in
+    // stage pixels, from the part's bounding box. '*' is the whole object; 'coil' and 'chip'
+    // are its RFID parts.
+    function points(i, names) {
+      const out = {}, o = objects[i];
+      if (!o || !stands[i].visible) return out;
+      stands[i].updateMatrixWorld(true);
+      for (const name of names) {
+        const part = name === '*' ? stands[i] : o.part(o.rfid && (name === 'coil' || name === 'chip') ? o.rfid[name] : name);
+        if (!part) continue;
+        box3.setFromObject(part).getCenter(centre3);
+        box3.getSize(size3);
+        out[name] = [centre3.x + left, top + high - centre3.y, size3.x / 2, size3.y / 2];
+      }
+      return out;
+    }
+
     // Model actions start a little later than asked, so a press lands after the motion.
     const pending = [];
     const queue = (i, at, kind) => pending.push({ i, at, kind });
@@ -795,6 +1059,10 @@
       get ratio() { return ratio; },
       tune,
       warm,
+      fit,
+      points,
+      open(i, e, push) { objects[i].open?.(e, push); },
+      look(i, state) { objects[i]?.look?.(state); },
       // Dev aid (?debug): average milliseconds per fully finished frame, independent of
       // requestAnimationFrame throttling, plus the scene's draw calls and triangles.
       bench(frames = 60) {
@@ -856,7 +1124,8 @@
 
   if (params.has('debug')) {
     window.__hero = {
-      get state() { return { intro, phase, velocity, twist, focus, entrance, docked, flight: !!flight, gl: !!gl, shown: gl?.shown ?? 0 }; },
+      get state() { return { intro, phase, velocity, twist, focus, entrance, docked, flight: !!flight, gl: !!gl, shown: gl?.shown ?? 0,
+        scroll: +scrollNow.toFixed(3), storyOn }; },
       skip: () => finishIntro(true),
       bring: i => bringToFront(i, .4),
       bench: frames => gl?.bench(frames)
