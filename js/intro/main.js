@@ -32,6 +32,8 @@ function intro(experience) {
   // The letters' weight in flight: thinnest leaving the card, full (as in styles.css) once out.
   const THIN = 100, FULL = 800;
   const weights = glyph.map(() => undefined);
+  // Which line of the stacked name each letter sits on: R, F, then I and D together.
+  const STACK_ROW = [0, 1, 2, 2];
 
   let scene, available = false, layout, scrollDistance, startY = 0, onScreen = false;
   let raf = 0, needsMeasure = true, dirty = true, nowBefore, playhead;
@@ -125,8 +127,11 @@ function intro(experience) {
   function paintLetters(time, visual, mouth) {
     const { prefix, compact, gutter, heroY, heroSize, stackY, lineGap, rowSize, tagSize } = layout;
     for (let i = 0; i < letters.length; i++) {
-      const x0 = mix(gutter + prefix[i] * heroSize / 100, gutter, visual.stack);
-      const y0 = mix(heroY, stackY + i * lineGap, visual.stack);
+      // Stacked, the name reads in three lines: Radio-, Frequency, IDentification.
+      // I and D share the last line, so D sits one I-width (plus the gap) to the right.
+      const indent = i === 3 ? prefix[3] - prefix[2] : 0;
+      const x0 = mix(gutter + prefix[i] * heroSize / 100, gutter + indent * rowSize / 100, visual.stack);
+      const y0 = mix(heroY, stackY + STACK_ROW[i] * lineGap, visual.stack);
       const x = mix(x0, gutter + prefix[i] * tagSize / 100, visual.regroup);
       const y = mix(y0, stackY, visual.regroup);
       const size = mix(mix(heroSize, rowSize, visual.stack), tagSize, visual.regroup);

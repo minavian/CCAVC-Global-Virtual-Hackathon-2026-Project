@@ -100,7 +100,7 @@ export function measureStage(width, height, glyphWidths) {
     width, height, compact, gutter, heroSize, rowSize, tagSize, lineGap, stackY, heroY, definitionY,
     cardSize, reader, prefix, heroWidth: wordWidth * heroSize / 100,
     meaningX: compact ? gutter : width * .571,
-    meaningY: compact ? stackY + 3 * lineGap + rowSize * 1.38 : height * .244,
+    meaningY: compact ? stackY + 2 * lineGap + rowSize * 1.38 : height * .244,   // under the three-line name
   };
 }
 
