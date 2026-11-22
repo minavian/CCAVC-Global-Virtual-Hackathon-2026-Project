@@ -44,14 +44,14 @@ Written by OpenAI Codex for the project team · 2026-11-22
 **How it works.**
 
 - `timeline.js` maps scroll distance to a single playhead. The card starts at center, slides right, curls open, releases RFID, and closes before the acronym unfolds. The acronym, waveform explanation, and X-ray hold for just over or just under one viewport of scroll.
-- `main.js` moves the same four HTML letters out of the mouth, into the full-name layout, and back into the explanation heading. It also handles pointer capture, dropping the card, retrying, and reduced motion.
+- `main.js` moves the same four HTML letters out of the mouth, into the full-name layout, and back into the explanation heading. While a mouse is near the card, the card gently tilts toward it in addition to its scroll pose. The tilt eases away as the mouse moves off or a drag begins. Touch and reduced motion use the scroll pose.
 - `card-scene.js` loads `contactless-card.glb` once. The front two layers pivot around the right edge, and a vertex shader curls the left edge. The X-ray fades the shell and the layers above the silicon die. The label lines point to the exposed die and antenna trace. The battery prompt separates its setup from the question for easier reading.
 - `signals.js` draws the illustrative waveform and the reader's brass rings. The rings pulse as soon as the reader appears and brighten when the card approaches or is detected. Reduced motion shows the rings as a still image. The moving RFID letters and the “How it work” title use the local Bodoni Moda display font. The title uses regular weight throughout.
 - The two `credit-card-*.webp` images are renders of the project's GLB by Codex. They keep the card and its internals visible when WebGL is unavailable.
 
 **Why it is built this way.** A sticky stage preserves the position and identity of the objects while scrolling. Real HTML keeps the letters and copy sharp and readable by assistive technology. The static server continues to work without a build step.
 
-**How to check it.** Serve the project using [README.md](README.md). Scroll from the centered card to watch it move right, curl, release RFID, and close its mouth before the letters unfold. Scroll back to rewind the opening. At the end, drag the card from the right onto the reader at left. The button also supports a tap, click, or keyboard activation.
+**How to check it.** Serve the project using [README.md](README.md). Move the mouse near the centered card and then away to check the tilt. Scroll to watch the card move right, curl, release RFID, and close its mouth before the letters unfold. At the end, drag the card onto the reader at left. The button also supports a tap, click, or keyboard activation.
 
 **Likely questions.**
 

@@ -27,6 +27,7 @@ let scene, available = false, layout, scrollDistance;
 let raf = 0, needsMeasure = true, dirty = true, nowBefore, playhead;
 let pointer, wasDragged = false, canDrop = false, detected = false, focusCard = false;
 let paintedPose, offsetX = 0, offsetY = 0, lift = 0;
+let mouse, hoverPitch = 0, hoverYaw = 0;
 
 function wake() {
   if (!raf) raf = requestAnimationFrame(frame);
@@ -70,6 +71,14 @@ function place(node, x, y, width, height, rotation = 0) {
 function approach(current, target, rate, dt, threshold) {
   if (reduce.matches || document.hidden || Math.abs(target - current) < threshold) return target;
   return mix(current, target, 1 - Math.exp(-rate * dt));
+}
+
+function mouseTilt(pose) {
+  if (!mouse || pointer || detected || reduce.matches) return { pitch: 0, yaw: 0 };
+  const dx = (mouse.x - pose.x) / (pose.width * .72);
+  const dy = (mouse.y - pose.y) / (pose.width * .50);
+  const near = 1 - ease(.65, 1.34, Math.hypot(dx, dy));
+  return { pitch: clamp(dy, -1, 1) * near * .14, yaw: clamp(dx, -1, 1) * near * .17 };
 }
 
 function fromCard(pose, x, y, z) {
@@ -180,11 +189,16 @@ function frame(now) {
   offsetY = approach(offsetY, y - base.y, pointer?.moved ? 34 : 13, dt, .3);
   const proximity = pointer?.moved ? 1 - ease(.48, 1.8, readerDistance(pointer.x, pointer.y)) : 0;
   lift = approach(lift, detected ? -1 : pointer?.moved ? .5 - proximity * .75 : 0, 15, dt, .005);
+  const tilt = mouseTilt(base);
+  const previousPitch = hoverPitch, previousYaw = hoverYaw;
+  hoverPitch = approach(hoverPitch, tilt.pitch, 14, dt, .0005);
+  hoverYaw = approach(hoverYaw, tilt.yaw, 14, dt, .0005);
+  const tiltChanged = hoverPitch !== previousPitch || hoverYaw !== previousYaw;
   const pose = { ...base, x: base.x + offsetX, y: base.y + offsetY - Math.max(0, lift) * 12,
-    width: base.width * (1 + lift * .07), pitch: base.pitch + lift * .22,
-    yaw: base.yaw + lift * .18, roll: base.roll + lift * .085 };
+    width: base.width * (1 + lift * .07), pitch: base.pitch + lift * .22 + hoverPitch,
+    yaw: base.yaw + lift * .18 + hoverYaw, roll: base.roll + lift * .085 };
   const visual = beats(time);
-  if (dirty || readyChanged || time !== playhead || offsetX !== previousOffsetX || offsetY !== previousOffsetY || lift !== previousLift) {
+  if (dirty || readyChanged || time !== playhead || offsetX !== previousOffsetX || offsetY !== previousOffsetY || lift !== previousLift || tiltChanged) {
     dirty = false;
     paint(time, pose, visual);
     const mouth = fromCard(pose, -.039, .002, .003 + pose.mouth * .010);
@@ -203,7 +217,8 @@ function frame(now) {
     dropButton.focus({ preventScroll: true });
   }
   const moving = time !== target || offsetX !== x - base.x || offsetY !== y - base.y ||
-    lift !== (detected ? -1 : pointer?.moved ? .5 - proximity * .75 : 0);
+    lift !== (detected ? -1 : pointer?.moved ? .5 - proximity * .75 : 0) ||
+    hoverPitch !== tilt.pitch || hoverYaw !== tilt.yaw;
   const liveSignals = !document.hidden && signal && (visual.definition > 0 || visual.reader > 0);
   if (!reduce.matches && (moving || liveSignals)) wake();
 }
@@ -236,6 +251,26 @@ function confirmDrop() {
   invalidate();
 }
 
+stage.addEventListener('pointermove', event => {
+  if (event.pointerType !== 'mouse') {
+    clearMouseTilt();
+    return;
+  }
+  if (event.buttons || reduce.matches) return;
+  const rect = stage.getBoundingClientRect();
+  mouse = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  wake();
+}, { passive: true });
+
+function clearMouseTilt() {
+  if (!mouse) return;
+  mouse = null;
+  wake();
+}
+
+stage.addEventListener('pointerleave', clearMouseTilt);
+window.addEventListener('blur', clearMouseTilt);
+
 dropButton.addEventListener('pointerdown', event => {
   if (!canDrop || pointer || event.button !== 0) return;
   const rect = stage.getBoundingClientRect();
@@ -245,6 +280,7 @@ dropButton.addEventListener('pointerdown', event => {
   };
   wasDragged = false;
   dropButton.setPointerCapture(event.pointerId);
+  wake();
 });
 
 dropButton.addEventListener('pointermove', event => {
