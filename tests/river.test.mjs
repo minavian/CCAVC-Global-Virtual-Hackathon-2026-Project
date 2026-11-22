@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { replyFront, replySample, riverGeometry } from './river.js';
+import { replyFront, replySample, riverGeometry } from '../src/reusable/animations/river.mjs';
 
 test('the reply builds from the tag to the reader over the reveal chapters', () => {
   assert.equal(replyFront(.22), 0);

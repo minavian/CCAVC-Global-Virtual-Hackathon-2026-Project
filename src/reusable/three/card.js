@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { CARD_VIEW_WIDTH, cardPose } from './river.js';
+import { CARD_VIEW_WIDTH, cardPose } from '../animations/river.mjs';
 
-// This scene needs only the card from the landing carousel.
+// Render the subway card on a caller-provided canvas.
 export async function loadCard(canvas, signal) {
-  const url = new URL('../models/subway-card.glb', import.meta.url);
+  const url = new URL('../../assets/models/subway-card.glb', import.meta.url);
   const { scene } = await new GLTFLoader().loadAsync(url.href);
   function releaseModel() {
     scene.traverse(part => {

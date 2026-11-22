@@ -1,30 +1,46 @@
-# CCAVC-Global-Virtual-Hackathon-2026-Project
+# CCAVC Global Virtual Hackathon 2026 Project
 
-The RFID demo is a static site. The 3D code, fonts, models and images ship with the site, so it can run offline once you have the files.
+The site starts with a blank HTML page. There is no build step or package install.
 
-## Run it on your computer
+## Run locally
 
-Get the `feat/16-hand-scan` branch or extract the site ZIP. Open a terminal in the folder that contains `index.html` and run one of these commands.
+Serve the repository root with Python 3:
 
-**Windows**
+- Windows: `py -3 -m http.server 8000 --bind 127.0.0.1`
+- macOS or Linux: `python3 -m http.server 8000 --bind 127.0.0.1`
 
-```powershell
-py -3 -m http.server 8000 --bind 127.0.0.1
+Open [http://127.0.0.1:8000/](http://127.0.0.1:8000/). Serve `index.html`, `src/`, and `vendor/` together on a static host so the file paths stay valid. Use HTTP when loading the modules or GLB files.
+
+## Reusable resources
+
+| Location | Contents |
+| --- | --- |
+| `src/assets/models/` | Contactless card, subway card, key fob, phone, and rigged hand GLBs with their embedded resources |
+| `src/assets/images/` and `src/assets/textures/` | Card and reader illustrations, SVG icons, and paper grain |
+| `src/assets/fonts/` | Inter Tight and Antonio WOFF2 files, font declarations, and licenses |
+| `src/reusable/three/` | Model loading and posing, procedural models and textures, card and scan renderers, and depth and trail shader |
+| `src/reusable/animations/` | Easing curves and the standalone RFID signal animation |
+| `src/reusable/rfid/` | RFID simulation and field line tracing |
+| `src/reusable/utilities/` | FFT, SI unit formatting, and canvas path drawing |
+| `vendor/three/` | Bundled Three.js, GLTFLoader, geometry and lighting helpers, and the Three.js license |
+
+To use the Three.js modules from a page at the repository root, add these browser import map entries before importing the modules:
+
+```json
+{
+  "imports": {
+    "three": "./vendor/three/build/three.module.min.js",
+    "three/addons/": "./vendor/three/examples/jsm/"
+  }
+}
 ```
 
-**macOS or Linux**
+The renderers need WebGL 2. Add `src/assets/fonts/fonts.css` if you want the bundled typefaces in the generated model textures. See [EXPLAINED.md](EXPLAINED.md) for the module map and [the RFID reference](docs/rfid-reference.md) for the sources behind the simulation.
+
+## Run the retained tests
+
+Use Node.js 22 or later:
 
 ```sh
-python3 -m http.server 8000 --bind 127.0.0.1
+node --test tests/rfid.test.js tests/river.test.mjs
 ```
-
-Keep the terminal open and visit [http://127.0.0.1:8000/](http://127.0.0.1:8000/). If port 8000 is in use, change it in both the command and address. Opening `index.html` directly from disk prevents the browser from loading the JavaScript modules and models.
-
-Bit River is a bonus demo at [http://127.0.0.1:8000/bit-river/](http://127.0.0.1:8000/bit-river/). Scroll from the contactless card into its illustrated RFID reply. [Bit River walkthrough](EXPLAINED.md#bit-river-transmission-bit-river)
-
-## Share it with someone else
-
-- **Same Wi-Fi.** Run the server from the extracted ZIP and use `--bind 0.0.0.0` in the command above. Share `http://YOUR-LOCAL-IP:8000/` using your computer’s local network address. Allow Python through the firewall on the private network if prompted. `127.0.0.1` always points to the computer that opens the link.
-- **Different networks.** Send the ZIP so they can run it locally, or upload the extracted site files to a static host. Keep `index.html`, `styles.css`, `js/`, `models/`, `vendor/` and `bit-river/` together. Give them the host’s URL.
-
-The full 3D demo needs a browser with WebGL 2. If the scan view cannot start 3D, the static preview and **Scan card** button let visitors continue to the explanation and Live Lab.

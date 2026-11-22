@@ -7,7 +7,7 @@ const FLEX = {
 };
 
 export async function createScanHand(THREE, loader) {
-  const { scene } = await loader.loadAsync(new URL('../models/scan-hand.glb', import.meta.url).href);
+  const { scene } = await loader.loadAsync(new URL('../../assets/models/scan-hand.glb', import.meta.url).href);
   const group = new THREE.Group();
   const hand = new THREE.Group();
   // The asset's bind pose is in meters. Put the wrist at the origin and point the fingers along +X.

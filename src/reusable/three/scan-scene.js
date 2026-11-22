@@ -2,6 +2,7 @@ import * as T from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { loadObject } from './models.js';
 import { createScanHand } from './scan-hand.js';
 import { SCAN_TIMING as time } from './scan-timing.js';
 
@@ -165,19 +166,17 @@ export async function createScanScene(viewport, redraw) {
   const offset = new T.Vector3();
   const handOffset = new T.Vector3();
   const pointer = new T.Vector3();
-  const landingRotation = new T.Euler(0, 0, 0, 'YXZ');
-  const landingQuaternion = new T.Quaternion();
   const readerOrigin = reader.body.position.clone();
   const readerShadowOrigin = readerShadow.position.clone();
   const readerRoll = reader.body.rotation.z;
   let current, index, width, height;
-  let pixelsPerUnit, openProgress = 0;
+  let pixelsPerUnit;
 
   async function showObject(nextIndex, sharedObject) {
     if (index === nextIndex && (!sharedObject || sharedObject === current)) return;
     let model = sharedObject || models.get(nextIndex);
     if (!model) {
-      model = await window.RFIDModels.loadObject(T, loader, { matches: true }, nextIndex);
+      model = await loadObject(T, loader, { matches: true }, nextIndex);
       models.set(nextIndex, model);
     }
     current = model;
@@ -195,7 +194,7 @@ export async function createScanScene(viewport, redraw) {
     return model;
   }
 
-  function fitCamera(zoom = 1, y = 0) {
+  function fitCamera(y) {
     const w = viewport.clientWidth, h = viewport.clientHeight;
     if (!w || !h) return false;
     if (w !== width || h !== height) {
@@ -204,7 +203,7 @@ export async function createScanScene(viewport, redraw) {
       renderer.setSize(w, h, false);
     }
     const aspect = w / h;
-    const vertical = Math.max(16.2, 15.2 / aspect, 6800 / h) / zoom;
+    const vertical = Math.max(16.2, 15.2 / aspect, 6800 / h);
     pixelsPerUnit = h / vertical;
     camera.left = -vertical * aspect / 2;
     camera.right = -camera.left;
@@ -227,19 +226,6 @@ export async function createScanScene(viewport, redraw) {
       width: w * pixelsPerUnit,
       height: h * pixelsPerUnit
     };
-  }
-
-  function getDevicePose() {
-    if (!current || !pixelsPerUnit) return null;
-    const bounds = viewport.getBoundingClientRect();
-    const { x, y } = screenBounds(device.position, 0, 0);
-    const { x: pitch, y: yaw, z: roll } = landingRotation.setFromQuaternion(device.quaternion, 'YXZ');
-    return { x: bounds.left + x, y: bounds.top + y, size: device.scale.x * current.span * pixelsPerUnit, pitch, yaw, roll, open: openProgress };
-  }
-
-  function openDevice(progress) {
-    current.open(progress);
-    openProgress = progress;
   }
 
   function getTargets() {
@@ -344,57 +330,11 @@ export async function createScanScene(viewport, redraw) {
 
   function drawScan(seconds, reduced, dragPosition, manual = false, guidance) {
     const sweep = reduced ? 0 : cue(seconds, time.burst, time.end);
-    if (!current || !fitCamera(1, revealCameraY * ease(sweep))) return;
-    openDevice(0);
+    if (!current || !fitCamera(revealCameraY * ease(sweep))) return;
+    current.open(0);
     updateScan(seconds, reduced, dragPosition, manual, sweep, guidance);
     renderer.render(scene, camera);
   }
 
-  function drawHandoff(origin, progress) {
-    if (!current || !fitCamera()) return;
-    openDevice((origin.open ?? 0) * (1 - progress));
-    updateScan(0, false);
-    device.position.lerp(toScenePoint(origin, reach.z), 1 - progress);
-    landingRotation.set(origin.pitch, origin.yaw, origin.roll, 'YXZ');
-    device.quaternion.slerp(landingQuaternion.setFromEuler(landingRotation), 1 - progress);
-    const size = T.MathUtils.lerp(origin.size / pixelsPerUnit, sizes[index], progress);
-    device.scale.setScalar(size / current.span);
-    productShadow.visible = progress > .5;
-    productShadow.material.opacity *= clamp((progress - .5) * 2);
-    const readerSlide = (1 - ease(cue(progress, .35, 1))) * width / pixelsPerUnit;
-    reader.body.position.x -= readerSlide;
-    readerShadow.position.x -= readerSlide;
-    renderer.render(scene, camera);
-    reader.body.position.x += readerSlide;
-    readerShadow.position.x += readerSlide;
-  }
-
-  function drawStory(progress, target) {
-    if (!current || !fitCamera(1, revealCameraY)) return;
-    reader.body.visible = readerShadow.visible = false;
-    if (hand) hand.group.visible = false;
-    for (const wave of waves) wave.visible = false;
-    device.position.copy(revealPosition);
-    device.quaternion.copy(revealQuaternion);
-    let size = revealSizes[index];
-    if (target) {
-      device.position.lerp(toScenePoint(target, revealPosition.z), progress);
-      landingRotation.set(target.pitch, target.yaw, target.roll, 'YXZ');
-      device.quaternion.slerp(landingQuaternion.setFromEuler(landingRotation), progress);
-      size = T.MathUtils.lerp(size, target.size / pixelsPerUnit, progress);
-    }
-    device.scale.setScalar(size / current.span);
-    productShadow.visible = true;
-    productShadow.position.copy(revealShadow);
-    if (target) {
-      // The landing stage draws the final shadow at forty percent of the card's size.
-      const ground = toScenePoint({ x: target.x, y: target.y + target.size * .4 }, revealShadow.z);
-      productShadow.position.lerp(ground, progress);
-    }
-    productShadow.material.opacity = T.MathUtils.lerp(.48, .32, progress);
-    openDevice(0);
-    renderer.render(scene, camera);
-  }
-
-  return { showObject, releaseObject, drawScan, drawStory, drawHandoff, getDevicePose, getTargets };
+  return { showObject, releaseObject, drawScan, getTargets };
 }
