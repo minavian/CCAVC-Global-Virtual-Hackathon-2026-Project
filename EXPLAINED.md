@@ -212,7 +212,7 @@ Original section written by OpenAI Codex for the project team · 2026-11-22 (the
   - The playhead, the drag, the lift and the mouse tilt each follow their target through a critically damped spring (`spring`, `follow`). A scroll that starts or stops suddenly still starts and stops the card softly, because the speed carries over from frame to frame.
   - The arrival from the taps eases out exactly where the scroll curve eases in, so the two join with no bump.
 - **The letters** (`main.js`, `paintLetters`). Four real HTML letters fly out of the gap in the card's mouth, then line up as the full name. Each flight (`settle`) leaves from rest, overshoots by about 4% and lands with no speed left. The rise is a sine squared, so it lifts off and touches down level.
-- **The big type.** The letters R, F, I, D use the site's Inter Tight at its heaviest weight (800), like the taps' title. The "How it *work*" title uses Instrument Serif from Google Fonts (`--display` in `styles.css`), which has a real italic for "work".
+- **The big type.** The letters R, F, I, D use the site's Inter Tight at its heaviest weight (800), like the taps' title. The "How It *Works*" title uses Instrument Serif from Google Fonts (`--display` in `styles.css`), which has a real italic for "Works".
 - **The lines** (`signals.js`). One 2D canvas draws the spray from the mouth, the radio wave, the label lines and the reader's rings.
 - **The reader.** You can drag the card or press it with the keyboard. A drop near the reader says "Card detected." and shows **Try again**.
 - **Only when needed.** The 3D card loads when the section is about one and a half screens away. Frames are drawn only while the stage is on screen.
