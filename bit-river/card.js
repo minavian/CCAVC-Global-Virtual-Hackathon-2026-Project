@@ -5,7 +5,7 @@ import { CARD_VIEW_WIDTH, cardPose } from './river.js';
 
 // This scene needs only the card from the landing carousel.
 export async function loadCard(canvas, signal) {
-  const url = new URL('../models/contactless-card.glb', import.meta.url);
+  const url = new URL('../models/subway-card.glb', import.meta.url);
   const { scene } = await new GLTFLoader().loadAsync(url.href);
   function releaseModel() {
     scene.traverse(part => {
@@ -42,7 +42,7 @@ export async function loadCard(canvas, signal) {
     part.geometry.computeBoundingBox();
     const size = part.geometry.boundingBox.getSize(new THREE.Vector3());
     if (size.z < .000001) {
-      // The printed artwork and the gold contacts sit flush against the card stock.
+      // Apply a depth offset to any flat details that sit flush against the card stock.
       part.material.polygonOffset = true;
       part.material.polygonOffsetFactor = -1;
       part.material.polygonOffsetUnits = -2;

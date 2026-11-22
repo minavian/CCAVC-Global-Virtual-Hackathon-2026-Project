@@ -24,8 +24,11 @@
   const FILES = [
     ['Key fob', 'models/rfid-fob.glb', keyFob],
     ['Phone', 'models/oppo-find-x9-ultra.glb', phone],
-    ['Contactless card', 'models/contactless-card.glb', card]
+    ['Contactless card', 'models/subway-card.glb', card]
   ];
+  const CARD_COIL = ['antenna-turn-1', 'antenna-turn-2', 'antenna-turn-3', 'antenna-turn-4', 'antenna-turn-5',
+    'module-connection--1', 'module-connection-1'];
+  const CARD_INTERNALS = [...CARD_COIL, 'rfid-chip-module'];
   // Parts sealed inside each object. They stay hidden (about half the triangles and draw
   // calls, none of them visible) until the object is opened with `open(e)`.
   const SEALED = {
@@ -33,8 +36,7 @@
       'indicator-light-pipe-foot', 'inner-guide-rib-1', 'inner-stop-1', 'inner-guide-rib-2', 'inner-stop-2',
       'pcb-alignment-bosses-and-indexing-pins', 'molded-support-ribs-and-hollow-standoffs', 'dielectric-cushion-strips'],
     'Phone': ['nfc-antenna', 'wireless-charging-coil', 'silicon-carbon-battery', 'mainboard-and-midframe'],
-    'Contactless card': ['perimeter-and-coupling-antenna', 'die-pocket-floor', 'module-substrate', 'die-underfill',
-      'silicon-die', 'module-antenna']
+    'Contactless card': CARD_INTERNALS
   };
   // Sealed parts that stay hidden even when the object opens. The fob's resin potting is a
   // see-through blob: it writes no depth, so the background blur smears it into a grey
@@ -52,8 +54,8 @@
   const RFID_PARTS = {
     'Key fob': { coil: 'copper-winding-and-leads', chip: 'rfid-ic-package', parts: ['antenna-coil', 'rfid-chip'] },
     'Phone': { coil: 'nfc-antenna', chip: 'nfc-chip', parts: ['nfc-antenna', 'nfc-chip'] },
-    'Contactless card': { coil: 'perimeter-and-coupling-antenna', chip: 'silicon-die',
-      parts: ['perimeter-and-coupling-antenna', 'silicon-die', 'die-underfill', 'module-antenna'] }
+    'Contactless card': { coil: 'antenna-turn-1', chip: 'silicon-die', coilParts: CARD_COIL,
+      parts: CARD_INTERNALS }
   };
   const COPPER = 0xd08040;
 
@@ -101,7 +103,7 @@
     const rfid = RFID_PARTS[name];
     const inRfid = new Set(), coil = new Set(), chipParts = new Set();
     for (const n of rfid.parts) shell.getObjectByName(n)?.traverse(o => inRfid.add(o));
-    for (const n of [rfid.coil, 'module-antenna']) shell.getObjectByName(n)?.traverse(o => coil.add(o));
+    for (const n of rfid.coilParts || [rfid.coil]) shell.getObjectByName(n)?.traverse(o => coil.add(o));
     shell.getObjectByName(rfid.chip)?.traverse(o => chipParts.add(o));
     // The parts shown through the glass: the RFID parts, and the key's battery.
     const throughGlass = [...rfid.parts, 'coin-battery'].map(n => shell.getObjectByName(n)).filter(Boolean);
