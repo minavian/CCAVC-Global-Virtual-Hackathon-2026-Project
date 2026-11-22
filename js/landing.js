@@ -657,9 +657,20 @@
     story.paint(st, points, ready, labState);
   }
 
+  // The taps and the card intro slide over the pinned landing page. While one of them
+  // fills the whole screen, nothing here can be seen, so the loop sleeps and leaves the
+  // machine to the section on top. Scrolling wakes it again.
+  const sheets = [...document.querySelectorAll('.taps, .intro')];
+  function covered() {
+    return sheets.some(sheet => {
+      const box = sheet.getBoundingClientRect();
+      return box.top <= 0 && box.bottom >= innerHeight;
+    });
+  }
+
   function frame(now) {
     frameId = 0;
-    if (document.hidden) { lastNow = null; return; }
+    if (document.hidden || covered()) { lastNow = null; return; }
     const raw = lastNow === null ? 0 : Math.max(0, (now - lastNow) / 1000);
     // Clamp the step so a hitch slows the motion down instead of skipping it.
     const dt = Math.min(.1, raw);

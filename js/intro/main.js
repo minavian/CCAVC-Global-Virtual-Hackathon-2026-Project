@@ -2,7 +2,7 @@
 // A sticky stage that scrolling plays: the card opens and lets out the letters R, F, I, D,
 // the letters spell the name, an X-ray shows the antenna and chip, and the visitor drags
 // the card onto a reader. See EXPLAINED.md.
-import { springProgress } from './easing.js';
+import { follow, settle, smoother, spring } from './easing.js';
 import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose, clamp, ease, mix, measureStage, restingFrame, scrollTime } from './timeline.js';
 import { renderSignals } from './signals.js';
 
@@ -33,8 +33,10 @@ function intro(experience) {
   let scene, available = false, layout, scrollDistance, startY = 0, onScreen = false;
   let raf = 0, needsMeasure = true, dirty = true, nowBefore, playhead;
   let pointer, wasDragged = false, canDrop = false, detected = false, focusCard = false;
-  let paintedPose, offsetX = 0, offsetY = 0, lift = 0;
-  let mouse, hoverPitch = 0, hoverYaw = 0;
+  let paintedPose, mouse;
+  // Everything that moves follows its target through a critically damped spring
+  // (easing.js), so its speed never jumps: the playhead, the drag offset, the lift and the tilt.
+  const motion = { time: null, x: spring(), y: spring(), lift: spring(), pitch: spring(), yaw: spring() };
 
   function wake() {
     if (!raf && onScreen) raf = requestAnimationFrame(frame);
@@ -77,10 +79,23 @@ function intro(experience) {
     node.style.transform = `translate3d(${x - width / 2}px, ${y - height / 2}px, 0) rotate(${rotation}rad)`;
   }
 
-  function approach(current, target, rate, dt, threshold) {
-    if (reduce.matches || document.hidden || Math.abs(target - current) < threshold) return target;
-    return mix(current, target, 1 - Math.exp(-rate * dt));
+  // Moves a spring toward `target` and parks it there once it is closer than `threshold`
+  // and nearly still. Reduced motion and hidden tabs jump straight to the target.
+  function chase(state, target, omega, dt, threshold) {
+    if (reduce.matches || document.hidden) {
+      state.value = target;
+      state.velocity = 0;
+      return target;
+    }
+    follow(state, target, omega, dt);
+    if (Math.abs(state.value - target) < threshold && Math.abs(state.velocity) < threshold * omega) {
+      state.value = target;
+      state.velocity = 0;
+    }
+    return state.value;
   }
+
+  const resting = (state, target) => state.value === target && state.velocity === 0;
 
   function mouseTilt(pose) {
     if (!mouse || pointer || detected || reduce.matches) return { pitch: 0, yaw: 0 };
@@ -111,9 +126,10 @@ function intro(experience) {
       const size = mix(mix(heroSize, rowSize, visual.stack), tagSize, visual.regroup);
       const launch = .59 + i * .035;
       const flight = clamp((time - launch) / (HERO - launch));
-      const spring = springProgress(flight);
-      const travel = spring <= 1 ? spring : 1 + (spring - 1) * .18;
-      const arc = Math.sin(flight * Math.PI) * (compact ? 38 : 48);
+      // Leaves the mouth from rest, overshoots by a hair and lands with no speed left.
+      // The rise is a sine squared, so it lifts off and touches down level.
+      const travel = settle(flight);
+      const arc = Math.sin(flight * Math.PI) ** 2 * (compact ? 38 : 48);
       const spin = (1 - travel) * (.3 - i * .105);
       const scale = mix(.12, size / 100, travel);
       const unfold = ease(MOUTH_CLOSED + .01 + i * .07, 1.74 + i * .038, time) * (1 - ease(2.15, 2.65, time));
@@ -180,11 +196,16 @@ function intro(experience) {
     const into = window.scrollY - startY;
     const fraction = clamp(into / scrollDistance);
     // Before the stage pins, it is still sliding up over the taps: play the card's arrival.
-    const target = into < 0 ? Math.max(ARRIVE, ARRIVE * -into / layout.height) : scrollTime(fraction);
+    // It eases out as the stage pins, where the scroll curve eases in, so they join smoothly.
+    const target = into < 0
+      ? ARRIVE * (1 - smoother(0, 1, 1 + into / layout.height))
+      : scrollTime(fraction);
     stage.style.setProperty('--progress', fraction);
-    const current = playhead ?? target;
-    const response = target <= MOUTH_CLOSED && current <= MOUTH_CLOSED ? 9.5 : 11;
-    const time = reduce.matches ? restingFrame(target) : approach(current, target, response, dt, .0005);
+    motion.time ??= spring(target);
+    // The playhead trails the scroll a little and catches up softly. It is a touch slower
+    // through the mouth, which is where the eye watches the card closest.
+    const omega = target <= MOUTH_CLOSED && motion.time.value <= MOUTH_CLOSED ? 10 : 12;
+    const time = reduce.matches ? restingFrame(target) : chase(motion.time, target, omega, dt, .0002);
     const ready = target >= (reduce.matches ? 5.53 : 5.59) && time >= DROP_READY;
     const readyChanged = ready !== canDrop;
     if (readyChanged) {
@@ -196,28 +217,30 @@ function intro(experience) {
     const base = cardPose(time, layout);
     const x = detected ? layout.reader.x : pointer?.moved ? pointer.x : base.x;
     const y = detected ? layout.reader.y : pointer?.moved ? pointer.y : base.y;
-    const previousOffsetX = offsetX, previousOffsetY = offsetY, previousLift = lift;
-    offsetX = approach(offsetX, x - base.x, pointer?.moved ? 34 : 13, dt, .3);
-    offsetY = approach(offsetY, y - base.y, pointer?.moved ? 34 : 13, dt, .3);
-    const proximity = pointer?.moved ? 1 - ease(.48, 1.8, readerDistance(pointer.x, pointer.y)) : 0;
-    lift = approach(lift, detected ? -1 : pointer?.moved ? .5 - proximity * .75 : 0, 15, dt, .005);
+    const before = [motion.x.value, motion.y.value, motion.lift.value, motion.pitch.value, motion.yaw.value];
+    const held = pointer?.moved;
+    const offsetX = chase(motion.x, x - base.x, held ? 40 : 14, dt, .2);
+    const offsetY = chase(motion.y, y - base.y, held ? 40 : 14, dt, .2);
+    const proximity = held ? 1 - ease(.48, 1.8, readerDistance(pointer.x, pointer.y)) : 0;
+    const liftTarget = detected ? -1 : held ? .5 - proximity * .75 : 0;
+    const lift = chase(motion.lift, liftTarget, 18, dt, .002);
     const tilt = mouseTilt(base);
-    const previousPitch = hoverPitch, previousYaw = hoverYaw;
-    hoverPitch = approach(hoverPitch, tilt.pitch, 14, dt, .0005);
-    hoverYaw = approach(hoverYaw, tilt.yaw, 14, dt, .0005);
-    const tiltChanged = hoverPitch !== previousPitch || hoverYaw !== previousYaw;
+    const hoverPitch = chase(motion.pitch, tilt.pitch, 14, dt, .0003);
+    const hoverYaw = chase(motion.yaw, tilt.yaw, 14, dt, .0003);
+    const changed = [offsetX, offsetY, lift, hoverPitch, hoverYaw].some((value, i) => value !== before[i]);
     const pose = { ...base, x: base.x + offsetX, y: base.y + offsetY - Math.max(0, lift) * 12,
       width: base.width * (1 + lift * .07), pitch: base.pitch + lift * .22 + hoverPitch,
       yaw: base.yaw + lift * .18 + hoverYaw, roll: base.roll + lift * .085 };
     const visual = beats(time);
-    if (dirty || readyChanged || time !== playhead || offsetX !== previousOffsetX || offsetY !== previousOffsetY || lift !== previousLift || tiltChanged) {
+    // Where the letters and the spray leave from: the gap of the open mouth.
+    const mouthPoint = () => available ? scene.mouth() : fromCard(pose, -.039, .002, .003 + pose.mouth * .010);
+    if (dirty || readyChanged || time !== playhead || changed) {
       dirty = false;
       paint(time, pose, visual);
-      const mouth = fromCard(pose, -.039, .002, .003 + pose.mouth * .010);
-      paintLetters(time, visual, mouth);
+      paintLetters(time, visual, mouthPoint());
     }
     if (signal) {
-      const mouth = fromCard(pose, -.039, .002, .003 + pose.mouth * .010);
+      const mouth = mouthPoint();
       const callouts = paintLabels(pose, visual.callouts);
       const clock = reduce.matches ? 0 : now / 1000;
       renderSignals(signal, { layout, time, clock,
@@ -228,9 +251,9 @@ function intro(experience) {
       focusCard = false;
       dropButton.focus({ preventScroll: true });
     }
-    const moving = time !== target || offsetX !== x - base.x || offsetY !== y - base.y ||
-      lift !== (detected ? -1 : pointer?.moved ? .5 - proximity * .75 : 0) ||
-      hoverPitch !== tilt.pitch || hoverYaw !== tilt.yaw;
+    const moving = (!reduce.matches && !resting(motion.time, target)) ||
+      !resting(motion.x, x - base.x) || !resting(motion.y, y - base.y) || !resting(motion.lift, liftTarget) ||
+      !resting(motion.pitch, tilt.pitch) || !resting(motion.yaw, tilt.yaw);
     const liveSignals = !document.hidden && signal && (visual.definition > 0 || visual.reader > 0);
     if (!reduce.matches && (moving || liveSignals)) wake();
   }

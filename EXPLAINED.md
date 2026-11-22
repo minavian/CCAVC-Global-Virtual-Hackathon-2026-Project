@@ -107,6 +107,7 @@ Owner: Mina Vian · 2026-11-20 · Issues #3, #5
 - Resolution adapts (`tune`): it drops in steps while frames are slow and rises again when they are fast.
 - All shaders compile and textures upload while the page loads (`warm`), so nothing stalls mid-animation.
 - Empty paper is skipped in the shader with four quick samples.
+- While the taps or the card intro fill the whole screen, the landing page can't be seen, so its frame loop sleeps (`covered` in `frame`). Scrolling wakes it. This leaves the machine to the section on top.
 
 **Why it is built this way.** The blur-and-grey look is what the sketches showed for the objects behind; doing it in one shader pass is far cheaper than blurring each object.
 
@@ -203,13 +204,21 @@ Original section written by OpenAI Codex for the project team · 2026-11-22 (the
 - **Leaving for the story.** The section has the same soft paper edge as the taps (a wide `box-shadow`). As it slides away, the landing page fades in under that edge, and the story starts from `.track`.
 - **One playhead.** `js/intro/timeline.js` turns the scroll into one number, the playhead (`scrollTime`). Repeated values in `scrollFrames` hold the picture still for a stretch of scroll, so there is time to read. Everything else is a function of the playhead: the card's pose (`cardPose`), when each line fades in and out (`beats`), and when the X-ray shows.
 - **Counting from the section.** The original was a page of its own. Here, `main.js` measures where the section starts (`startY`) and counts the scroll from there.
-- **The card** (`card-scene.js`). It loads the team's `models/contactless-card.glb`. The two front layers open around the card's right edge. The X-ray fades the outer layers and turns the copper antenna brass.
-- **The letters** (`main.js`, `paintLetters`). Four real HTML letters fly out of the card's mouth, then line up as the full name.
+- **The card** (`card-scene.js`). It loads the team's `models/contactless-card.glb`. The X-ray fades the outer layers and turns the copper antenna brass.
+- **The mouth bends like a sheet** (`bendSheet`). The two front layers stay glued along the right edge and lift as one sheet: a soft crease near the edge (`HINGE`, 0.17 radians) and a curl that grows toward the free edge (`CURL`, 0.40 more). The model's flat layers only have vertices round their outline, so `sliceAlongX` first cuts them into 72 strips across the card. A vertex shader then walks along the sheet from the glued edge, adding up its direction with Simpson's rule. So every point keeps its distance along the card: the sheet bends but never stretches. Each normal turns by the same angle, so the light slides along the curve. `sheetPoint` does the same sum in JavaScript, and `mouth()` uses it to find the middle of the gap.
+- **The opening** (`timeline.js`, `mouthAt`, `curlAt`). One smooth open and one smooth close, made from smootherstep curves, which start and stop with no kick. The curl runs a moment behind the crease, the way a sheet bends before it lifts and straightens after it lands.
+- **Smooth motion everywhere** (`easing.js`).
+  - The card's pose, and the scroll-to-playhead table, go through a monotone cubic curve (`monotone`). The card glides through each keyframe instead of stopping on it, and never overshoots.
+  - The playhead, the drag, the lift and the mouse tilt each follow their target through a critically damped spring (`spring`, `follow`). A scroll that starts or stops suddenly still starts and stops the card softly, because the speed carries over from frame to frame.
+  - The arrival from the taps eases out exactly where the scroll curve eases in, so the two join with no bump.
+- **The letters** (`main.js`, `paintLetters`). Four real HTML letters fly out of the gap in the card's mouth, then line up as the full name. Each flight (`settle`) leaves from rest, overshoots by about 4% and lands with no speed left. The rise is a sine squared, so it lifts off and touches down level.
 - **The lines** (`signals.js`). One 2D canvas draws the spray from the mouth, the radio wave, the label lines and the reader's rings.
 - **The reader.** You can drag the card or press it with the keyboard. A drop near the reader says "Card detected." and shows **Try again**.
 - **Only when needed.** The 3D card loads when the section is about one and a half screens away. Frames are drawn only while the stage is on screen.
 
 **Why it is built this way.** The pinned stage keeps one card on screen through the whole idea, so nobody loses track of it. Real HTML text stays sharp and screen readers can read it. Every CSS rule starts with `.intro`, and the two class names the page already used are renamed (`.intro-stage`, `.intro-callouts`), so this section cannot change the landing page or the story.
+
+The first version eased each keyframe in and out separately (smoothstep), and followed the scroll with a one-step lag. So the card stopped for an instant at every keyframe, and its speed jumped whenever the scroll started. The opening was a stiff flap on a hinge, with a curl that had no vertices to bend. The changes above fix those three things. A scripted wheel scroll through the opening, measured at 60 frames a second, showed peak acceleration 3 times lower and peak jerk (the sudden kick) 4.3 times lower.
 
 **What is simplified.** The reader is a picture. "Card detected" is a check that the card was dropped close to it, not a radio link.
 
@@ -218,6 +227,8 @@ Original section written by OpenAI Codex for the project team · 2026-11-22 (the
 **Likely questions.**
 - Q: Why is the playhead not just the scroll position? A: Some parts need more scroll than others. The table in `scrollFrames` gives each beat its own length, and holds.
 - Q: What if WebGL is off? A: Two pictures of the same card (`images/intro/credit-card-*.webp`) stand in for the 3D card.
+- Q: Why does the card trail the scroll a little? A: That is the spring. It is what makes a sudden scroll look smooth. It catches up within about a third of a second.
+- Q: Is the bend physically right? A: It is a sheet that bends without stretching, with the bend we chose. Real card layers are glued all over and don't open at all. The mouth is a picture, not a teardown.
 
 ---
 
