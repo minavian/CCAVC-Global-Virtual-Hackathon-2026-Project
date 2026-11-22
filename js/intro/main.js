@@ -29,6 +29,9 @@ function intro(experience) {
   const panels = Object.fromEntries(['meaning', 'definition', 'cinema-title', 'question', 'instruction']
     .map(name => [name, $('.' + name)]));
   const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+  // The letters' weight in flight: thinnest leaving the card, full (as in styles.css) once out.
+  const THIN = 100, FULL = 800;
+  const weights = glyph.map(() => undefined);
 
   let scene, available = false, layout, scrollDistance, startY = 0, onScreen = false;
   let raf = 0, needsMeasure = true, dirty = true, nowBefore, playhead;
@@ -55,7 +58,10 @@ function intro(experience) {
   function measure() {
     const w = stage.clientWidth, h = stage.clientHeight;
     if (!w || !h) return false;
+    // Measure the letters at their landed (full) weight, even if they are mid-flight and thin.
+    for (const letter of glyph) letter.style.fontWeight = '';
     layout = measureStage(w, h, glyph.map(letter => letter.offsetWidth));
+    glyph.forEach((letter, i) => { letter.style.fontWeight = weights[i] ?? ''; });
     // The section sits below the landing page and the taps, so its scroll starts where it starts.
     startY = experience.getBoundingClientRect().top + window.scrollY;
     scrollDistance = Math.max(experience.offsetHeight - h, 1);
@@ -132,6 +138,10 @@ function intro(experience) {
       const arc = Math.sin(flight * Math.PI) ** 2 * (compact ? 38 : 48);
       const spin = (1 - travel) * (.3 - i * .105);
       const scale = mix(.12, size / 100, travel);
+      // Inter Tight is a variable font, so the weight can change smoothly: each letter
+      // leaves the mouth at its thinnest and fills out to full weight as it lands.
+      const weight = mix(THIN, FULL, smoother(.1, 1, flight)).toFixed(1);
+      if (weights[i] !== weight) glyph[i].style.fontWeight = weights[i] = weight;
       const unfold = ease(MOUTH_CLOSED + .01 + i * .07, 1.74 + i * .038, time) * (1 - ease(2.15, 2.65, time));
       letters[i].style.opacity = ease(launch, launch + .08, time) * visual.letters;
       letters[i].style.transform = `translate3d(${mix(mouth.x, x, travel)}px, ${mix(mouth.y - 18, y, travel) - arc}px, 0) rotate(${spin}rad) scale(${scale})`;
