@@ -1,5 +1,5 @@
 import { springProgress } from '../reusable/animations/easing.js';
-import { HERO, DROP_READY, SCROLL_SCREENS, beats, cardPose, clamp, ease, measureStage, mix, restingFrame, scrollTime } from './timeline.js';
+import { HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose, clamp, ease, measureStage, mix, restingFrame, scrollTime } from './timeline.js';
 import { renderSignals } from './signals.js';
 
 const $ = selector => document.querySelector(selector);
@@ -22,11 +22,9 @@ const labels = [$('.antenna-label'), $('.chip-label')];
 const panels = Object.fromEntries(['meaning', 'definition', 'cinema-title', 'question', 'instruction']
   .map(name => [name, $('.' + name)]));
 const reduce = matchMedia('(prefers-reduced-motion: reduce)');
-const introDuration = 1960;
 
 let scene, available = false, layout, scrollDistance;
 let raf = 0, needsMeasure = true, dirty = true, nowBefore, playhead;
-let started = false, introClock = 0;
 let pointer, wasDragged = false, canDrop = false, detected = false, focusCard = false;
 let detectedAt = 0;
 let paintedPose, offsetX = 0, offsetY = 0, lift = 0;
@@ -101,12 +99,11 @@ function paintLetters(time, visual, mouth) {
     const arc = Math.sin(flight * Math.PI) * (compact ? 38 : 48);
     const spin = (1 - travel) * (.3 - i * .105);
     const scale = mix(.12, size / 100, travel);
-    const unfold = ease(1.24 + i * .07, 1.74 + i * .038, time) * (1 - ease(2.15, 2.65, time));
+    const unfold = ease(MOUTH_CLOSED + .01 + i * .07, 1.74 + i * .038, time) * (1 - ease(2.15, 2.65, time));
     letters[i].style.opacity = ease(launch, launch + .08, time) * visual.letters;
     letters[i].style.transform = `translate3d(${mix(mouth.x, x, travel)}px, ${mix(mouth.y - 18, y, travel) - arc}px, 0) rotate(${spin}rad) scale(${scale})`;
     tail[i].style.setProperty('--conceal', (100 * (1 - unfold)) + '%');
   }
-  letters[2].style.setProperty('--bars', visual.stack * (1 - visual.regroup));
 }
 
 function paintLabels(pose, opacity) {
@@ -165,13 +162,11 @@ function frame(now) {
   const dt = Math.min(.05, elapsed / 1000);
   nowBefore = now;
   const fraction = clamp(window.scrollY / scrollDistance);
-  const scrolledTo = scrollTime(fraction);
+  const target = scrollTime(fraction);
   stage.style.setProperty('--progress', fraction);
-  if (reduce.matches || scrolledTo > HERO) introClock = introDuration;
-  else if (started) introClock = Math.min(introDuration, introClock + (document.hidden ? elapsed : Math.min(100, elapsed)));
-  const intro = ease(0, introDuration, introClock);
-  const target = scrolledTo - HERO * (1 - intro);
-  const time = reduce.matches ? restingFrame(target) : approach(playhead ?? target, target, 16, dt, .0005);
+  const current = playhead ?? target;
+  const response = target <= MOUTH_CLOSED && current <= MOUTH_CLOSED ? 9.5 : 11;
+  const time = reduce.matches ? restingFrame(target) : approach(current, target, response, dt, .0005);
   const ready = target >= (reduce.matches ? 5.53 : 5.59) && time >= DROP_READY;
   const readyChanged = ready !== canDrop;
   if (readyChanged) {
@@ -214,7 +209,7 @@ function frame(now) {
   const moving = time !== target || offsetX !== x - base.x || offsetY !== y - base.y ||
     lift !== (detected ? -1 : pointer?.moved ? .5 - proximity * .75 : 0);
   const liveSignals = !document.hidden && (visual.definition > 0 || proximity > 0 || burstTime < 1.6);
-  if (!reduce.matches && ((started && intro < 1) || moving || liveSignals)) wake();
+  if (!reduce.matches && (moving || liveSignals)) wake();
 }
 
 function stopPointer() {
@@ -333,9 +328,6 @@ async function start() {
     remeasure();
   } catch (error) {
     console.warn('Could not start the 3D card.', error);
-  } finally {
-    started = true;
-    invalidate();
   }
 }
 

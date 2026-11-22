@@ -1,4 +1,4 @@
-import { ease, mix } from './timeline.js';
+import { HERO, MOUTH_CLOSED, ease, mix } from './timeline.js';
 
 const TAU = 2 * Math.PI;
 const BRASS = '#80623d';
@@ -21,7 +21,7 @@ function dot(ctx, x, y, radius) {
 
 function spit(ctx, time, mouth, layout) {
   const reach = ease(.55, .76, time);
-  const opacity = ease(.55, .67, time) * (1 - .64 * ease(.73, .94, time)) * (1 - ease(.98, 1.43, time));
+  const opacity = ease(.55, .67, time) * (1 - .64 * ease(.73, HERO, time)) * (1 - ease(.98, MOUTH_CLOSED, time));
   if (opacity <= .001) return;
   const { compact, heroWidth, heroY, gutter, heroSize } = layout;
   const x = compact ? gutter + heroWidth * .81 : gutter + heroWidth + 20;

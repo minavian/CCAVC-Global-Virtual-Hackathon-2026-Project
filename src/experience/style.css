@@ -5,6 +5,7 @@
   --brass: #80623d;
   --night: #111111;
   --light: #fafaf8;
+  --display: "Bodoni Moda", Georgia, serif;
   font-family: "Inter Tight", sans-serif;
   background: var(--paper);
   color: var(--ink);
@@ -41,15 +42,22 @@ button { font: inherit; }
 }
 
 .stage :where(h1, h2, p) { margin: 0; }
-.story-title { font: 700 clamp(4rem, 16vw, 9rem)/1 "Antonio", sans-serif; }
+.story-title { font: 660 clamp(4rem, 16vw, 9rem)/1 var(--display); }
 .definition, .question, .instruction, .cinema-title { margin-block: 2rem; }
 .definition-lead { max-width: 30ch; font-size: clamp(2rem, 6vw, 4rem); font-weight: 750; line-height: 1; }
 .stage .aside { margin-top: .7em; font-size: clamp(1.1rem, 2.1vw, 1.65rem); font-weight: 520; }
 .question { max-width: 30ch; font-size: clamp(1.5rem, 4vw, 2.75rem); font-weight: 720; line-height: 1.13; }
 .instruction h2 { font-size: clamp(2.75rem, 7vw, 6rem); letter-spacing: -.04em; line-height: .95; font-weight: 770; }
 .stage #drag-instruction { margin-top: .85rem; font-size: clamp(1rem, 2.25vw, 1.55rem); font-weight: 580; }
-.cinema-title { font-size: clamp(3rem, min(16.1vw, 27.8dvh), 15rem); letter-spacing: -.04em; line-height: .94; font-weight: 430; }
-.cinema-title strong { font-weight: 800; }
+.cinema-title {
+  font-family: var(--display);
+  font-size: clamp(3rem, min(14.1vw, 25dvh), 14rem);
+  font-weight: 490;
+  font-variation-settings: "opsz" 45;
+  letter-spacing: -.038em;
+  line-height: .96;
+}
+.cinema-title em { font-weight: 480; }
 .card-poster { position: relative; width: min(70vw, 24rem); }
 .card-poster img { display: block; width: 100%; height: auto; }
 .card-poster img + img { position: absolute; inset: 0; opacity: var(--xray, 0); }
@@ -109,18 +117,11 @@ button { font: inherit; }
   opacity: 0;
 }
 
-.letter b { font: 700 100px/1 "Antonio", "Inter Tight", sans-serif; letter-spacing: -.03em; }
-.letter:nth-child(3) b { position: relative; width: .25em; text-align: center; }
-.letter:nth-child(3) b::before, .letter:nth-child(3) b::after {
-  content: "";
-  position: absolute;
-  inset-inline: .01em;
-  height: .045em;
-  background: currentColor;
-  opacity: var(--bars, 0);
+.letter b {
+  font: 660 100px/1 var(--display);
+  font-variation-settings: "opsz" 64;
+  letter-spacing: -.03em;
 }
-.letter:nth-child(3) b::before { top: .137em; }
-.letter:nth-child(3) b::after { bottom: .005em; }
 .letter > span {
   padding-left: 3px;
   font-size: 69px;
@@ -163,7 +164,7 @@ button { font: inherit; }
   z-index: 1;
   width: calc(100% - 2 * var(--gutter));
   left: 50%;
-  top: 24%;
+  top: 26%;
   translate: -50% -50%;
   text-align: center;
   white-space: nowrap;
@@ -315,12 +316,12 @@ button { font: inherit; }
   .meaning { max-width: min(27ch, 75vw); }
   .enhanced .cinema-title {
     top: 50%;
-    height: 49dvh;
+    height: 50dvh;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: space-between;
-    font-size: clamp(3.2rem, min(18.5vw, 15.5dvh), 8.5rem);
+    font-size: clamp(3.2rem, min(20vw, 15.5dvh), 8.5rem);
   }
   .enhanced .question {
     width: min(82vw, 25rem);

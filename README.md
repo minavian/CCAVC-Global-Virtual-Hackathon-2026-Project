@@ -17,7 +17,7 @@ Open [http://127.0.0.1:8000/](http://127.0.0.1:8000/). Serve `index.html`, `src/
 | --- | --- |
 | `src/assets/models/` | Contactless card, subway card, key fob, phone, and rigged hand GLBs with their embedded resources |
 | `src/assets/images/` and `src/assets/textures/` | Card and reader illustrations, GLB fallback renders, SVG icons, and paper grain |
-| `src/assets/fonts/` | Inter Tight and Antonio WOFF2 files, font declarations, and licenses |
+| `src/assets/fonts/` | Bodoni Moda, Inter Tight, and Antonio WOFF2 files, font declarations, and licenses |
 | `src/reusable/three/` | Model loading and posing, procedural models and textures, card and scan renderers, and depth and trail shader |
 | `src/reusable/animations/` | Easing curves and the standalone RFID signal animation |
 | `src/reusable/rfid/` | RFID simulation and field line tracing |
