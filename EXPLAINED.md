@@ -44,6 +44,7 @@ Written by <who> · <date> · Issue #<n>
 ---
 
 ### Landing page layout and style (`index.html`, `styles.css`)
+
 Owner: Mina Vian · 2026-11-20, updated 2026-11-21 · Issues #3, #5, #9
 
 **What it does.** The first screen: on the left, the three everyday RFID objects (key fob, phone, contactless card) in 3D; on the right, the headline "Those are the things you use every day." and the line "and almost nobody knows how it works…". On phones the words sit on top and the objects below. Scrolling then plays the story (see its own entry).
@@ -114,6 +115,7 @@ Owner: Mina Vian · 2026-11-20 · Issues #3, #5
 ---
 
 ### The three 3D objects (`js/models.js`, `models/`)
+
 Models by nduchuy348-art (`models/*.glb`, branch `create-new-model`); loading code owner: Mina Vian · 2026-11-20, updated 2026-11-21 · Issues #5, #9
 
 **What it does.** Loads the key fob, phone and contactless card, and gives each a small behaviour: the fob's lock button presses and its light glows; the phone turns around and its screen wakes; the card flips. Each model can also be opened up to show its insides.
