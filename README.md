@@ -1,6 +1,6 @@
 # CCAVC Global Virtual Hackathon 2026 Project
 
-The site starts with a blank HTML page. There is no build step or package install.
+The site is a single interactive story about RFID. Scroll to follow the credit card, then drag it onto the reader. There is no build step or package install.
 
 ## Run locally
 
@@ -16,7 +16,7 @@ Open [http://127.0.0.1:8000/](http://127.0.0.1:8000/). Serve `index.html`, `src/
 | Location | Contents |
 | --- | --- |
 | `src/assets/models/` | Contactless card, subway card, key fob, phone, and rigged hand GLBs with their embedded resources |
-| `src/assets/images/` and `src/assets/textures/` | Card and reader illustrations, SVG icons, and paper grain |
+| `src/assets/images/` and `src/assets/textures/` | Card and reader illustrations, GLB fallback renders, SVG icons, and paper grain |
 | `src/assets/fonts/` | Inter Tight and Antonio WOFF2 files, font declarations, and licenses |
 | `src/reusable/three/` | Model loading and posing, procedural models and textures, card and scan renderers, and depth and trail shader |
 | `src/reusable/animations/` | Easing curves and the standalone RFID signal animation |
@@ -35,7 +35,7 @@ To use the Three.js modules from a page at the repository root, add these browse
 }
 ```
 
-The renderers need WebGL 2. Add `src/assets/fonts/fonts.css` if you want the bundled typefaces in the generated model textures. See [EXPLAINED.md](EXPLAINED.md) for the module map and [the RFID reference](docs/rfid-reference.md) for the sources behind the simulation.
+The story uses WebGL 2 for the 3D model and images rendered from the same model as a fallback. See [EXPLAINED.md](EXPLAINED.md) for the module map and [the RFID reference](docs/rfid-reference.md) for the sources behind the simulation.
 
 ## Run the retained tests
 

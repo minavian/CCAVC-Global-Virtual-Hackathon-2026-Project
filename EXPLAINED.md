@@ -30,26 +30,32 @@ Written by <who> · <date> · Issue #<n>
 
 ## Contents
 
-- [Blank site](#blank-site-indexhtml)
+- [RFID scroll story](#rfid-scroll-story-indexhtml-srcexperience)
 - [Model assets and rendering](#model-assets-and-rendering-srcassetsmodels-srcreusablethree)
 - [Animation and drawing](#animation-and-drawing-srcreusableanimations-srcreusableutilities)
 - [RFID simulation and checks](#rfid-simulation-and-checks-srcreusablerfid-tests)
 
-### Blank site (`index.html`)
+### RFID scroll story (`index.html`, `src/experience/`)
 
 Written by OpenAI Codex for the project team · 2026-11-22
 
-**What it does.** Opens a blank page for the rebuild.
+**What it does.** Follows one credit card from the opening gag to an X-ray view and a contactless tap. The visitor controls the story by scrolling and places the card on the reader at the end.
 
-**How it works.** The HTML declares the language, encoding, and viewport. Its body is empty. The data URL for the icon keeps the browser from requesting a favicon file.
+**How it works.**
 
-**Why it is built this way.** A single static file keeps the same hosting setup and makes it easy to start adding the new site when its design is ready.
+- `timeline.js` maps scroll distance to a single playhead. Repeated playhead values give the reading moments room to breathe. Card poses and copy visibility follow the same playhead in both directions.
+- `main.js` moves the same four HTML letters out of the mouth, into the full-name layout, and back into the explanation heading. It also handles pointer capture, dropping the card, retrying, and reduced motion.
+- `card-scene.js` loads `contactless-card.glb` once. The front two layers pivot around the right edge, and a vertex shader curls the left edge. The X-ray fades the original shell to reveal the original antenna and chip.
+- `signals.js` draws the brass signal marks and the reader feedback. The waveform and detection are illustrative.
+- The two `credit-card-*.webp` images are renders of the project's GLB by Codex. They keep the card and its internals visible when WebGL is unavailable.
 
-**How to check it.** Follow [README.md](README.md) and open the root URL. The page should be empty at desktop and mobile widths.
+**Why it is built this way.** A sticky stage preserves the position and identity of the objects while scrolling. Real HTML keeps the letters and copy sharp and readable by assistive technology. The static server continues to work without a build step.
+
+**How to check it.** Serve the project using [README.md](README.md). Watch the card cross to the right and spit out RFID. Scroll down and back through the typography and X-ray, then drag the card from the right onto the reader at left. The button also supports a tap, click, or keyboard activation.
 
 **Likely questions.**
 
-- Q: Is there a build command? A: Python or a static host serves the files as they are.
+- Q: Does the reader use NFC hardware? A: Detection is a hit test against the illustrated reader.
 
 ### Model assets and rendering (`src/assets/models/`, `src/reusable/three/`)
 
