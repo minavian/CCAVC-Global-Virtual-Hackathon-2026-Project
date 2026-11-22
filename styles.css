@@ -486,8 +486,8 @@ html[data-intro] .stage-light { opacity: 0; }
 }
 
 .intro .letter b {
-  font: 400 100px/1 var(--display);
-  letter-spacing: -.01em;
+  font: 800 100px/1 "Inter Tight", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  letter-spacing: -.045em;
 }
 .intro .letter > span {
   padding-left: 3px;
