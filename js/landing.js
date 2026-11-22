@@ -167,6 +167,12 @@
     const left = Math.max(0, Math.floor(cx - halfW)), top = Math.max(0, Math.floor(cy - halfH));
     layout.heroBox = { x: left, y: top, w: Math.min(w, Math.ceil(cx + halfW)) - left, h: Math.min(h, Math.ceil(cy + halfH)) - top };
     // During the story the objects travel across the whole screen.
+    // Desktop: the words sit in the centre and the three models orbit around them, so the
+    // orbit gets the whole screen. Phones keep words on top and models below (no ring).
+    if (!narrow) {
+      layout.ring = { cx: w / 2, cy: h / 2, rx: w * .3, ry: h * .28, size: Math.min(w * .22, h * .3) };
+      layout.heroBox = { x: 0, y: 0, w: Math.round(w), h: Math.round(h) };
+    } else layout.ring = null;
     layout.box = storyOn ? { x: 0, y: 0, w: Math.round(w), h: Math.round(h) } : layout.heroBox;
     measureHeadline();
     gl?.resize(layout.box);
@@ -192,10 +198,17 @@
       const p = poses[i], float = calm ? 0 : Math.sin(elapsed * .42 + i * 1.9);
       const settle = i === 0 ? landingPulse() : 0;
       const near = 1 - depth;
-      p.x = L.w * (L.cx - L.ax * side) + leanX * near * 14;
-      p.baseY = L.h * (L.cy + L.ay * side + L.dz * depth);
+      const R = L.ring;
+      if (R) {
+        // Around the words: the front model is lowest, the back one highest and smallest.
+        p.x = R.cx + R.rx * side + leanX * near * 14;
+        p.baseY = R.cy + R.ry * (1 - 2 * depth);
+      } else {
+        p.x = L.w * (L.cx - L.ax * side) + leanX * near * 14;
+        p.baseY = L.h * (L.cy + L.ay * side + L.dz * depth);
+      }
       p.y = p.baseY + float * L.size * .016 + leanY * near * 10;
-      p.size = L.size * (1 - .56 * depth) * (.84 + .16 * entrance) * (1 + settle);
+      p.size = (L.ring ? L.ring.size * (1 - .42 * depth) : L.size * (1 - .56 * depth)) * (.84 + .16 * entrance) * (1 + settle);
       p.depth = depth; p.side = side; p.float = float;
       const sway = calm ? 0 : Math.sin(elapsed * .27 + i * 1.3);
       p.pitch = BASE_PITCH[i] + sway * .044 + leanY * near * .1;

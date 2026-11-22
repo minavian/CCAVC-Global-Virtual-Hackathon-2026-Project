@@ -53,6 +53,8 @@ Owner: Mina Vian · 2026-11-20, updated 2026-11-21 · Issues #3, #5, #9
 - A tiny script in `<head>` adds `data-intro` to the page before anything is drawn, so the opening can start from a blank state without a flash. If the visitor prefers reduced motion, it is not added and the page simply appears finished.
 - `styles.css` pins the hero and the 3D stage to the screen (`position: fixed`), like a video frame, and hides the scrollbar; the page underneath still scrolls normally. It uses a two-column grid on wide screens and a stacked layout when the window is taller than wide or narrower than 760 px. The stage covers the whole page behind the words, so objects are never cut off by a column edge. A faint SVG noise texture over everything gives a printed-paper feel.
 
+**Layout (desktop).** The words sit in the centre of the screen, and the three objects orbit around them on an ellipse (`layout.ring` in `js/landing.js`). The front object is lowest, the back one highest and smallest. Phones keep the words on top and the objects below. The "Scroll" cue sits bottom left, clear of the front object. `index.html` loads `styles.css` and `landing.js` with a version number (`?v=`), so a changed file is never served from an old cache.
+
 **Why it is built this way.** The words are real HTML (not drawn in 3D) so they are sharp, selectable and readable by screen readers. No build step, so anyone can open the folder and serve it.
 
 **How to check it.** Serve the folder (for example `python -m http.server`) and open it. The `.glb` models do not load from `file://`, so double-clicking `index.html` shows the words only.

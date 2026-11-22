@@ -66,10 +66,10 @@ body::after {
   height: 100vh;
   height: 100lvh;              /* stable while a phone's toolbar shows and hides */
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-  grid-template-areas: ". copy";
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "copy";
   align-items: center;
-  padding: 0 var(--gutter) 0 0;
+  padding: 0 var(--gutter);
 }
 
 /* The stage spans the page behind the words, so objects are never clipped by a column.
@@ -139,13 +139,15 @@ body::after {
   grid-area: copy;
   position: relative;
   z-index: 2;
-  justify-self: start;
+  justify-self: center;
+  text-align: center;
   padding-bottom: 1.5vh;
 }
 
 #headline, .headline-slot {
   margin: 0;
   width: max-content;
+  text-align: center;
   font-weight: 800;
   font-size: clamp(42px, min(5.5vw, 10.6vh), 132px);
   line-height: .94;
@@ -160,7 +162,8 @@ body::after {
 .word { display: inline-block; transform-origin: 50% 82%; }
 
 #subline {
-  margin: clamp(16px, 3.1vh, 36px) 0 0;
+  margin: clamp(16px, 3.1vh, 36px) auto 0;
+  text-align: center;
   font-weight: 400;
   font-size: clamp(16px, min(1.75vw, 3.2vh), 30px);
   line-height: 1.35;
@@ -404,7 +407,7 @@ html[data-intro] .stage-light { opacity: 0; }
 /* A quiet invitation to scroll, under the hero. */
 .scroll-cue {
   position: absolute;
-  left: 50%;
+  left: var(--gutter);
   bottom: 74px;
   margin: 0;
   display: grid;
@@ -416,7 +419,6 @@ html[data-intro] .stage-light { opacity: 0; }
   text-transform: uppercase;
   color: var(--muted);
   opacity: 0;
-  transform: translateX(-50%);
 }
 
 .scroll-cue i {
