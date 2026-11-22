@@ -52,13 +52,11 @@ button { font: inherit; }
 .cinema-title {
   font-family: var(--display);
   font-size: clamp(3rem, min(14.1vw, 25dvh), 14rem);
-  font-weight: 490;
+  font-weight: 400;
   font-variation-settings: "opsz" 45;
   letter-spacing: -.038em;
   line-height: .96;
 }
-.cinema-initial { font-size: 1.23em; line-height: 0; }
-.cinema-title em { font-weight: 480; }
 .card-poster { position: relative; width: min(70vw, 24rem); }
 .card-poster img { display: block; width: 100%; height: auto; }
 .card-poster img + img { position: absolute; inset: 0; opacity: var(--xray, 0); }

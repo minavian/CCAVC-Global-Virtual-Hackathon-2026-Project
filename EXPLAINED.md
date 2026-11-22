@@ -46,7 +46,7 @@ Written by OpenAI Codex for the project team · 2026-11-22
 - `timeline.js` maps scroll distance to a single playhead. The card starts at center, slides right, curls open, releases RFID, and closes before the acronym unfolds. Reading poses hold while the user scrolls through them. The transitions between those poses use shorter stretches of scroll.
 - `main.js` moves the same four HTML letters out of the mouth, into the full-name layout, and back into the explanation heading. It also handles pointer capture, dropping the card, retrying, and reduced motion.
 - `card-scene.js` loads `contactless-card.glb` once. The front two layers pivot around the right edge, and a vertex shader curls the left edge. The X-ray fades the original shell to reveal the original antenna and chip.
-- `signals.js` draws the brass signal marks and the reader feedback. The waveform and detection are illustrative. The moving RFID letters and “how it works” use the local Bodoni Moda display font, with a larger lowercase “h” in the title.
+- `signals.js` draws the brass signal marks and the reader feedback. The waveform and detection are illustrative. The moving RFID letters and the “How it work” title use the local Bodoni Moda display font. The title uses regular weight throughout.
 - The two `credit-card-*.webp` images are renders of the project's GLB by Codex. They keep the card and its internals visible when WebGL is unavailable.
 
 **Why it is built this way.** A sticky stage preserves the position and identity of the objects while scrolling. Real HTML keeps the letters and copy sharp and readable by assistive technology. The static server continues to work without a build step.
