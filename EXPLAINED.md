@@ -36,6 +36,7 @@ Written by <who> · <date> · Issue #<n>
 - [The three 3D objects](#the-three-3d-objects-jsmodelsjs-models)
 - [The phone's lock screen](#the-phones-lock-screen-jslockscreenjs)
 - [Every day: three taps](#every-day-three-taps-jstapsjs-modelssubway-cardglb)
+- [What RFID is: the card intro](#what-rfid-is-the-card-intro-jsintro)
 - [The story: a film played by scrolling](#the-story-a-film-played-by-scrolling-jsstoryjs-jslandingjs)
 - [The simulation: physics, protocol and reader](#the-simulation-physics-protocol-and-reader-jsrfid)
 - [The lab: Power, Reply, Break it](#the-lab-power-reply-break-it-jslabjs)
@@ -163,7 +164,7 @@ Owner: Mina Vian · 2026-11-22. Metro ticket model by Akris Luno (`nduchuy348-ar
 **What it does.** The section right under the landing page. Three small 3D scenes play one after another: a metro ticket taps a ticket gate and the gate opens; a bank card taps a payment terminal and the payment is approved; a car key's unlock button is pressed and the car opens. Each has one short line under it: "Tap. The gate opens.", "Tap. The payment goes through.", "Click. The car opens."
 
 **How it works.**
-- **Where it sits.** The landing page is pinned to the screen, so the section starts one screen down. It has a paper background and slides up over the landing page like a sheet. It is at least one screen tall, so it covers the landing page fully. When it scrolls away, the landing page shows again and the story starts from its first frame: `landing.js` counts the story's scroll from the top of `.track`, which comes right after this section.
+- **Where it sits.** The landing page is pinned to the screen, so the section starts one screen down. It has a paper background and slides up over the landing page like a sheet. It is at least one screen tall, so it covers the landing page fully. The card intro ([What RFID is](#what-rfid-is-the-card-intro-jsintro)) comes next. After it, the landing page shows again and the story starts from its first frame: `landing.js` counts the story's scroll from the top of `.track`, which comes right after the intro.
 - **One canvas, three cameras.** `index.html` has a `.taps-row` with three `.tap-view` boxes and one `<canvas>` under them. `js/taps.js` keeps the three scenes in one Three.js scene, 60 m apart, and gives each its own camera. Every frame, it measures each box and draws that scene into it with a scissor box (`draw`). One WebGL context serves all three.
 - **Pure functions of time.** Each scene has `apply(t, r)`. `t` is the panel's time (0 to `PLAY`, 3.4 s) and `r` is the reset (0 to 1). The pose is computed from these two numbers alone, so the loop can stop, restart or jump at any point. The timings are in the `PLAY`, `HOLD`, `RESET` and `ARRIVE`/`LEAVE` constants at the top.
 - **The order.** On wide screens one clock (`cycle`) plays the gate, then the payment, then the car. All three hold their finished state, reset together, and the loop starts again. On phones the panels are stacked, so each one plays its own loop while at least half of it is on screen (`own`, `shown`). The thin bar under each line fills while its panel plays.
@@ -181,12 +182,40 @@ Owner: Mina Vian · 2026-11-22. Metro ticket model by Akris Luno (`nduchuy348-ar
 
 **What is simplified.** This section is a picture, not the simulation. Nothing here is computed from RFID physics; the copper rings only show that the reader's field is there. The key's button is powered by the key's own battery, as scene 3 of the story says. The amount on the terminal is made up.
 
-**How to check it.** Serve the folder, scroll one screen down from the landing page, and watch the three scenes play in turn. Press **Pause**: everything stops where it is. With reduced motion turned on in the system, all three show their finished state and nothing moves. Keep scrolling: the landing page comes back and the story starts. Add `?debug` to the address and run `__taps.seek(4.5)` in the console to freeze the loop at 4.5 s.
+**How to check it.** Serve the folder, scroll one screen down from the landing page, and watch the three scenes play in turn. Press **Pause**: everything stops where it is. With reduced motion turned on in the system, all three show their finished state and nothing moves. Keep scrolling: the card intro plays, then the landing page comes back and the story starts. Add `?debug` to the address and run `__taps.seek(4.5)` in the console to freeze the loop at 4.5 s.
 
 **Likely questions.**
 - Q: Why are the ticket and key bigger than life? A: At true size, a ticket next to a 1 m gate, or a key next to a car, would be a few pixels. The scenes are illustrations, so the hero object is scaled up and the backdrop stays at true size.
 - Q: What happens on a phone? A: The panels stack, and each plays its own loop while it is on screen, so nobody misses one that played off screen.
 - Q: Does it slow the page down? A: All three scenes together took about 3 ms per frame on our test machine. Nothing is drawn while the section is off screen.
+
+---
+
+### What RFID is: the card intro (`js/intro/`)
+
+Original section written by OpenAI Codex for the project team · 2026-11-22 (the team's `ui-rebuild` part 2, in `Teams parts/`). Moved into this page: Owner: Mina Vian · 2026-11-22.
+
+**What it does.** The section after the three taps. One bank card, played by scrolling: it opens like a mouth and lets out the letters R, F, I, D. The letters spell "Radio-Frequency Identification", a line explains that RFID swaps data by radio, an X-ray shows the antenna and the chip, and the card asks how it can work with no battery. At the end you drag the card onto a reader.
+
+**How it works.**
+- **Where it sits.** `index.html` has a tall `<section class="intro">` right after the taps. Inside it, `.intro-stage` is `position: sticky`, so it stays on screen while the section scrolls past. Its paper background covers the pinned landing page, like the taps.
+- **One playhead.** `js/intro/timeline.js` turns the scroll into one number, the playhead (`scrollTime`). Repeated values in `scrollFrames` hold the picture still for a stretch of scroll, so there is time to read. Everything else is a function of the playhead: the card's pose (`cardPose`), when each line fades in and out (`beats`), and when the X-ray shows.
+- **Counting from the section.** The original was a page of its own. Here, `main.js` measures where the section starts (`startY`) and counts the scroll from there.
+- **The card** (`card-scene.js`). It loads the team's `models/contactless-card.glb`. The two front layers open around the card's right edge. The X-ray fades the outer layers and turns the copper antenna brass.
+- **The letters** (`main.js`, `paintLetters`). Four real HTML letters fly out of the card's mouth, then line up as the full name.
+- **The lines** (`signals.js`). One 2D canvas draws the spray from the mouth, the radio wave, the label lines and the reader's rings.
+- **The reader.** You can drag the card or press it with the keyboard. A drop near the reader says "Card detected." and shows **Try again**.
+- **Only when needed.** The 3D card loads when the section is about one and a half screens away. Frames are drawn only while the stage is on screen.
+
+**Why it is built this way.** The pinned stage keeps one card on screen through the whole idea, so nobody loses track of it. Real HTML text stays sharp and screen readers can read it. Every CSS rule starts with `.intro`, and the two class names the page already used are renamed (`.intro-stage`, `.intro-callouts`), so this section cannot change the landing page or the story.
+
+**What is simplified.** The reader is a picture. "Card detected" is a check that the card was dropped close to it, not a radio link.
+
+**How to check it.** Serve the folder and scroll past the three taps. The card opens and the letters fly out. Keep scrolling to the X-ray, then drag the card onto the reader. Press Tab first on the section to find **Skip to the card and reader**.
+
+**Likely questions.**
+- Q: Why is the playhead not just the scroll position? A: Some parts need more scroll than others. The table in `scrollFrames` gives each beat its own length, and holds.
+- Q: What if WebGL is off? A: Two pictures of the same card (`images/intro/credit-card-*.webp`) stand in for the 3D card.
 
 ---
 
