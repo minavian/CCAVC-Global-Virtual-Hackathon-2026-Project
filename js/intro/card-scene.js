@@ -527,15 +527,19 @@ export async function createCardScene(canvas) {
     const share = Math.max(sending_, b.reply / Math.max(.001, b.reply + Math.max(b.receive, b.power)));
     const answering = share > .5, tint = THREE.MathUtils.smoothstep(share, .4, .6);
     perimeter.uniforms.uCurrent.value = Math.max(b.receive * amp, b.reply, sending_ * (.5 + .45 * load));
-    perimeter.uniforms.uDir.value = answering ? -1 : 1;
-    perimeter.uniforms.uPhase.value = clock * 1.1;
-    perimeter.uniforms.uSteady.value = steady;
+    // Switching its load changes how much current the card's coil carries, not which way.
+    perimeter.uniforms.uDir.value = answering && !steady ? -1 : 1;
+    // In the conversation the comets move with the flow of power (river.js), so they slow
+    // in each gap with everything else; a little of the current glows evenly underneath.
+    const flowing = river.phase() * 3;
+    perimeter.uniforms.uPhase.value = steady ? flowing : clock * 1.1;
+    perimeter.uniforms.uSteady.value = steady * .3;
     perimeter.uniforms.uCurrentColor.value.copy(warm).lerp(cool, tint);
     perimeter.uniforms.uNeutral.value = tint * Math.min(1, Math.max(b.reply, sending_) * 1.5);
     module.uniforms.uCurrent.value = Math.max(b.power * (steady ? amp : 1), b.receive * .6 * amp, b.reply, sending_ * (.5 + .45 * load));
-    module.uniforms.uDir.value = answering ? -1 : 1;
-    module.uniforms.uPhase.value = clock * 1.4;
-    module.uniforms.uSteady.value = steady;
+    module.uniforms.uDir.value = answering && !steady ? -1 : 1;
+    module.uniforms.uPhase.value = steady ? flowing * 1.3 : clock * 1.4;
+    module.uniforms.uSteady.value = steady * .3;
     module.uniforms.uCurrentColor.value.copy(warm).lerp(cool, tint);
     module.uniforms.uNeutral.value = tint * Math.min(1, Math.max(b.reply, sending_) * 1.5);
     const work = b.blink * (.5 + .5 * Math.sin(clock * Math.PI * 2 * 1.8)) ** 2;
@@ -555,9 +559,9 @@ export async function createCardScene(canvas) {
       opacity: readerRest.opacity * b.reader,
       shellOpacity: b.shell,
       glow: sending,
-      flow: clock * (b.read > b.emit ? 1.1 : .9),
-      direction: b.read > b.emit ? 1 : -1,
-      steady,
+      flow: steady ? flowing : clock * (b.read > b.emit ? 1.1 : .9),
+      direction: steady || b.read <= b.emit ? -1 : 1,
+      steady: steady * .3,
       color: mixColor.copy(warm).lerp(cool, reading),
       neutral: said ? 0 : reading * Math.min(1, b.read * 1.5),
       led,
@@ -568,7 +572,7 @@ export async function createCardScene(canvas) {
     river.update({ amount: b.river || 0, amp: field_, load, answer: sending_, process: b.process || 0, clock,
       pixels: renderer.domElement.height,
       reading: said && said.beat > .01 ? { at: said.dir > 0 ? 'card' : 'reader', beat: said.beat } : null });
-    field.update({ lines: b.river || 0, amp: .15 + .85 * field_, echo: b.echo || 0, load });
+    field.update({ lines: b.river || 0, amp: .15 + .85 * field_, echo: b.echo || 0, load, flow: river.phase() });
 
     // The lights go down for the conversation: less room light, more rim.
     const dark = b.dark || 0;
