@@ -3,13 +3,14 @@
 //   (`approach`): the reader's field, the current in the card's coil, the chip's power.
 // - Once the card is dropped on the reader, the visitor steps through the exchange with
 //   Next and Back (`STEPS`). Each step is a live loop that runs for as long as it is shown.
-// - In the middle, the card and the reader talk (`TALK`): the lights go down, the camera
-//   dives in between them, the visitor presses Ask and the reader's question flows from its
-//   chip, round its coil, across to the card's coil, round that and into the card's chip
-//   (river.js, `LEGS`); the card's ID flows back the same way by itself.
+// - In the middle, the card and the reader talk (`TALK`): the lights go down and the
+//   reader's magnetic field shows (field.js). The visitor presses Ask and the reader sends
+//   its question the way a real reader does, as short gaps in its field; the card answers
+//   with its ID by itself, by switching a load on its coil. The timing is the real one,
+//   slowed down (`message`).
 // Both give a set of target levels (`IDLE` lists them) and a camera (`view`); main.js
-// glides what is shown toward them, card-scene.js draws the 3D and effects.js the waves,
-// the current and the bits.
+// glides what is shown toward them, card-scene.js draws the 3D, effects.js the waves and
+// the current, and field.js the field.
 import { clamp, smoother } from './easing.js';
 import { TOP, COIL_Z, CHIP as READER_CHIP } from './reader-size.js';
 
@@ -19,6 +20,8 @@ export const MHZ = '13.56';   // the carrier of bank and metro cards (ISO 14443)
 // resting angle: tipped back to show its top and front.
 export const HOVER = { x: .002, y: -.003, spin: -.1 };
 export const REST = { tilt: .68, spin: -.3, yaw: .2 };
+// How high the card lies over the reader's top after the drop (metres).
+export const TALK_GAP = .012;
 
 // Distance. The drag happens on a flat screen, so how far the card is from the reader's
 // centre (`zone`: 1 is the edge of the drop zone) is turned into centimetres. The drop
@@ -42,16 +45,18 @@ export const WAKE = power(WAKE_CM);   // about 9%: the chip needs this much to s
 //   body (low shows its coil, board and chip).
 // emit, field: current in the reader's coil and the field rising from it. receive: current
 //   in the card's coils. power: current into the chip. blink: the chip working.
-// reply: the card's answer leaving through its coil. read, thinking: the reader taking the answer in and
-//   checking it. check: the check mark.
+// reply: the card's answer leaving through its coil (the waves of step 1's kind; not used in
+//   the conversation, which has the field instead). read, thinking: the reader taking the
+//   answer in and checking it. check: the check mark.
 // page: the rest of the page (instructions, scroll guide). panel: the readout. explain:
 //   the explanation at the end.
 // charge: the chip's power, as the readout shows it. dark: the lights going down for the
-//   conversation. river: the channel the conversation flows along (river.js).
+//   conversation. lines: the reader's field lines (field.js). echo: the card's own field,
+//   which carries its answer.
 export const IDLE = {
   dock: 0, gap: .034, card: 1, xray: 0, copper: 1, reader: 1, shell: 1,
   emit: 0, field: 0, receive: 0, power: 0, blink: 0, reply: 0, read: 0, thinking: 0,
-  check: 0, page: 1, panel: 0, explain: 0, charge: 0, dark: 0, river: 0,
+  check: 0, page: 1, panel: 0, explain: 0, charge: 0, dark: 0, lines: 0, echo: 0,
 };
 const DIM = .12;   // what is not being shown fades to this
 
@@ -99,10 +104,115 @@ export function approachBand(cm, before = -1) {
   return band;
 }
 
+// The conversation: the reader asks for the card's ID, the card sends it. These are the
+// real frames of ISO/IEC 14443-3 anticollision, built by js/rfid/iso14443a.js: the reader
+// sends SEL 0x93 with NVB 0x20 ("everyone, send your whole ID"); the card answers with its
+// four ID bytes and their check byte (BCC). On the air each byte is 8 bits, lowest first,
+// then an odd check bit.
+//
+// How each goes on the air, at 106 kbit/s (ISO/IEC 14443-2 Type A), from the same code the
+// story's simulations run on:
+// - The reader switches its field off for 2.36 µs at a time (100% ASK), placed by modified
+//   Miller coding (`millerPauses`). The field dies away and comes back in a fraction of a
+//   microsecond (`fieldAtTag` in js/rfid/air.js). The card's chip runs through each gap on
+//   the charge it has stored.
+// - The card switches a load across its coil on and off 847,500 times a second, in the
+//   first half of a bit for a 1 and the second half for a 0 (Manchester coding,
+//   `manchesterSwitch`). The reader feels its own field change by a few percent.
+// - The card starts its answer a fixed time after the reader's last gap (`answerDelay`).
+const iso = globalThis.RFID?.iso, air = globalThis.RFID?.air;
+const ID = [0x04, 0x7b, 0x21, 0x9e];
+const check = iso ? iso.bcc(ID) : ID.reduce((a, b) => a ^ b, 0);
+const hex = bytes => bytes.map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
+export const CARD_ID = hex(ID);
+// One sample is 4 carrier cycles; one bit is 32 samples (9.44 µs). See iso14443a.js.
+const BIT = iso?.BIT ?? 32, SUB = iso?.SUB ?? 4, RATE = iso?.SAMPLE_RATE ?? 3.39e6;
+export const SAMPLES_PER_BIT = BIT;
+// One bit as shown: 0.11 s, about 12,000 times slower than in life.
+export const BIT_SECONDS = .11;
+
+// The signal over the frame, one value a sample. The question: the reader's field at the
+// card (1 on, 0 in a gap). The answer: the card's switch (1 while it switches the load).
+function onTheAir(bytes, dir) {
+  const bits = iso ? iso.standardFrame(bytes) : [];
+  if (!iso) return { bits, length: BIT * 3, signal: new Float32Array(BIT * 3).fill(dir > 0 ? 1 : 0), lastGap: 0 };
+  if (dir > 0) {
+    const { pauses, length } = iso.millerPauses(bits);
+    const signal = air ? air.fieldAtTag(length, pauses, iso.PAUSE)
+      : Float32Array.from({ length }, (_, n) => (pauses.some(p => n >= p && n < p + iso.PAUSE) ? 0 : 1));
+    return { bits, length, signal, lastGap: pauses[pauses.length - 1] };
+  }
+  // The switch itself flickers with the 847.5 kHz subcarrier (two samples closed, two open),
+  // far too fast to see even slowed down, so this keeps where it is switching at all.
+  const raw = iso.manchesterSwitch(bits), on = new Float32Array(raw.length);
+  for (let n = 0; n < raw.length; n += SUB) {
+    let closed = 0;
+    for (let k = 0; k < SUB; k++) closed |= raw[n + k];
+    on.fill(closed, n, n + SUB);
+  }
+  // Softened over 8 samples (about a quarter of a bit), so each burst swells and fades in
+  // about 25 ms as shown instead of strobing. The trace under the label keeps `raw`.
+  const signal = on.map((_, n) => {
+    let sum = 0;
+    for (let k = -4; k < 4; k++) sum += on[Math.min(on.length - 1, Math.max(0, n + k))];
+    return sum / 8;
+  });
+  return { bits, length: raw.length, signal, raw };
+}
+const say = (dir, words, bytes) => ({ dir, words, bytes, ...onTheAir(bytes, dir) });
+export const TALK = {
+  ask: say(1, 'Who are you?', [iso?.SEL1 ?? 0x93, iso?.NVB_ALL ?? 0x20]),
+  answer: say(-1, 'ID ' + CARD_ID, [...ID, check]),
+};
+// The answer starts this long after the question (in samples): the reader's last gap,
+// then the standard's wait.
+const ANSWER_AT = TALK.ask.lastGap + (iso ? iso.answerDelay(TALK.ask.bits[TALK.ask.bits.length - 1]) : 300);
+// As shown: seconds from the question's start to the answer's.
+export const ANSWER_AFTER = ANSWER_AT / BIT * BIT_SECONDS;
+// When each message happens in a real tap (ms), counted from the reader's question at 1 ms.
+const ms = samples => samples / RATE * 1000;
+export const TALK_MS = {
+  ask: [1, 1 + ms(TALK.ask.length)],
+  answer: [1 + ms(ANSWER_AT), 1 + ms(ANSWER_AT + TALK.answer.length)],
+};
+
+// A message `seconds` after it started, as shown. `amp` is the reader's field now (it
+// drops to 0 in each of the question's gaps); `load` is the card's switch now (the
+// answer). `decoded`: how many bits have gone by. `done` once the frame is over, `landed`
+// rising to 1 just after. `realMs`: how far into the frame, in real time; `frameMs`: the
+// whole frame.
+export function message(name, seconds) {
+  const talk = TALK[name], { length, signal } = talk;
+  const n = seconds / BIT_SECONDS * BIT;
+  const at = k => signal[Math.min(length - 1, Math.max(0, k))];
+  const i = Math.floor(n), now = n < 0 || n >= length ? (talk.dir > 0 ? 1 : 0) : at(i) + (at(i + 1) - at(i)) * (n - i);
+  return {
+    ...talk, name, samples: n, started: n >= 0,
+    amp: talk.dir > 0 ? now : 1, load: talk.dir > 0 ? 0 : now,
+    // Bit k sits in the frame's bit time k + 1 (the first is the start of frame).
+    decoded: clamp(Math.floor(n / BIT) - 1, 0, talk.bits.length),
+    done: n >= length, landed: smoother(length, length + 3 * BIT, n),
+    realMs: ms(clamp(n, 0, length)), frameMs: ms(length),
+  };
+}
+
+// While a message is on the air: the card's chip works on the question once it has it;
+// the reader's light reads while the answer comes in, and its chip works on it after.
+export function talkLevels(levels, said) {
+  const out = { ...levels };
+  if (!said.started) return out;
+  if (said.dir > 0) out.blink = Math.max(levels.blink, said.landed);
+  else {
+    out.read = Math.min(1, said.samples / said.length) * .9 * (1 - said.landed * .4);
+    out.thinking = said.landed * .8;
+  }
+  return out;
+}
+
 // After the drop: the tap, one step at a time. `ms` is when it happens in a real tap
-// (round numbers; the whole exchange takes about 5 ms). `shot` names the camera. A step
-// with `talk` is part of the conversation: the lights go down, the camera dives in between
-// the card and the reader, and the message flows along the river (river.js). In the `ask`
+// (round numbers, except the conversation's, which come from the frames above; the whole
+// exchange takes about 5 ms). `shot` names the camera. A step with `talk` is part of the
+// conversation: the lights go down and the reader's field shows (field.js). In the `ask`
 // step the visitor plays the reader: nothing is sent until they press Ask.
 export const REAL_MS = 5;
 // `detail` is the line of small print under the sentence (`askingDetail` once the question
@@ -117,85 +227,26 @@ export const STEPS = [
   { text: 'The current powers the chip. No battery needed.', detail: 'The chip runs on it while the card is near.',
     ms: [.3, 1], shot: 'power',
     levels: { xray: 1, reader: DIM, shell: .5, emit: .4, receive: .8, power: 1, blink: .5, charge: 1 } },
-  { text: 'Your turn. Ask the card who it is.', detail: 'Press Ask to send the reader’s question.',
-    asking: 'The reader asks: who are you?', askingDetail: 'Chip to coil, across the gap, coil to chip.',
-    ms: [1, 1.5], shot: 'ask', talk: 'ask',
-    levels: { xray: 1, shell: .14, emit: .3, receive: .35, power: .7, charge: 1, dark: 1, river: 1 } },
-  { text: 'The chip answers with its ID.', detail: 'Same way back: four ID bytes and a check byte.',
-    ms: [1.5, 2.5], shot: 'answer', talk: 'answer',
-    levels: { xray: 1, shell: .14, emit: .2, power: .6, blink: .4, charge: 1, dark: 1, river: 1 } },
+  { text: 'Your turn. Ask the card who it is.', detail: 'Its field stays on. That powers the card.',
+    asking: 'The reader asks: who are you?', askingDetail: 'It sends bits as tiny gaps in its field.',
+    ms: TALK_MS.ask, shot: 'ask', talk: 'ask',
+    levels: { xray: 1, shell: .14, emit: .55, receive: .5, power: .7, charge: 1, dark: 1, lines: 1 } },
+  { text: 'The chip answers with its ID.', detail: 'It switches a load on its coil. The reader feels it.',
+    ms: TALK_MS.answer, shot: 'answer', talk: 'answer',
+    levels: { xray: 1, shell: .14, emit: .5, receive: .45, power: .6, blink: .4, charge: 1, dark: 1, lines: 1, echo: 1 } },
   { text: 'The reader checks the ID.', detail: 'The check byte must match the four ID bytes.',
-    ms: [2.5, 5], shot: 'read',
+    ms: [TALK_MS.answer[1], 5], shot: 'read',
     levels: { card: DIM, xray: 1, shell: .1, emit: .15, read: 1, thinking: 1, charge: 1 } },
   { text: 'Verified. Card detected.', detail: 'The whole tap took about 5 milliseconds.',
     ms: [5, 5], shot: 'done',
     levels: { gap: .0016, check: 1, charge: 1 } },
   { text: '', ms: [5, 5], shot: 'rest', explain: true,
     levels: { gap: .0016, check: 1, page: 1, panel: 0, explain: 1, charge: 1 } },
-].map(step => ({ ...step, levels: { ...IDLE, dock: 1, gap: .012, page: DIM, panel: 1, ...step.levels } }));
+].map(step => ({ ...step, levels: { ...IDLE, dock: 1, gap: TALK_GAP, page: DIM, panel: 1, ...step.levels } }));
 // Every drop starts at step 1. The drag shows how distance changes the power; the steps
 // are the tap itself, slowed down, so they always begin with the reader's signal.
 export const LAST = STEPS.length - 1;
 export const ASK = STEPS.findIndex(step => step.talk === 'ask');
-
-// The conversation: the reader asks for the card's ID, the card sends it. These are the
-// real frames of ISO/IEC 14443-3 anticollision, built by js/rfid/iso14443a.js: the reader
-// sends SEL 0x93 with NVB 0x20 ("everyone, send your whole ID"); the card answers with its
-// four ID bytes and their check byte (BCC). On the air each byte is 8 bits, lowest first,
-// then an odd check bit.
-const iso = globalThis.RFID?.iso;
-const ID = [0x04, 0x7b, 0x21, 0x9e];
-const frame = bytes => iso ? iso.standardFrame(bytes)
-  : bytes.flatMap(b => [...Array.from({ length: 8 }, (_, i) => (b >> i) & 1), 1 - [0, 1, 2, 3, 4, 5, 6, 7].reduce((n, i) => n ^ (b >> i) & 1, 0)]);
-const check = iso ? iso.bcc(ID) : ID.reduce((a, b) => a ^ b, 0);
-const hex = bytes => bytes.map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
-export const TALK = {
-  // `every`: seconds between one bit and the next, as shown.
-  ask: { dir: 1, words: 'Who are you?', bits: frame([iso?.SEL1 ?? 0x93, iso?.NVB_ALL ?? 0x20]), every: .06 },
-  answer: { dir: -1, words: 'ID ' + hex(ID), bits: frame([...ID, check]), every: .036 },
-};
-export const CARD_ID = hex(ID);
-
-// The way a message travels, from the reader's chip (0) to the card's chip (1), in three
-// legs (river.js draws each): along the reader's wire from its chip into its coil and
-// round the coil; across the gap from the reader's coil to the card's coil; round the
-// card's coil and in through its small coil and wires to its chip. Chip, coil, coil, chip.
-// The answer takes the same legs back. Each leg takes this many seconds for the front.
-export const LEGS = [['reader', .8], ['gap', 1], ['card', 1.1]];
-const RUN = LEGS.reduce((sum, [, seconds]) => sum + seconds, 0);
-// Where each leg starts and ends along the way, from 0 at the reader's chip to 1 at the card's.
-export const LEG = {};
-LEGS.reduce((at, [name, seconds]) => { LEG[name] = [at / RUN, (at + seconds) / RUN]; return at + seconds; }, 0);
-
-// How a message moves. `dir` is +1 from the reader to the card, -1 back. `head` is how far
-// its front has gone from the sender (0 to 1); its bits follow in single file `spacing`
-// apart, and the way behind the last bit dims again (`tail`). `done` once every bit has
-// reached the far chip.
-export function message(name, seconds) {
-  const talk = TALK[name];
-  const head = Math.max(0, seconds) / RUN, spacing = talk.every / RUN;
-  const last = head - .012 - (talk.bits.length - 1) * spacing;
-  return { ...talk, head, tail: last - .1, spacing, done: last > 1, landed: smoother(1, 1.12, last) };
-}
-
-// While a message flows, each part lights up for as long as the message is on it: the
-// sender's coil, then the receiver's coil, then the chip it is for.
-export function talkLevels(levels, said) {
-  const along = x => (said.dir > 0 ? x : 1 - x);   // from the sender's side to the reader-to-card way
-  const a = along(said.head), b = along(said.tail), lo = Math.min(a, b), hi = Math.max(a, b);
-  const on = ([from, to]) => smoother(from, from + .04, hi) * (1 - smoother(to - .02, to + .03, lo));
-  const reader = on(LEG.reader), card = on(LEG.card), out = { ...levels };
-  if (said.dir > 0) {
-    out.emit = Math.max(levels.emit, reader);         // the reader's coil carries the question
-    out.receive = Math.max(levels.receive, card);     // then the card's coil
-    out.blink = Math.max(levels.blink, said.landed);  // and the chip works on it
-  } else {
-    out.reply = card;                                 // the card's coil carries the answer
-    out.read = reader * .9;                           // then the reader's coil
-    out.thinking = said.landed * .8;                  // and the reader's chip has it
-  }
-  return out;
-}
 
 // Points the camera looks at, in the reader's frame (metres). `gap` is the card's height.
 const cardZ = gap => TOP + gap;
@@ -209,8 +260,8 @@ const FOCUS = {
     return [HOVER.x + x * k - y * s, HOVER.y + x * s + y * k, cardZ(gap)];
   },
   readerChip: () => [READER_CHIP.x, READER_CHIP.y, (READER_CHIP.z + COIL_Z) / 2],
-  // The middle of the river's whole run, from the reader's chip to the card's (river.js).
-  river: gap => [-.022, -.006, COIL_Z + (cardZ(gap) - COIL_Z) * .5],
+  // Just above the card: the field fills the gap and arches over the card (field.js).
+  field: gap => [0, 0, cardZ(gap) + .006],
 };
 
 // The camera for each step: zoom, what it looks at, where that sits on screen (shares of
@@ -222,10 +273,10 @@ export const SHOTS = {
   field: { zoom: 2.15, focus: 'gap', at: [.5, .42], tilt: 1.3, spin: -.3, yaw: .04, fov: 26 },
   coil: { zoom: 2, focus: 'card', at: [.5, .4], tilt: .66, spin: -.5, yaw: 0, fov: 14 },
   power: { zoom: 7.5, focus: 'chip', at: [.5, .4], tilt: .82, spin: -.72, yaw: .03, fov: 18 },
-  // The conversation: low between the card and the reader, the lens wide open.
+  // The conversation: from the side, low, so the field's arches over the card show.
   // `phone` is the framing on a narrow screen.
-  ask: { zoom: 2.3, focus: 'river', at: [.5, .44], tilt: 1.3, spin: .35, yaw: -.02, fov: 50, phone: { at: [.5, .38], zoom: 1.8 } },
-  answer: { zoom: 2.5, focus: 'river', at: [.5, .42], tilt: 1.12, spin: 1.25, yaw: .05, fov: 58, phone: { at: [.5, .38], zoom: 1.9 } },
+  ask: { zoom: 1.45, focus: 'field', at: [.5, .46], tilt: 1.36, spin: .32, yaw: 0, fov: 30, phone: { at: [.5, .4], zoom: 1.05 } },
+  answer: { zoom: 1.6, focus: 'field', at: [.5, .46], tilt: 1.3, spin: .7, yaw: 0, fov: 30, phone: { at: [.5, .4], zoom: 1.15 } },
   read: { zoom: 2.2, focus: 'readerChip', at: [.5, .4], tilt: .92, spin: -.75, yaw: .02, fov: 16 },
   done: { zoom: 2.1, focus: 'top', at: [.5, .42], tilt: .96, spin: -.92, yaw: .03, fov: 0 },
 };

@@ -775,7 +775,7 @@ html[data-intro] .stage-light { opacity: 0; }
 .intro .readout-next { border: 1px solid var(--ink); color: var(--paper); background: var(--ink); }
 .intro .readout-next:hover { background: #2a2926; }
 
-/* ---- The conversation (cinema.js `talk` steps, js/intro/river.js) ----
+/* ---- The conversation (cinema.js `talk` steps, js/intro/field.js) ----
    The lights go down: a deep, warm dark behind the 3D, and the readout turns dark with it. */
 .intro .cine-backdrop {
   position: absolute;
@@ -817,8 +817,10 @@ html[data-intro] .stage-light { opacity: 0; }
   from { box-shadow: 0 0 0 0 rgba(255, 125, 31, .6); }
   to { box-shadow: 0 0 0 16px rgba(255, 125, 31, 0); }
 }
-/* The words a message carries, and the ID by the reader's chip while it checks. */
-.intro .river-tag {
+/* The message's label (paintFilm in main.js), at the top in the middle while a message is
+   on the air. No box: which way it goes in small capitals, the words, the signal as the
+   receiver feels it (drawn as it comes in), and each byte once its bits are in. */
+.intro .talk-tag {
   position: absolute;
   left: 0;
   top: 0;
@@ -826,44 +828,48 @@ html[data-intro] .stage-light { opacity: 0; }
   justify-items: center;
   gap: .4rem;
   margin: 0;
-  padding: .45rem .8rem;
-  border: 1px solid rgba(255, 125, 31, .75);
-  border-radius: 999px;
-  font: 600 clamp(.78rem, 1.05vw, .95rem)/1 "JetBrains Mono", ui-monospace, monospace;
+  font: 600 clamp(.92rem, 1.3vw, 1.1rem)/1.1 "JetBrains Mono", ui-monospace, monospace;
   white-space: nowrap;
   color: #fff;
-  background: rgba(14, 13, 12, .72);
-  box-shadow: 0 0 26px rgba(255, 125, 31, .38);
-  translate: -50% calc(-100% - 20px);
+  text-shadow: 0 1px 14px rgba(0, 0, 0, .65);
   opacity: 0;
-  transition: opacity .35s ease;
+  transition: opacity .4s ease;
   pointer-events: none;
 }
-.intro .river-tag b { font-weight: inherit; }
-.intro .river-tag small {
-  font: 650 .66rem/1 "Inter Tight", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  letter-spacing: .12em;
+.intro .talk-tag.is-shown { opacity: 1; }
+.intro .talk-note {
+  font: 650 .6rem/1 "Inter Tight", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  letter-spacing: .14em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, .62);
+  color: rgba(255, 255, 255, .56);
 }
-.intro .river-tag small:empty { display: none; }
-/* A message's label holds still, at the top in the middle, while the message flows. */
-.intro .river-tag:is([data-kind="ask"], [data-kind="answer"]) {
-  left: 50%;
-  top: clamp(1.25rem, 8dvh, 4.5rem);
-  padding: .65rem 1.2rem .75rem;
-  border-radius: 18px;
-  font-size: clamp(1rem, 1.5vw, 1.25rem);
-  translate: -50% 0;
+.intro .talk-note:empty { display: none; }
+.intro .talk-words { font-weight: inherit; }
+.intro .talk-signal { position: relative; width: min(18rem, 76vw); height: 1.45rem; }
+.intro .talk-trace { display: block; width: 100%; height: 100%; }
+.intro :is(.talk-track, .talk-line) { fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.intro .talk-track { stroke: rgba(255, 255, 255, .13); stroke-width: 1; }
+.intro .talk-line { stroke: #ff8a3d; stroke-width: 1.3; }
+.intro .talk-dot {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  margin: -2.5px 0 0 -2.5px;
+  border-radius: 50%;
+  background: #ffd2ad;
+  box-shadow: 0 0 9px 2px rgba(255, 138, 61, .85);
+  transition: opacity .3s ease;
 }
-.intro .river-tag.is-shown { opacity: 1; }
-.intro .river-tag[data-kind="answer"] { border-color: rgba(74, 147, 255, .85); box-shadow: 0 0 26px rgba(74, 147, 255, .45); }
-.intro .river-tag[data-kind="check"] {
-  border-color: rgba(29, 110, 232, .45);
-  color: var(--ink);
-  background: rgba(255, 255, 255, .94);
-  box-shadow: 0 12px 30px -12px rgba(13, 13, 12, .3);
-}
+.intro .talk-tag[data-kind="answer"] .talk-line { stroke: #5aa7ff; }
+.intro .talk-tag[data-kind="answer"] .talk-dot { background: #d6e8ff; box-shadow: 0 0 9px 2px rgba(90, 167, 255, .85); }
+.intro .talk-bytes { position: relative; width: min(18rem, 76vw); height: 1em; font-size: .64rem; color: rgba(255, 255, 255, .72); }
+.intro .talk-bytes span { position: absolute; top: 0; translate: -50% 0; opacity: 0; transition: opacity .45s ease; }
+.intro .talk-bytes span.is-in { opacity: 1; }
+.intro .talk-bytes span.is-check { color: rgba(255, 255, 255, .4); }
+.intro .talk-tag:is([data-kind="ask"], [data-kind="answer"]) { left: 50%; top: clamp(1rem, 6dvh, 3.5rem); translate: -50% 0; }
+/* While the reader checks: the ID alone, just above the reader's chip. */
+.intro .talk-tag[data-kind="check"] { translate: -50% calc(-100% - 14px); font-size: .9rem; }
+.intro .talk-tag[data-kind="check"] :is(.talk-signal, .talk-bytes) { display: none; }
 /* Just above the readout, in the middle. */
 .intro .cine-hint {
   position: absolute;

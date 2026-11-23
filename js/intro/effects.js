@@ -153,8 +153,10 @@ export function buildEffects() {
   onCard.add(die);
 
   // Called every frame with the shown levels (cinema.js), the live clock `b.clock` in
-  // seconds, how high the card floats over the reader and how it is turned.
-  function update(b, cardZ, spin) {
+  // seconds, how high the card floats over the reader and how it is turned. In the
+  // conversation `talk` has the reader's field right now (`amp`), the card's switch (`load`)
+  // and how far the currents are shown steady rather than as comets (`steady`).
+  function update(b, cardZ, spin, talk = { amp: 1, load: 0, steady: 0 }) {
     const any = b.field + b.reply + b.thinking + b.power + b.blink + b.read + b.receive;
     table.visible = onCard.visible = any > .003;
     if (!table.visible) return;
@@ -188,12 +190,17 @@ export function buildEffects() {
     // other way while it answers.
     // Orange and blue would mix to purple, so the colour switches over quickly to
     // whichever current is the stronger.
-    const share = b.reply / Math.max(.001, b.reply + Math.max(b.receive, b.power));
+    const { amp, load, steady } = talk;
+    const share = Math.max(load, b.reply / Math.max(.001, b.reply + Math.max(b.receive, b.power)));
     const answering = share > .5, tint = smoothstep(.4, .6, share);
-    const flows = [[coilBand, Math.max(b.receive, b.reply), 1.1], [moduleBand, Math.max(b.power, b.receive * .6, b.reply), 1.3],
-      ...wires.map(wire => [wire, Math.max(b.power, b.reply), 1.6])];
-    for (const [{ mesh, uniforms }, amount, speed] of flows) {
-      uniforms.uAmount.value = amount;
+    const into = steady ? amp : 1;   // in a gap no current flows from the coil to the chip
+    const flows = [[coilBand, Math.max(b.receive * amp, b.reply, load * .9), 1.1, .06],
+      [moduleBand, Math.max(b.power * into, b.receive * .6 * amp, b.reply, load * .9), 1.3, .08],
+      ...wires.map(wire => [wire, Math.max(b.power * into, b.reply, load * .9), 1.6, .3])];
+    for (const [{ mesh, uniforms }, amount, speed, base] of flows) {
+      // Steady: an even glow, a little dimmer than a comet's head.
+      uniforms.uAmount.value = amount * (1 - .4 * steady);
+      uniforms.uBase.value = base + (1 - base) * steady;
       uniforms.uPhase.value = t * speed;
       uniforms.uDir.value = answering ? -1 : 1;
       uniforms.uColor.value.copy(WARM).lerp(COOL, tint);
