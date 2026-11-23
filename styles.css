@@ -622,104 +622,119 @@ html[data-intro] .stage-light { opacity: 0; }
 /* The 3D reader stands in for its picture once the 3D card is ready. */
 .intro .has-card .reader { visibility: hidden; }
 
-/* ---- The close-up after the drop (js/intro/cinema.js) ----
-   The backdrop sits between the 2D layers and the 3D canvas, so the lights go down
-   behind the card and the reader. The words sit above everything. */
-.intro .cine-backdrop {
+/* ---- The close-up (js/intro/cinema.js) ----
+   It stays on paper, like the rest of the page. One readout, where the instructions were,
+   says one thing at a time; the rest of the page steps back while it shows. */
+.intro .cine { position: absolute; inset: 0; z-index: 5; pointer-events: none; color: var(--ink); }
+
+.intro .readout {
   position: absolute;
-  inset: 0;
-  z-index: 2;
+  left: var(--gutter);
+  top: clamp(1.25rem, 8.5dvh, 5.5rem);
+  width: min(34rem, 41vw);
+  padding: 1.1rem 1.3rem 1.25rem;
+  border: 1px solid rgba(13, 13, 12, .07);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, .9);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  backdrop-filter: blur(16px) saturate(1.2);
+  box-shadow: 0 1px 2px rgba(13, 13, 12, .04), 0 22px 50px -18px rgba(13, 13, 12, .22);
   opacity: 0;
-  pointer-events: none;
-  background: radial-gradient(120% 95% at 50% 52%, #1e1d1b 0%, #0e0e0d 60%, #060606 100%);
+  visibility: hidden;
+  pointer-events: auto;
 }
 
-.intro .cine { position: absolute; inset: 0; z-index: 5; pointer-events: none; color: #f3f0ea; }
-.intro .cine-lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.intro .cine-lines g { opacity: 0; }
-.intro .cine-lines path { fill: none; stroke: rgba(243, 240, 234, .7); stroke-width: 1.2; stroke-dasharray: 1; }
-.intro .cine-lines circle { fill: #f3f0ea; }
-
-/* Slow motion, with the real time the exchange has taken so far. */
-.intro .cine-badge {
-  position: absolute;
-  top: clamp(1.4rem, 5dvh, 3rem);
-  right: var(--gutter);
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: .35rem;
-  opacity: 0;
-  font-size: .74rem;
-  font-weight: 600;
-  letter-spacing: .09em;
+/* The numbers: small labels, steady monospaced values, a thin bar under each. */
+.intro .readout-meters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  padding-bottom: .95rem;
+  border-bottom: 1px solid rgba(13, 13, 12, .08);
+}
+.intro .readout-meter { display: grid; gap: .22rem; min-width: 0; margin: 0; }
+.intro .readout-meter small {
+  overflow: hidden;
+  font-size: .66rem;
+  font-weight: 650;
+  letter-spacing: .08em;
+  text-overflow: ellipsis;
   text-transform: uppercase;
-  color: rgba(243, 240, 234, .66);
+  white-space: nowrap;
+  color: var(--muted);
 }
-.intro .cine-badge span::before {
-  content: "";
-  display: inline-block;
-  width: .5rem;
-  height: .5rem;
-  margin-right: .55rem;
-  border-radius: 50%;
-  background: #ff5a48;
-  vertical-align: .02em;
-}
-.intro .cine-clock {
-  font: 600 clamp(1.4rem, 2.6vw, 2.2rem)/1 "JetBrains Mono", ui-monospace, monospace;
+.intro .readout-meter b {
+  font: 600 clamp(1rem, 1.45vw, 1.22rem)/1.15 "JetBrains Mono", ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0;
-  text-transform: none;
-  color: #f3f0ea;
+  letter-spacing: -.02em;
+  white-space: nowrap;
 }
-
-/* "This is a reader." and "This is a passive tag." */
-.intro .cine-note { position: absolute; width: min(30vw, 25rem); opacity: 0; }
-.intro .cine-note p {
-  margin: 0;
-  font-size: clamp(1rem, 1.5vw, 1.25rem);
-  font-weight: 500;
-  line-height: 1.38;
-  color: rgba(243, 240, 234, .8);
-}
-.intro .cine-note .cine-note-title {
-  margin-bottom: .5rem;
-  font-size: clamp(1.7rem, 3.2vw, 2.9rem);
-  font-weight: 800;
-  line-height: 1.02;
-  letter-spacing: -.035em;
-  color: #fff;
-}
-.intro .cine-note-reader { left: 63%; top: 28%; }
-.intro .cine-note-tag { left: var(--gutter); top: 24%; }
-
-/* One caption per step of the exchange. */
-.intro .cine-step {
-  position: absolute;
-  left: 50%;
-  bottom: clamp(4.5rem, 13dvh, 8rem);
-  width: min(90%, 42rem);
-  transform: translateX(-50%);
-  text-align: center;
-  opacity: 0;
-}
-.intro .cine-step-number {
+.intro .readout-meter i {
+  position: relative;
   display: block;
-  margin-bottom: .55rem;
-  font: 600 .78rem/1 "JetBrains Mono", ui-monospace, monospace;
-  letter-spacing: .14em;
-  color: rgba(243, 240, 234, .58);
+  height: 4px;
+  margin-top: .3rem;
+  overflow: hidden;
+  border-radius: 99px;
+  background: rgba(13, 13, 12, .08);
 }
-.intro .cine-step-text {
-  margin: 0;
-  font-size: clamp(1.35rem, 2.7vw, 2.3rem);
-  font-weight: 700;
-  line-height: 1.1;
+.intro .readout-meter i::after {
+  content: "";
+  position: absolute;
+  inset: 0 calc((1 - var(--to, 0)) * 100%) 0 calc(var(--from, 0) * 100%);
+  border-radius: inherit;
+  background: var(--ink);
+  transition: inset .25s ease-out;
+}
+.intro .readout-power i::after { background: #f26a0c; }
+/* The frequency's bar is a wave that keeps running. */
+.intro .readout-frequency i.readout-wave {
+  height: 8px;
+  margin-top: .2rem;
+  border-radius: 0;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='8'%3E%3Cpath d='M0 4C3 .5 9 .5 12 4s9 3.5 12 0' fill='none' stroke='%23f26a0c' stroke-width='1.7'/%3E%3C/svg%3E") 0 50% / 24px 8px repeat-x;
+  animation: readout-wave 1s linear infinite;
+}
+.intro .readout-frequency i.readout-wave::after { content: none; }
+@keyframes readout-wave { to { background-position: 24px 50%; } }
+
+/* The one sentence. */
+.intro .readout-text {
+  min-height: 2.32em;
+  margin: .95rem 0 0;
+  font-size: clamp(1.25rem, 2vw, 1.8rem);
+  font-weight: 720;
+  line-height: 1.16;
   letter-spacing: -.028em;
-  color: #fff;
+  text-wrap: pretty;
 }
+
+/* After the drop: Back, where you are, Next. */
+.intro .readout-nav { display: flex; align-items: center; gap: .8rem; margin-top: 1.1rem; }
+.intro .readout-dots { display: flex; gap: .38rem; margin: 0 auto 0 .2rem; padding: 0; list-style: none; }
+.intro .readout-dots li {
+  width: .45rem;
+  height: .45rem;
+  border-radius: 99px;
+  background: rgba(13, 13, 12, .16);
+  transition: width .3s ease, background-color .3s ease;
+}
+.intro .readout-dots .is-done { background: rgba(13, 13, 12, .45); }
+.intro .readout-dots .is-now { width: 1.35rem; background: var(--ink); }
+.intro .readout-count { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.intro :is(.readout-back, .readout-next) {
+  min-height: 2.75rem;
+  padding: .35rem 1.1rem;
+  border-radius: 999px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background-color .2s ease, color .2s ease, opacity .2s ease;
+}
+.intro .readout-back { border: 1px solid rgba(13, 13, 12, .18); color: var(--ink); background: transparent; }
+.intro .readout-back:hover:not(:disabled) { background: rgba(13, 13, 12, .06); }
+.intro .readout-back:disabled { opacity: .35; cursor: default; }
+.intro .readout-next { border: 1px solid var(--ink); color: var(--paper); background: var(--ink); }
+.intro .readout-next:hover { background: #2a2926; }
 
 /* The check mark: the green disc grows, then the tick draws itself. --draw runs 0 to 1. */
 .intro .cine-check {
@@ -794,24 +809,6 @@ html[data-intro] .stage-light { opacity: 0; }
 .intro .retry:hover { color: var(--paper); background: var(--ink); }
 .intro .replay:hover { background: #2a2926; }
 
-.intro .cine-skip {
-  position: absolute;
-  right: var(--gutter);
-  bottom: clamp(1rem, 3.25dvh, 2.75rem);
-  min-height: 2.6rem;
-  padding: .3rem 1.1rem;
-  border: 1px solid rgba(243, 240, 234, .42);
-  border-radius: 999px;
-  color: #f3f0ea;
-  background: rgba(13, 13, 12, .4);
-  font-size: .92rem;
-  font-weight: 600;
-  cursor: pointer;
-  pointer-events: auto;
-}
-.intro .cine-skip:hover { background: rgba(243, 240, 234, .14); }
-.intro .cine-skip:focus-visible { outline-color: #f3f0ea; }
-
 .intro.enhanced .hud {
   z-index: 6;
   bottom: clamp(1rem, 3.25dvh, 2.75rem);
@@ -873,13 +870,13 @@ html[data-intro] .stage-light { opacity: 0; }
     bottom: 19%;
     font-size: clamp(1.38rem, min(5.8vw, 5.4dvh), 2.6rem);
   }
-  /* The close-up on a phone: the parts stay at the top, the words go underneath. */
-  .intro .cine-note { left: var(--gutter); right: var(--gutter); top: auto; bottom: 22%; width: auto; }
-  .intro .cine-note .cine-note-title { font-size: clamp(1.5rem, 7.2vw, 2.3rem); }
-  .intro .cine-note p { font-size: clamp(.98rem, 4.2vw, 1.15rem); }
-  .intro .cine-step { bottom: 11.5%; }
-  .intro .cine-step-text { font-size: clamp(1.25rem, 6vw, 1.8rem); }
-  .intro .cine-badge { top: clamp(1rem, 3dvh, 2rem); font-size: .66rem; }
+  /* The close-up on a phone: the readout across the top, the parts underneath. */
+  .intro .readout { left: var(--gutter); right: var(--gutter); top: clamp(.75rem, 2.5dvh, 1.5rem); width: auto; padding: .9rem 1rem 1rem; border-radius: 20px; }
+  .intro .readout-meters { gap: .6rem; padding-bottom: .75rem; }
+  .intro .readout-meter small { font-size: .58rem; letter-spacing: .06em; }
+  .intro .readout-meter b { font-size: clamp(.85rem, 3.7vw, 1rem); }
+  .intro .readout-text { margin-top: .75rem; font-size: clamp(1.08rem, 4.9vw, 1.4rem); }
+  .intro .readout-nav { margin-top: .85rem; gap: .5rem; }
   .intro .cine-explain { left: var(--gutter); right: var(--gutter); top: 5%; width: auto; transform: none; }
   .intro .cine-explain h3 { font-size: clamp(1.8rem, 8.4vw, 2.6rem); }
   .intro .cine-explain p { font-size: clamp(.95rem, 4vw, 1.08rem); }

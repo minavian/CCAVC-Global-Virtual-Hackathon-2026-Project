@@ -1,145 +1,155 @@
-// The close-up after the card is dropped on the reader: one slow-motion shot that zooms
-// into the reader and the card and shows the whole exchange. Everything here is a pure
-// function of the shot's clock `c` (seconds), so the shot can be skipped, replayed or
-// paused on any frame. js/intro/main.js runs the clock; card-scene.js draws the 3D;
-// effects.js draws the waves, sparks and bits.
-import { clamp, monotone, smoother } from './easing.js';
-import { TOP, COIL_Z, CHIP as READER_CHIP } from './reader-model.js';
+// The close-up of a tap. It is driven by the visitor, not by a clock:
+// - While the card is dragged toward the reader, everything follows how far away it is
+//   (`approach`): the reader's field, the current in the card's coil, the chip's power.
+// - Once the card is dropped on the reader, the visitor steps through the exchange with
+//   Next and Back (`STEPS`). Each step is a live loop that runs for as long as it is shown.
+// Both give a set of target levels (`IDLE` lists them) and a camera (`view`); main.js
+// glides what is shown toward them, card-scene.js draws the 3D and effects.js the waves,
+// the current and the bits.
+import { clamp, smoother } from './easing.js';
+import { TOP, COIL_Z, CHIP as READER_CHIP } from './reader-size.js';
 
-export const LENGTH = 25;      // seconds, from the drop to the explanation
-export const SKIP_TO = 22.8;   // Skip jumps here: the camera pulls back and the lights come up
-export const REAL_MS = 5;      // what the exchange takes in real life, in milliseconds
-const EXCHANGE = [11, 22];     // the part of the shot that shows those 5 ms
+export const MHZ = '13.56';   // the carrier of bank and metro cards (ISO 14443), in MHz
 
-// Where the card lies over the reader (metres, in the reader's frame), and how high
-// above the reader's top it floats. It hovers high while you meet the two parts, comes
-// down for the exchange and settles onto the reader at the end.
+// Where the card lies over the reader (metres, in the reader's frame), and the reader's
+// resting angle: tipped back to show its top and front.
 export const HOVER = { x: .002, y: -.003, spin: -.1 };
-const gapTrack = monotone([[0, .036], [2.4, .03], [6, .028], [11, .021], [13, .013], [22.4, .012], [24.6, .0016]]);
+export const REST = { tilt: .68, spin: -.3, yaw: .2 };
 
-// The step captions during the exchange: [start time, words].
-export const STEPS = [
-  [11.4, 'The reader’s coil sends out a signal.'],
-  [13.0, 'The tag’s coil catches it.'],
-  [14.6, 'Electricity sparks across to the chip.'],
-  [16.0, 'The chip wakes up and blinks.'],
-  [17.4, 'The chip answers through the coil.'],
-  [19.2, 'The reader reads and checks it.'],
-  [21.0, 'Verified. Card detected.'],
-];
+// Distance. The drag happens on a flat screen, so how far the card is from the reader's
+// centre (`zone`: 1 is the edge of the drop zone) is turned into centimetres. The drop
+// zone's edge is about 4 cm, where a real card wakes up; the nearest is half a centimetre.
+export const NEAREST = .5, FARTHEST = 10, WAKE_CM = 4;
+export const centimetres = zone => clamp(NEAREST + (zone - .25) * 4.75, NEAREST, FARTHEST);
 
-const window_ = (c, start, end, rise = .4, fall = .4) => smoother(start, start + rise, c) * (1 - smoother(end - fall, end, c));
-// Three soft blinks between `start` and `end`.
-const blinks = (c, start, end, count = 3) => {
-  if (c <= start || c >= end) return 0;
-  const p = (c - start) / (end - start) * count;
-  return Math.sin(Math.PI * (p % 1)) ** 2;
+// The power that reaches the card at `cm`, as a share of what it gets lying on the reader.
+// On the axis of a round coil of radius R, the field falls as (R² / (R² + d²))^1.5, and the
+// power the card can collect goes as the field squared. R is about the reader coil's size.
+const R2 = 3.5 ** 2;
+const field = cm => (R2 / (R2 + cm * cm)) ** 1.5;
+export const power = cm => (field(cm) / field(NEAREST)) ** 2;
+export const WAKE = power(WAKE_CM);   // about 9%: the chip needs this much to start
+
+// Every level main.js glides, at rest. Opacities and strengths run 0 to 1.
+// dock: the card's place, free (0) or lying over the reader (1); gap: its height above
+//   the reader's top, in metres.
+// card, reader: each object as a whole (focus dims the one not being shown to 15% or less).
+// xray: the card's shell turns see-through. copper: the card's coils. shell: the reader's
+//   body (low shows its coil, board and chip).
+// emit, field: current in the reader's coil and the field rising from it. receive: current
+//   in the card's coils. power: current into the chip. blink: the chip working.
+// reply, bits: the card's answer. read, thinking: the reader taking the answer in and
+//   checking it. check: the check mark.
+// page: the rest of the page (instructions, scroll guide). panel: the readout. explain:
+//   the explanation at the end.
+export const IDLE = {
+  dock: 0, gap: .034, card: 1, xray: 0, copper: 1, reader: 1, shell: 1,
+  emit: 0, field: 0, receive: 0, power: 0, blink: 0, reply: 0, bits: 0, read: 0, thinking: 0,
+  check: 0, page: 1, panel: 0, explain: 0,
 };
+const DIM = .12;   // what is not being shown fades to this
 
-export function beats(c) {
-  const exchange = clamp((c - EXCHANGE[0]) / (EXCHANGE[1] - EXCHANGE[0]));
-  const reply = window_(c, 17.4, 19.9, .35, .5);
-  const read = window_(c, 19.2, 21.7, .4, .6);
-  let step = -1;
-  STEPS.forEach(([at], i) => { if (c >= at) step = i; });
+// While the card is dragged: the levels at `cm` from the reader.
+export function approach(cm) {
+  const reach = smoother(9, 6.5, cm);          // the close-up comes in as the card comes near
+  const share = power(cm);
   return {
-    c,
-    dark: window_(c, 0, 24.4, 1.4, 1.6),           // the lights go down, then come back up
-    // The card was moving when it was dropped. Time slows: it keeps going, slower and
-    // slower, until it floats over the reader.
-    dock: c <= 0 ? 0 : (1 - Math.exp(-2.6 * Math.min(c, 3))) / (1 - Math.exp(-7.8)),
-    gap: gapTrack(c) + .0006 * Math.sin(c * 1.3) * window_(c, 1, 22.5, 1, 1),
-    cardFade: 1 - .93 * window_(c, 2.6, 7.0, .7, .7),   // the card drops away: meet the reader
-    xray: window_(c, 6.3, 24.0, .7, 1.0),               // then the card's coil and chip show
-    readerShell: 1 - .87 * window_(c, 2.6, 24.0, .8, 1.0),
-    // The reader drops away to meet the tag, and dims again while the camera is on the chip.
-    readerFade: 1 - Math.max(.9 * window_(c, 6.3, 11.4, .6, .6), .8 * window_(c, 13.3, 17.6, .7, .6)),
-    // The reader's field: shown off when you meet the reader, then on for the whole exchange.
-    emit: Math.max(window_(c, 3.1, 6.3, .5, .5), window_(c, 11.2, 22.4, .5, .8) * (1 - .62 * smoother(13.4, 14.6, c))),
-    rings: Math.max(window_(c, 3.3, 6.2, .5, .5), window_(c, 11.3, 13.9, .4, .8)),
-    hint: window_(c, 7.3, 10.9, .6, .6),             // the card's coil glows while it is named
-    receive: window_(c, 13.0, 17.6, .8, .6),
-    sparks: window_(c, 14.6, 16.4, .25, .4),
-    power: window_(c, 15.3, 22.8, .5, .8),
-    blink: blinks(c, 16.0, 17.4),
-    reply,
-    bits: clamp((c - 17.6) / 2.3),
-    read,
-    thinking: blinks(c, 19.8, 21.2, 4),
-    check: smoother(21.0, 21.9, c),
-    badge: window_(c, .6, 23.2, .5, .6),
-    exchange,
-    ms: REAL_MS * exchange,
-    noteReader: window_(c, 2.9, 6.3, .5, .5),
-    noteTag: window_(c, 7.0, 10.8, .5, .5),
-    step,
-    stepIn: step < 0 ? 0 : smoother(STEPS[step][0], STEPS[step][0] + .35, c) * (1 - smoother(22.4, 22.9, c)),
-    explain: smoother(23.4, 24.4, c),
-    // Phases for the pulses of current running along the coils.
-    flow: c * .9,
-    cardFlow: c < 17.4 ? c * 1.1 : 17.4 * 1.1 - (c - 17.4) * 1.4,
+    ...IDLE,
+    page: 1 - (1 - DIM) * reach,
+    panel: reach,
+    shell: 1 - .88 * reach,                     // the reader shows its coil
+    emit: reach,
+    field: reach,
+    xray: smoother(7.5, 5, cm),                 // the card shows its coil
+    receive: clamp(Math.sqrt(share) * 1.5) * smoother(8, 5.5, cm),
+    power: smoother(WAKE * .75, WAKE * 2.2, share),
+    blink: smoother(.5, .85, share) * .6,
   };
 }
 
-// Named points the camera looks at, in the reader's frame (metres).
-function card(c) { return TOP + gapTrack(c); }
-function chip(c) {
-  const [x, y] = [-.0277, .0031], s = Math.sin(HOVER.spin), k = Math.cos(HOVER.spin);
-  return [HOVER.x + x * k - y * s, HOVER.y + x * s + y * k, card(c)];
+// What the readout says while the card is dragged: one sentence for each band of
+// distance. `before` is the band shown last; a band changes only once the card is
+// .15 cm past its edge, so the words don't flicker on the line.
+const BANDS = [6.5, WAKE_CM, 1.5];
+export const APPROACH_TEXT = [
+  'Closer. The reader’s signal only reaches a few centimetres.',
+  'The signal reaches the card. A small current flows in its coil.',
+  'Closer, the current is strong enough to power the chip.',
+  'The chip is awake. Let go to tap.',
+];
+export function approachBand(cm, before = -1) {
+  let band = BANDS.filter(edge => cm <= edge).length;
+  if (before >= 0 && band !== before) {
+    const edge = BANDS[Math.min(band, before)];
+    if (Math.abs(cm - edge) < .15) band = before;
+  }
+  return band;
 }
-const focus = {
+
+// After the drop: the exchange, one step at a time. `ms` is when it happens in a real tap
+// (round numbers; the whole exchange takes about 5 ms). `shot` names the camera.
+export const REAL_MS = 5;
+export const STEPS = [
+  { text: 'The reader sends out a radio signal: 13.56 million waves a second.', ms: [0, .1], shot: 'field',
+    levels: { card: DIM, xray: 1, shell: .1, emit: 1, field: 1 } },
+  { text: 'The signal makes a current flow round the card’s coil.', ms: [.1, .3], shot: 'coil',
+    levels: { xray: 1, reader: DIM, shell: .5, emit: .6, field: .5, receive: 1 } },
+  { text: 'The current flows into the chip and powers it. No battery needed.', ms: [.3, 1], shot: 'power',
+    levels: { xray: 1, reader: DIM, shell: .5, emit: .4, receive: .8, power: 1 } },
+  { text: 'The chip wakes up and works out its answer.', ms: [1, 1.2], shot: 'wake',
+    levels: { xray: 1, copper: .35, reader: DIM, shell: .5, receive: .25, power: .7, blink: 1 } },
+  { text: 'The chip answers through the same coil.', ms: [1.2, 3], shot: 'answer',
+    levels: { xray: 1, shell: .1, emit: .2, power: .5, reply: 1, bits: 1 } },
+  { text: 'The reader reads the answer and checks it.', ms: [3, 5], shot: 'read',
+    levels: { card: DIM, xray: 1, shell: .1, emit: .15, read: 1, thinking: 1 } },
+  { text: 'Verified. Card detected.', ms: [5, 5], shot: 'done',
+    levels: { gap: .0016, check: 1 } },
+  { text: '', ms: [5, 5], shot: 'rest', explain: true,
+    levels: { gap: .0016, check: 1, page: 1, panel: 0, explain: 1 } },
+].map(step => ({ ...step, levels: { ...IDLE, dock: 1, gap: .012, page: DIM, panel: 1, ...step.levels } }));
+// A drag has just shown the first two steps live, so a drop starts at the third.
+export const AFTER_DRAG = 2;
+export const LAST = STEPS.length - 1;
+
+// Points the camera looks at, in the reader's frame (metres). `gap` is the card's height.
+const cardZ = gap => TOP + gap;
+const FOCUS = {
   reader: () => [0, 0, 0],
   top: () => [0, 0, TOP],
-  gap: c => [0, 0, (TOP + card(c)) / 2],
-  card: c => [HOVER.x, HOVER.y, card(c)],
-  coil: c => [HOVER.x + .02, HOVER.y - .012, (COIL_Z + card(c)) / 2],
-  chip: c => chip(c),
-  readerChip: () => [READER_CHIP.x, READER_CHIP.y, READER_CHIP.z],
+  gap: gap => [0, 0, (TOP + cardZ(gap)) / 2],
+  card: gap => [HOVER.x, HOVER.y, cardZ(gap)],
+  chip: gap => {
+    const [x, y] = [-.0277, .0031], s = Math.sin(HOVER.spin), k = Math.cos(HOVER.spin);
+    return [HOVER.x + x * k - y * s, HOVER.y + x * s + y * k, cardZ(gap)];
+  },
+  readerChip: () => [READER_CHIP.x, READER_CHIP.y, (READER_CHIP.z + COIL_Z) / 2],
 };
 
-// The reader's resting angle, as in the picture: tipped back to show its top and front.
-export const REST = { tilt: .68, spin: -.3, yaw: .2 };
+// The camera for each step: zoom, what it looks at, where that sits on screen (shares of
+// the stage; the readout takes the left on a wide screen and the top on a phone), and the
+// viewing angle.
+const SHOTS = {
+  field: { zoom: 2, focus: 'gap', at: [.63, .58], tilt: 1.12, spin: -.34, yaw: .05 },
+  coil: { zoom: 2.1, focus: 'card', at: [.63, .56], tilt: .62, spin: -.5, yaw: 0 },
+  power: { zoom: 7, focus: 'chip', at: [.63, .55], tilt: .78, spin: -.7, yaw: .03 },
+  wake: { zoom: 10.5, focus: 'chip', at: [.63, .55], tilt: .7, spin: -.78, yaw: .03 },
+  answer: { zoom: 3.3, focus: 'gap', at: [.63, .56], tilt: 1.04, spin: -.84, yaw: .02 },
+  read: { zoom: 3.1, focus: 'readerChip', at: [.63, .56], tilt: 1.1, spin: -.9, yaw: .02 },
+  done: { zoom: 2.1, focus: 'top', at: [.63, .58], tilt: .96, spin: -.92, yaw: .03 },
+};
 
-// The camera, shot by shot: [time, zoom, look at, where it sits on screen (x, y as shares
-// of the stage), tilt, spin, yaw]. Between shots every number glides on a monotone curve,
-// so the camera never stops dead or swings past a mark.
-function shots(rest, compact) {
-  // On a phone the words sit underneath, so the subject is centred and raised.
-  const at = (x, y) => compact ? [.5, y - .1] : [x, y];
-  return [
-    [0, 1, 'reader', rest.x, rest.y, REST.tilt, REST.spin, REST.yaw],
-    [2.4, 1.65, 'gap', ...at(.42, .55), 1.15, -.3, .05],
-    [5.9, 1.85, 'top', ...at(.4, .58), 1.06, -.42, .04],
-    [7.0, 1.9, 'card', ...at(.58, .53), .64, -.5, 0],
-    [10.4, 2.15, 'card', ...at(.6, .53), .56, -.58, -.02],
-    [11.6, 2.35, 'gap', ...at(.5, .47), 1.08, -.66, .02],
-    [13.2, 3.3, 'coil', ...at(.5, .47), 1.0, -.72, .02],
-    [14.8, 7.5, 'chip', ...at(.5, .46), .8, -.78, .03],
-    [16.6, 10.5, 'chip', ...at(.5, .46), .7, -.82, .03],
-    [17.7, 3.4, 'gap', ...at(.5, .52), 1.02, -.86, .02],
-    [19.4, 3.1, 'readerChip', ...at(.5, .5), 1.1, -.9, .02],
-    [21.0, 2.4, 'top', ...at(.5, .5), .96, -.92, .03],
-    [22.8, 2.2, 'top', ...at(.5, .5), .96, -.92, .03],
-    [24.6, 1, 'reader', rest.x, rest.y, REST.tilt, REST.spin, REST.yaw],
-  ];
+// A camera: { zoom, focus: [x, y, z], at: [x, y], tilt, spin, yaw }. `rest` is where the
+// reader's centre sits on the stage at rest, as shares of its width and height.
+export function view(name, gap, rest, compact) {
+  const shot = SHOTS[name];
+  if (!shot) return { zoom: 1, focus: FOCUS.reader(), at: [rest.x, rest.y], ...REST };
+  const at = compact ? [.5, shot.at[1] + .06] : shot.at;
+  const zoom = compact && shot.zoom > 1 ? shot.zoom * .9 : shot.zoom;
+  return { zoom, focus: FOCUS[shot.focus](gap), at, tilt: shot.tilt, spin: shot.spin, yaw: shot.yaw };
 }
 
-// Builds the camera for a stage. `rest` is where the reader's centre sits on the stage
-// at rest, as shares of its width and height.
-export function camera(rest, compact) {
-  const list = shots(rest, compact);
-  const curve = index => monotone(list.map(row => [row[0], row[index]]));
-  const zoom = monotone(list.map(row => [row[0], Math.log(row[1] * (compact && row[1] > 1 ? .9 : 1))]));
-  const x = curve(3), y = curve(4), tilt = curve(5), spin = curve(6), yaw = curve(7);
-  // The point looked at also glides from one target to the next.
-  const fx = [], fy = [], fz = [];
-  for (const row of list) {
-    const p = focus[row[2]](row[0]);
-    fx.push([row[0], p[0]]); fy.push([row[0], p[1]]); fz.push([row[0], p[2]]);
-  }
-  const [px, py, pz] = [fx, fy, fz].map(monotone);
-  return c => ({
-    zoom: Math.exp(zoom(c)), focus: [px(c), py(c), pz(c)], anchor: [x(c), y(c)],
-    tilt: tilt(c), spin: spin(c), yaw: yaw(c),
-  });
+// While the card is dragged, the camera pushes in on the reader as the card comes near,
+// keeping the reader where it stands, so the place to drop it never moves.
+export function approachView(cm, rest, compact) {
+  return { zoom: 1 + (compact ? .18 : .28) * smoother(9, 1, cm), focus: FOCUS.reader(), at: [rest.x, rest.y], ...REST };
 }
