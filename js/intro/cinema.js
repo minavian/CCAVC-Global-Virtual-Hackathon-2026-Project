@@ -83,6 +83,13 @@ export const APPROACH_TEXT = [
   'Closer, the current is strong enough to power the chip.',
   'The chip is awake. Let go to tap.',
 ];
+// The line of small print under each sentence, while the card is dragged.
+export const APPROACH_DETAIL = [
+  'Keep moving the card toward the reader.',
+  'Not enough power for the chip yet.',
+  'Watch the chip power fill up.',
+  'Drop it to watch the tap slowed down.',
+];
 export function approachBand(cm, before = -1) {
   let band = BANDS.filter(edge => cm <= edge).length;
   if (before >= 0 && band !== before) {
@@ -98,21 +105,30 @@ export function approachBand(cm, before = -1) {
 // the card and the reader, and the message flows along the river (river.js). In the `ask`
 // step the visitor plays the reader: nothing is sent until they press Ask.
 export const REAL_MS = 5;
+// `detail` is the line of small print under the sentence (`askingDetail` once the question
+// is on its way).
 export const STEPS = [
-  { text: 'The reader sends out a radio signal.', ms: [0, .1], shot: 'field',
+  { text: 'The reader sends out a radio signal.', detail: 'It comes from a copper coil inside the reader.',
+    ms: [0, .1], shot: 'field',
     levels: { card: .28, xray: 1, shell: .1, emit: 1, field: 1 } },
-  { text: 'The signal makes a current in the card’s coil.', ms: [.1, .3], shot: 'coil',
+  { text: 'The signal makes a current in the card’s coil.', detail: 'The card has a copper coil too, round its edge.',
+    ms: [.1, .3], shot: 'coil',
     levels: { xray: 1, reader: DIM, shell: .5, emit: .6, field: .5, receive: 1 } },
-  { text: 'The current powers the chip. No battery needed.', ms: [.3, 1], shot: 'power',
+  { text: 'The current powers the chip. No battery needed.', detail: 'The chip runs on it while the card is near.',
+    ms: [.3, 1], shot: 'power',
     levels: { xray: 1, reader: DIM, shell: .5, emit: .4, receive: .8, power: 1, blink: .5, charge: 1 } },
-  { text: 'Your turn. Ask the card who it is.', asking: 'The reader asks: who are you?', ms: [1, 1.5],
-    shot: 'ask', talk: 'ask',
+  { text: 'Your turn. Ask the card who it is.', detail: 'Press Ask to send the reader’s question.',
+    asking: 'The reader asks: who are you?', askingDetail: 'Chip to coil, across the gap, coil to chip.',
+    ms: [1, 1.5], shot: 'ask', talk: 'ask',
     levels: { xray: 1, shell: .14, emit: .3, receive: .35, power: .7, charge: 1, dark: 1, river: 1 } },
-  { text: 'The chip answers with its ID.', ms: [1.5, 2.5], shot: 'answer', talk: 'answer',
+  { text: 'The chip answers with its ID.', detail: 'Same way back: four ID bytes and a check byte.',
+    ms: [1.5, 2.5], shot: 'answer', talk: 'answer',
     levels: { xray: 1, shell: .14, emit: .2, power: .6, blink: .4, charge: 1, dark: 1, river: 1 } },
-  { text: 'The reader checks the ID.', ms: [2.5, 5], shot: 'read',
+  { text: 'The reader checks the ID.', detail: 'The check byte must match the four ID bytes.',
+    ms: [2.5, 5], shot: 'read',
     levels: { card: DIM, xray: 1, shell: .1, emit: .15, read: 1, thinking: 1, charge: 1 } },
-  { text: 'Verified. Card detected.', ms: [5, 5], shot: 'done',
+  { text: 'Verified. Card detected.', detail: 'The whole tap took about 5 milliseconds.',
+    ms: [5, 5], shot: 'done',
     levels: { gap: .0016, check: 1, charge: 1 } },
   { text: '', ms: [5, 5], shot: 'rest', explain: true,
     levels: { gap: .0016, check: 1, page: 1, panel: 0, explain: 1, charge: 1 } },
@@ -198,20 +214,20 @@ const FOCUS = {
 };
 
 // The camera for each step: zoom, what it looks at, where that sits on screen (shares of
-// the stage; the readout takes the left on a wide screen and the top on a phone), the
-// viewing angle, and the lens: `fov` is its field of view in degrees, 0 for none (flat,
+// the stage; the readout runs along the bottom, in the middle, so the parts sit above it),
+// the viewing angle, and the lens: `fov` is its field of view in degrees, 0 for none (flat,
 // like a plan drawing). Between shots the lens widens as the camera moves in, so the
 // framing holds while the depth opens up (a dolly zoom).
 export const SHOTS = {
-  field: { zoom: 2.15, focus: 'gap', at: [.64, .6], tilt: 1.3, spin: -.3, yaw: .04, fov: 26 },
-  coil: { zoom: 2, focus: 'card', at: [.64, .56], tilt: .66, spin: -.5, yaw: 0, fov: 14 },
-  power: { zoom: 7.5, focus: 'chip', at: [.64, .55], tilt: .82, spin: -.72, yaw: .03, fov: 18 },
+  field: { zoom: 2.15, focus: 'gap', at: [.5, .42], tilt: 1.3, spin: -.3, yaw: .04, fov: 26 },
+  coil: { zoom: 2, focus: 'card', at: [.5, .4], tilt: .66, spin: -.5, yaw: 0, fov: 14 },
+  power: { zoom: 7.5, focus: 'chip', at: [.5, .4], tilt: .82, spin: -.72, yaw: .03, fov: 18 },
   // The conversation: low between the card and the reader, the lens wide open.
-  // `phone` is the framing on a narrow screen, where the readout takes the top.
-  ask: { zoom: 2.3, focus: 'river', at: [.6, .62], tilt: 1.3, spin: .35, yaw: -.02, fov: 50, phone: { at: [.48, .7], zoom: 1.36 } },
-  answer: { zoom: 2.5, focus: 'river', at: [.58, .6], tilt: 1.12, spin: 1.25, yaw: .05, fov: 58, phone: { at: [.5, .68], zoom: 1.55 } },
-  read: { zoom: 2.5, focus: 'readerChip', at: [.64, .5], tilt: .92, spin: -.75, yaw: .02, fov: 16 },
-  done: { zoom: 2.1, focus: 'top', at: [.63, .58], tilt: .96, spin: -.92, yaw: .03, fov: 0 },
+  // `phone` is the framing on a narrow screen.
+  ask: { zoom: 2.3, focus: 'river', at: [.5, .44], tilt: 1.3, spin: .35, yaw: -.02, fov: 50, phone: { at: [.5, .38], zoom: 1.8 } },
+  answer: { zoom: 2.5, focus: 'river', at: [.5, .42], tilt: 1.12, spin: 1.25, yaw: .05, fov: 58, phone: { at: [.5, .38], zoom: 1.9 } },
+  read: { zoom: 2.2, focus: 'readerChip', at: [.5, .4], tilt: .92, spin: -.75, yaw: .02, fov: 16 },
+  done: { zoom: 2.1, focus: 'top', at: [.5, .42], tilt: .96, spin: -.92, yaw: .03, fov: 0 },
 };
 
 // A camera: { zoom, focus: [x, y, z], at: [x, y], tilt, spin, yaw, fov }. `rest` is where
@@ -219,7 +235,7 @@ export const SHOTS = {
 export function view(name, gap, rest, compact) {
   const shot = SHOTS[name];
   if (!shot) return { zoom: 1, focus: FOCUS.reader(), at: [rest.x, rest.y], ...REST, fov: 0 };
-  const at = compact ? shot.phone?.at ?? [.5, shot.at[1] + .1] : shot.at;
+  const at = compact ? shot.phone?.at ?? [.5, shot.at[1] - .03] : shot.at;
   const zoom = compact ? shot.phone?.zoom ?? (shot.zoom > 1 ? shot.zoom * .82 : shot.zoom) : shot.zoom;
   return { zoom, focus: FOCUS[shot.focus](gap), at, tilt: shot.tilt, spin: shot.spin, yaw: shot.yaw, fov: shot.fov };
 }

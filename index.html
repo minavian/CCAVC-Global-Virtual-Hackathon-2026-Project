@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
-  <link rel="stylesheet" href="styles.css?v=11">
+  <link rel="stylesheet" href="styles.css?v=12">
   <script type="importmap">
     {"imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -42,7 +42,7 @@
   <script src="js/deep.js" defer></script>
   <script src="js/landing.js?v=6" defer></script>
   <script type="module" src="js/taps.js"></script>
-  <script type="module" src="js/intro/main.js?v=16"></script>
+  <script type="module" src="js/intro/main.js?v=17"></script>
 </head>
 <body>
   <main class="hero">
@@ -130,27 +130,31 @@
       </div>
       <button class="drag-card" type="button" aria-label="Tap the card on the reader" aria-describedby="drag-instruction" hidden></button>
       <!-- The close-up (js/intro/cinema.js), placed by js/intro/main.js (paintFilm). One
-           readout, in the instructions' place, says one thing at a time: the radio
-           frequency, how far the card is (or when it happens in a real tap), the chip's
-           power, and one sentence. After the drop, Back and Next step through the tap; in the
-           conversation Next becomes Ask, and a label rides on each message (js/intro/river.js). -->
+           readout, like a subtitle along the bottom, says one thing at a time: one
+           sentence, a line of small print under it, then the radio frequency, how far the
+           card is (or when it happens in a real tap) and the chip's power. After the drop,
+           the arrows on its sides step through the tap; in the conversation the right one
+           becomes Ask, and a label names each message (js/intro/river.js). -->
       <div class="cine">
         <section class="readout" aria-label="What is happening now">
+          <div class="readout-words" aria-live="polite">
+            <p class="readout-text"></p>
+            <p class="readout-detail"></p>
+          </div>
           <div class="readout-meters" aria-hidden="true">
             <p class="readout-meter readout-frequency"><small>Radio frequency</small><b>13.56 MHz</b><i class="readout-wave"></i></p>
             <p class="readout-meter readout-middle"><small>Distance</small><b>10.0 cm</b><i></i></p>
             <p class="readout-meter readout-power"><small>Chip power</small><b>0%</b><i></i></p>
           </div>
-          <p class="readout-text" aria-live="polite"></p>
           <div class="readout-nav" hidden>
-            <button class="readout-back" type="button"><span aria-hidden="true">←</span> Back</button>
+            <button class="readout-back" type="button" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg></button>
             <ol class="readout-dots" aria-hidden="true"><li></li><li></li><li></li><li></li><li></li><li></li><li></li></ol>
             <span class="readout-count"></span>
-            <button class="readout-next" type="button">Next <span aria-hidden="true">→</span></button>
+            <button class="readout-next" type="button" aria-label="Next"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5.5 16 12l-6.5 6.5"/></svg></button>
           </div>
+          <p class="cine-hint" aria-hidden="true">Drag to look around</p>
         </section>
         <p class="river-tag" aria-hidden="true"></p>
-        <p class="cine-hint" aria-hidden="true">Drag to look around</p>
         <svg class="cine-check" viewBox="0 0 64 64" aria-hidden="true">
           <circle cx="32" cy="32" r="27" pathLength="1"/>
           <path d="M20 33.5l8.5 8.5L45 24.5" pathLength="1"/>
