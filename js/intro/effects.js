@@ -246,7 +246,9 @@ export function buildEffects() {
     stream(up, t, b.field * (said?.dir > 0 ? .12 + .88 * amp : 1) * (1 - .5 * paper), AT_READER, to, COIL_Z + .0004, top, halo);
     // Down: the answer, from the card's coil to the reader's. It swells each time the card
     // closes its switch.
-    stream(down, t, b.reply * (said?.dir < 0 ? .35 + .65 * load : 1), AT_CARD, AT_READER, top, COIL_Z + .0004, halo);
+    // (Once the answer has landed, full strength: then only a still frame, with reduced
+    // motion, still shows it; blended over the landing, so nothing jumps.)
+    stream(down, t, b.reply * (said?.dir < 0 ? lerp(.35 + .65 * load, 1, said.landed) : 1), AT_CARD, AT_READER, top, COIL_Z + .0004, halo);
 
     // The reader's chip beats while it checks, and flashes as it reads each byte of the answer.
     const beat = .5 + .5 * Math.sin(t * Math.PI * 2 * 1.4);

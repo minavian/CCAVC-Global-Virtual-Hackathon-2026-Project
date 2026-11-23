@@ -616,6 +616,9 @@ function intro(experience) {
       // With reduced motion, a message shows finished, on one still frame.
       said = plan.talk && talk?.name === plan.talk ? message(talk.name, reduce.matches ? 99 : clock - talk.start) : null;
       goal = said ? talkLevels(plan.levels, said) : plan.levels;
+      // With reduced motion the answer's one still frame keeps it on its way down to the
+      // reader, so the picture still shows which way it goes.
+      if (said && reduce.matches && said.dir < 0) goal = { ...goal, reply: plan.levels.reply };
       // Aim where the card is going, so the camera and the card arrive together.
       look = view(plan.shot, goal.gap, rest, layout.compact);
       if (plan.talk && !reduce.matches) {
