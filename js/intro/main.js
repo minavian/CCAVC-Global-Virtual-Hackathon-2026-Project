@@ -318,10 +318,16 @@ function intro(experience) {
     }
 
     if (docked) {
-      const plan = STEPS[step], { ms: [from, to] } = plan;
-      const asking = plan.talk === 'ask' && talk;
-      const text = asking ? plan.asking : plan.text;
-      if (text) say(text, asking ? plan.askingDetail : plan.detail);
+      const plan = STEPS[step], { ms: [from, to] } = plan, msg = b.message;
+      // In the conversation the small print says where the message is (cinema.js `stages`),
+      // and while the card's chip works on the question, the readout says so.
+      let text = plan.text, detail = plan.detail;
+      if (plan.talk === 'ask' && talk) { text = plan.asking; detail = plan.stages[msg?.stage ?? 'wire']; }
+      else if (plan.talk === 'answer' && msg) {
+        if (!msg.started) { text = plan.waiting; detail = plan.waitingDetail; }
+        else detail = plan.stages[msg.stage];
+      }
+      if (text) say(text, detail);
       film.middleLabel.textContent = 'Real time';
       const said = b.message?.started && !b.message.done ? b.message : null;
       // While a message is on the air, the real time it has taken so far (in µs steps), so
