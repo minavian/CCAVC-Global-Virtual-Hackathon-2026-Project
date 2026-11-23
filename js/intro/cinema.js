@@ -264,8 +264,8 @@ export const STEPS = [
       flowReader: .3, flowGap: .45, flowCard: 1, flowChip: .3 } },
   { text: 'That electricity powers the chip. No battery.', detail: 'The reader is the battery.',
     ms: [.3, 1], shot: 'power', labels: ['chip'], hold: 5,
-    levels: { xray: 1, shell: .14, emit: .4, receive: .7, power: 1, blink: .5, charge: 1, dark: 1, river: 1, lines: .45,
-      flux: .3, flowReader: .3, flowGap: .4, flowCard: .65, flowChip: 1 } },
+    levels: { xray: 1, shell: .14, emit: .4, receive: .7, power: 1, blink: .5, charge: 1, dark: 1, river: 1, lines: .3,
+      flux: 0, flowReader: .2, flowGap: .2, flowCard: .55, flowChip: 1 } },
   // `asking`: what the readout says once the question is on its way; `waiting`: while the
   // card's chip works out its answer, before the answer goes out.
   { text: 'Your turn. Ask the card who it is.', detail: 'Its field stays on. That powers the card.',
@@ -316,10 +316,10 @@ export const SHOTS = {
   // `phone` is the framing on a narrow screen.
   // How the card gets its power: the reader's field from the side; the field through the
   // card's coil; the card's coil from above; the chip close up.
-  field: { zoom: 1.75, focus: 'gap', at: [.5, .48], tilt: 1.3, spin: .3, yaw: 0, fov: 40, phone: { at: [.5, .44], zoom: 1.45 } },
-  through: { zoom: 2.2, focus: 'river', at: [.5, .5], tilt: 1.22, spin: .62, yaw: .02, fov: 44, phone: { at: [.5, .44], zoom: 1.7 } },
+  field: { zoom: 1.75, focus: 'gap', at: [.5, .48], tilt: 1.3, spin: .3, yaw: 0, fov: 40, phone: { at: [.5, .44], zoom: 1.75 } },
+  through: { zoom: 2.2, focus: 'river', at: [.5, .5], tilt: 1.22, spin: .62, yaw: .02, fov: 44, phone: { at: [.5, .44], zoom: 2 } },
   current: { zoom: 2.1, focus: 'card', at: [.5, .46], tilt: .82, spin: .45, yaw: .02, fov: 32, phone: { at: [.5, .42], zoom: 1.6 } },
-  power: { zoom: 5.2, focus: 'chip', at: [.5, .44], tilt: .92, spin: .6, yaw: .03, fov: 30, phone: { at: [.5, .42], zoom: 3.6 } },
+  power: { zoom: 3.3, focus: 'chip', at: [.5, .42], tilt: .95, spin: .55, yaw: .03, fov: 30, phone: { at: [.5, .42], zoom: 2.5 } },
   ask: { zoom: 1.9, focus: 'river', at: [.5, .48], tilt: 1.3, spin: .35, yaw: -.02, fov: 50, phone: { at: [.5, .44], zoom: 1.6 } },
   answer: { zoom: 2, focus: 'river', at: [.5, .48], tilt: 1.12, spin: 1.25, yaw: .05, fov: 58, phone: { at: [.5, .44], zoom: 1.7 } },
   // The card's chip at work, between the question and the answer.

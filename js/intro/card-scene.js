@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { buildReader, SIZE, TOP, CHIP as READER_CHIP } from './reader-model.js';
+import { buildReader, SIZE, TOP, COIL_Z, COIL_HALF, CHIP as READER_CHIP } from './reader-model.js';
 import { buildEffects } from './effects.js';
 import { buildRiver } from './river.js';
 import { buildField } from './field.js';
@@ -570,7 +570,8 @@ export async function createCardScene(canvas) {
 
     fx.update(b, TOP + b.gap + .0004, HOVER.spin, { amp, load: sending_ * (.55 + .45 * load), steady });
     river.update({ amount: b.river || 0, amp: field_, load, answer: sending_, process: b.process || 0, clock,
-      pixels: renderer.domElement.height,
+      pixels: renderer.domElement.height, flux: b.flux || 0,
+      parts: [b.flowReader ?? 1, b.flowGap ?? 1, b.flowCard ?? 1, b.flowChip ?? 1],
       reading: said && said.beat > .01 ? { at: said.dir > 0 ? 'card' : 'reader', beat: said.beat } : null });
     field.update({ lines: b.lines || 0, amp: .15 + .85 * field_, echo: b.echo || 0, load, flow: river.phase() });
 
@@ -594,7 +595,23 @@ export async function createCardScene(canvas) {
   }
 
   // Points the close-up's marks are placed by, on screen.
+  // The parts the close-up names, in the reader's frame (the card lying on it, cinema.js
+  // HOVER): the near side of the reader's coil, the top of the field's arch beside the card,
+  // the far end of the card's coil, the near side of the card's coil, and the card's chip.
+  const onCard = (x, y, z) => {
+    const c = Math.cos(HOVER.spin), s = Math.sin(HOVER.spin);
+    return point.set(HOVER.x + x * c - y * s, HOVER.y + x * s + y * c, z);
+  };
+  const PARTS = {
+    readerCoil: () => point.set(COIL_HALF * .45, -COIL_HALF, COIL_Z),
+    field: () => point.set(-.052, -.012, COIL_Z + .03),
+    cardCoil: () => onCard(.0402, .008, TOP + .0124),
+    current: () => onCard(.012, -.024, TOP + .0124),
+    cardChip: () => onCard(-.0277, .0031, TOP + .0128),
+    middle: () => point.set(0, 0, (COIL_Z + TOP + .0124) / 2),
+  };
   function anchor(name) {
+    if (PARTS[name]) return toScreen(table.localToWorld(PARTS[name]()));
     if (name === 'chip') return project(-.0277, .0031, .0004);
     if (name === 'readerChip') return toScreen(table.localToWorld(point.set(READER_CHIP.x, READER_CHIP.y, READER_CHIP.z + .002)));
     return toScreen(table.localToWorld(point.set(0, .006, TOP)));   // the reader's top

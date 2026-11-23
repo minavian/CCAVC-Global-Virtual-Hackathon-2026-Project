@@ -11,8 +11,10 @@
 // - the card's answer: each time the card closes its load switch (`load` 1), it draws more
 //   from the field, and the whole flow swells, in blue.
 // The speed the specks move at is only a picture of the flow (power has no speed to show);
-// they stop when it stops. The receiving chip pulses as it reads each bit, and the card's
-// chip glows while it works out its answer.
+// they slow when it slows. Each part of the path can be lit on its own (`parts`), so a step
+// can show just the part it is about. The field is also shown streaming down through the
+// card's coil (`flux`): that is how the reader's field reaches into the card. The receiving
+// chip pulses as it reads, and the card's chip glows while it works out its answer.
 // Everything is in the reader's frame (metres). The lights are down while it shows, so it
 // is all drawn as added light.
 import * as THREE from 'three';
@@ -26,6 +28,10 @@ const SAMPLES = { reader: 700, card: 700 };   // points along each side's wire
 // the card's coil and wire. Only for drawing the flow.
 const WAY = { reader: [0, .42], gap: [.42, .58], card: [.58, 1] };
 const FLOW = 2.6;   // seconds for a speck to go the whole way while power flows
+// Where the card's coil ends and the stretch into its chip begins, along the way.
+const CHIP_FROM = WAY.card[0] + (WAY.card[1] - WAY.card[0]) * .955;
+const partOf = (parts, w) => (w < WAY.reader[1] ? parts[0] : w < WAY.card[0] ? parts[1]
+  : parts[2] + (parts[3] - parts[2]) * Math.min(1, Math.max(0, (w - CHIP_FROM + .01) / .02)));
 const WARM = new THREE.Color('#ff7d1f'), COOL = new THREE.Color('#4a93ff');
 const TAU = Math.PI * 2;
 // Light added over whatever is behind, with the canvas's own transparency left as it is, so
@@ -178,16 +184,24 @@ export function buildRiver() {
   threadGeometry.setAttribute('seed', new THREE.BufferAttribute(seedAttr, 1));
   const threadUniforms = {
     uWarm: { value: WARM.clone() }, uCool: { value: COOL.clone() }, uAmount: { value: 0 }, uPower: { value: 1 },
-    uBlue: { value: 0 }, uPhase: { value: 0 },
+    uBlue: { value: 0 }, uPhase: { value: 0 }, uParts: { value: new THREE.Vector4(1, 1, 1, 1) },
   };
   const threadLines = new THREE.LineSegments(threadGeometry, new THREE.ShaderMaterial({
     uniforms: threadUniforms,
     vertexShader: `attribute float along; attribute float seed; varying float vAlong; varying float vSeed;
       void main() { vAlong = along; vSeed = seed; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
     fragmentShader: `uniform vec3 uWarm; uniform vec3 uCool; uniform float uAmount; uniform float uPower; uniform float uBlue; uniform float uPhase;
+      uniform vec4 uParts;
       varying float vAlong; varying float vSeed;
+      // How much each part of the path shows: the reader's side, the gap, the card's coil,
+      // and the last stretch into the card's chip.
+      float part(float w) {
+        if (w < ${WAY.reader[1].toFixed(3)}) return uParts.x;
+        if (w < ${WAY.card[0].toFixed(3)}) return uParts.y;
+        return mix(uParts.z, uParts.w, smoothstep(${CHIP_FROM.toFixed(3)} - .01, ${CHIP_FROM.toFixed(3)} + .01, w));
+      }
       void main() {
-        float ends = smoothstep(0., .006, vAlong) * smoothstep(1., .994, vAlong);
+        float ends = smoothstep(0., .006, vAlong) * smoothstep(1., .994, vAlong) * part(vAlong);
         // Ripples that move only while power flows (uPhase stands still in a gap).
         float ripple = pow(fract(vAlong * 90. - uPhase * 90. + vSeed), 5.);
         float lit = uPower * (.3 + .7 * ripple);
@@ -239,6 +253,45 @@ export function buildRiver() {
   speckPoints.frustumCulled = false;
   group.add(speckPoints);
 
+  // The field through the card's coil: short streaks inside both coils, from just under the
+  // reader's coil to just over the card, with light running down them the way the field
+  // points there (down through the middle, as field.js draws it). They are the middle of the
+  // reader's field, where it is strongest and nearly straight.
+  const fluxGeometry = new THREE.BufferGeometry();
+  {
+    const top = CARD_Z + .011, bottom = COIL_Z - .003, ends = [], t = [], seed = [];
+    for (let i = 0; i < 9; i++) {
+      for (let j = 0; j < 5; j++) {
+        const x = -.031 + i * .00775 + (rand() - .5) * .002, y = -.0172 + j * .0086 + (rand() - .5) * .002;
+        const at = onCard(x - .0003, y, 0), r = rand();
+        ends.push(at.x, at.y, top, at.x, at.y, bottom);
+        t.push(0, 1);
+        seed.push(r, r);
+      }
+    }
+    fluxGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(ends), 3));
+    fluxGeometry.setAttribute('t', new THREE.BufferAttribute(new Float32Array(t), 1));
+    fluxGeometry.setAttribute('seed', new THREE.BufferAttribute(new Float32Array(seed), 1));
+  }
+  const fluxUniforms = { uColor: { value: new THREE.Color('#ffb070') }, uAmount: { value: 0 }, uFlow: { value: 0 } };
+  const fluxLines = new THREE.LineSegments(fluxGeometry, new THREE.ShaderMaterial({
+    uniforms: fluxUniforms,
+    vertexShader: `attribute float t; attribute float seed; varying float vT; varying float vSeed;
+      void main() { vT = t; vSeed = seed; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
+    fragmentShader: `uniform vec3 uColor; uniform float uAmount; uniform float uFlow; varying float vT; varying float vSeed;
+      void main() {
+        float k = fract(vT * 2.2 - uFlow + vSeed);
+        float comet = pow(k, 3.) * (1. - smoothstep(.9, 1., k));
+        float ends = smoothstep(0., .18, vT) * smoothstep(1., .82, vT);
+        gl_FragColor = vec4(uColor + vec3(.3) * comet, uAmount * ends * (.16 + .84 * comet));
+        #include <colorspace_fragment>
+      }`,
+    transparent: true, depthTest: false, depthWrite: false, ...ADD,
+  }));
+  fluxLines.renderOrder = 11;
+  fluxLines.frustumCulled = false;
+  group.add(fluxLines);
+
   // The chips: a pulse as the receiving chip reads each bit, and the card's chip at work.
   const glow = glowTexture();
   const makeGlow = color => {
@@ -258,9 +311,10 @@ export function buildRiver() {
   // `amount`: the river as a whole (0 to 1). `amp`: the reader's field now (0 in a gap).
   // `load`: the card's switch now (1 closed). `answer`: how far the answer is under way (0
   // to 1). `reading`: where a bit is being read, { at: 'card' | 'reader', beat: 0 to 1 }.
-  // `process`: how hard the card's chip is working. `clock`: seconds. `pixels`: the canvas's
-  // height in device pixels.
-  function update({ amount, amp = 1, load = 0, answer = 0, reading = null, process = 0, clock, pixels }) {
+  // `process`: how hard the card's chip is working. `parts`: how much each part of the path
+  // shows, [the reader's side, the gap, the card's coil, into the chip]. `flux`: the field
+  // through the card's coil. `clock`: seconds. `pixels`: the canvas's height in device pixels.
+  function update({ amount, amp = 1, load = 0, answer = 0, reading = null, process = 0, parts = [1, 1, 1, 1], flux = 0, clock, pixels }) {
     group.visible = amount > .003;
     const dt = last === null ? 0 : Math.min(.1, Math.max(0, clock - last));
     last = clock;
@@ -275,6 +329,9 @@ export function buildRiver() {
     threadUniforms.uPower.value = power * .7;
     threadUniforms.uBlue.value = blue;
     threadUniforms.uPhase.value = phase;
+    threadUniforms.uParts.value.set(...parts);
+    fluxUniforms.uAmount.value = amount * flux * (.25 + .75 * amp);
+    fluxUniforms.uFlow.value = phase * 5;
 
     speckUniforms.uColor.value.copy(color);
     speckUniforms.uPixels.value = pixels;
@@ -285,11 +342,11 @@ export function buildRiver() {
       if (speck.air) {
         airPoint(p, speck.around, point);
         point.z += speck.lift * Math.sin(Math.PI * p);
-        alpha[i] = amount * power * Math.sin(Math.PI * p) * .6;
+        alpha[i] = amount * power * Math.sin(Math.PI * p) * .6 * parts[1];
       } else {
         along(spine[speck.leg], SAMPLES[speck.leg], p, point);
         point.z += speck.lift * .25;
-        alpha[i] = amount * power * .55;
+        alpha[i] = amount * power * .55 * partOf(parts, from + span * p);
       }
       positions[i * 3] = point.x;
       positions[i * 3 + 1] = point.y;
