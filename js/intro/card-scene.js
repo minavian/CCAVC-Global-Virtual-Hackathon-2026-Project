@@ -572,7 +572,7 @@ export async function createCardScene(canvas) {
     river.update({ amount: b.river || 0, amp: field_, load, answer: sending_, process: b.process || 0, clock,
       pixels: renderer.domElement.height,
       reading: said && said.beat > .01 ? { at: said.dir > 0 ? 'card' : 'reader', beat: said.beat } : null });
-    field.update({ lines: b.river || 0, amp: .15 + .85 * field_, echo: b.echo || 0, load, flow: river.phase() });
+    field.update({ lines: b.lines || 0, amp: .15 + .85 * field_, echo: b.echo || 0, load, flow: river.phase() });
 
     // The lights go down for the conversation: less room light, more rim.
     const dark = b.dark || 0;

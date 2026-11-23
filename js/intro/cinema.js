@@ -51,13 +51,16 @@ export const WAKE = power(WAKE_CM);   // about 9%: the chip needs this much to s
 // page: the rest of the page (instructions, scroll guide). panel: the readout. explain:
 //   the explanation at the end.
 // charge: the chip's power, as the readout shows it. dark: the lights going down for the
-//   conversation. river: the power flowing to the card, and the reader's field lines
-//   (river.js, field.js). echo: the change in the card's field that carries its answer.
-//   process: the card's chip working on the question.
+//   close-up after the drop. river: the power flowing to the card (river.js), and in it
+//   `flowReader`, `flowGap`, `flowCard`, `flowChip`: how much each part of its path shows.
+//   lines: the reader's field lines (field.js). flux: the field shown streaming through the
+//   card's coil. echo: the change in the card's field that carries its answer. process: the
+//   card's chip working on the question.
 export const IDLE = {
   dock: 0, gap: .034, card: 1, xray: 0, copper: 1, reader: 1, shell: 1,
   emit: 0, field: 0, receive: 0, power: 0, blink: 0, reply: 0, read: 0, thinking: 0,
   check: 0, page: 1, panel: 0, explain: 0, charge: 0, dark: 0, river: 0, echo: 0, process: 0,
+  lines: 0, flux: 0, flowReader: 1, flowGap: 1, flowCard: 1, flowChip: 1,
 };
 const DIM = .12;   // what is not being shown fades to this
 
@@ -244,30 +247,40 @@ export const REAL_MS = 5;
 // `detail` is the line of small print under the sentence (`askingDetail` once the question
 // is on its way).
 export const STEPS = [
-  { text: 'The reader sends out a radio signal.', detail: 'It comes from a copper coil inside the reader.',
-    ms: [0, .1], shot: 'field',
-    levels: { card: .28, xray: 1, shell: .1, emit: 1, field: 1 } },
-  { text: 'The signal makes a current in the card’s coil.', detail: 'The card has a copper coil too, round its edge.',
-    ms: [.1, .3], shot: 'coil',
-    levels: { xray: 1, reader: DIM, shell: .5, emit: .6, field: .5, receive: 1 } },
-  { text: 'The current powers the chip. No battery needed.', detail: 'The chip runs on it while the card is near.',
-    ms: [.3, 1], shot: 'power',
-    levels: { xray: 1, reader: DIM, shell: .5, emit: .4, receive: .8, power: 1, blink: .5, charge: 1 } },
+  // How the card gets its power, one part at a time: what is being explained is bright, the
+  // rest dimmed. `labels` names the parts shown on screen (main.js); `hold` is how long the
+  // step stays on screen when the close-up plays by itself (seconds).
+  { text: 'The reader makes a magnetic field.', detail: 'Electricity running round its coil makes it.',
+    ms: [0, .05], shot: 'field', labels: ['readerCoil', 'field'], hold: 5,
+    levels: { card: .55, xray: 1, shell: .14, emit: 1, receive: .12, dark: 1, river: 1, lines: 1,
+      flowReader: 1, flowGap: .1, flowCard: .1, flowChip: .1 } },
+  { text: 'The field passes through the card’s coil.', detail: 'The card sits right inside the reader’s field.',
+    ms: [.05, .1], shot: 'through', labels: ['field', 'cardCoil'], hold: 5,
+    levels: { xray: 1, shell: .14, emit: .6, receive: .25, dark: 1, river: 1, lines: 1, flux: 1,
+      flowReader: .35, flowGap: 1, flowCard: .25, flowChip: .1 } },
+  { text: 'It pushes electricity round the card’s coil.', detail: 'A changing field makes current flow in a coil.',
+    ms: [.1, .3], shot: 'current', labels: ['current'], hold: 5,
+    levels: { xray: 1, shell: .14, emit: .4, receive: 1, dark: 1, river: 1, lines: .55, flux: .45,
+      flowReader: .3, flowGap: .45, flowCard: 1, flowChip: .3 } },
+  { text: 'That electricity powers the chip. No battery.', detail: 'The reader is the battery.',
+    ms: [.3, 1], shot: 'power', labels: ['chip'], hold: 5,
+    levels: { xray: 1, shell: .14, emit: .4, receive: .7, power: 1, blink: .5, charge: 1, dark: 1, river: 1, lines: .45,
+      flux: .3, flowReader: .3, flowGap: .4, flowCard: .65, flowChip: 1 } },
   // `asking`: what the readout says once the question is on its way; `waiting`: while the
   // card's chip works out its answer, before the answer goes out.
   { text: 'Your turn. Ask the card who it is.', detail: 'Its field stays on. That powers the card.',
     asking: 'The reader asks: who are you?', askingDetail: 'It cuts short gaps in its field.',
-    ms: TALK_MS.ask, shot: 'ask', talk: 'ask',
-    levels: { xray: 1, shell: .14, emit: .5, receive: .45, power: .6, charge: 1, dark: 1, river: 1 } },
+    ms: TALK_MS.ask, shot: 'ask', talk: 'ask', hold: 2.6,
+    levels: { xray: 1, shell: .14, emit: .5, receive: .45, power: .6, charge: 1, dark: 1, river: 1, lines: 1, flux: .3 } },
   { text: 'The chip answers with its ID.', detail: 'It switches a load on its coil. The reader feels it.',
     waiting: 'The chip works out its answer.', waitingDetail: 'In life this takes 86 millionths of a second.',
-    ms: TALK_MS.answer, shot: 'answer', talk: 'answer',
-    levels: { xray: 1, shell: .14, emit: .5, receive: .45, power: .6, charge: 1, dark: 1, river: 1, echo: 1 } },
+    ms: TALK_MS.answer, shot: 'answer', talk: 'answer', hold: 1.6,
+    levels: { xray: 1, shell: .14, emit: .5, receive: .45, power: .6, charge: 1, dark: 1, river: 1, lines: 1, flux: .3, echo: 1 } },
   { text: 'The reader checks the ID.', detail: 'The check byte must match the four ID bytes.',
-    ms: [TALK_MS.answer[1], 5], shot: 'read',
+    ms: [TALK_MS.answer[1], 5], shot: 'read', hold: 4,
     levels: { card: DIM, xray: 1, shell: .1, emit: .15, read: 1, thinking: 1, charge: 1 } },
   { text: 'Verified. Card detected.', detail: 'The whole tap took about 5 milliseconds.',
-    ms: [5, 5], shot: 'done',
+    ms: [5, 5], shot: 'done', hold: 3.5,
     levels: { gap: .0016, check: 1, charge: 1 } },
   { text: '', ms: [5, 5], shot: 'rest', explain: true,
     levels: { gap: .0016, check: 1, page: 1, panel: 0, explain: 1, charge: 1 } },
@@ -299,11 +312,14 @@ const FOCUS = {
 // like a plan drawing). Between shots the lens widens as the camera moves in, so the
 // framing holds while the depth opens up (a dolly zoom).
 export const SHOTS = {
-  field: { zoom: 2.15, focus: 'gap', at: [.5, .42], tilt: 1.3, spin: -.3, yaw: .04, fov: 26 },
-  coil: { zoom: 2, focus: 'card', at: [.5, .4], tilt: .66, spin: -.5, yaw: 0, fov: 14 },
-  power: { zoom: 7.5, focus: 'chip', at: [.5, .4], tilt: .82, spin: -.72, yaw: .03, fov: 18 },
   // The conversation: low between the card and the reader, the lens wide open.
   // `phone` is the framing on a narrow screen.
+  // How the card gets its power: the reader's field from the side; the field through the
+  // card's coil; the card's coil from above; the chip close up.
+  field: { zoom: 1.75, focus: 'gap', at: [.5, .48], tilt: 1.3, spin: .3, yaw: 0, fov: 40, phone: { at: [.5, .44], zoom: 1.45 } },
+  through: { zoom: 2.2, focus: 'river', at: [.5, .5], tilt: 1.22, spin: .62, yaw: .02, fov: 44, phone: { at: [.5, .44], zoom: 1.7 } },
+  current: { zoom: 2.1, focus: 'card', at: [.5, .46], tilt: .82, spin: .45, yaw: .02, fov: 32, phone: { at: [.5, .42], zoom: 1.6 } },
+  power: { zoom: 5.2, focus: 'chip', at: [.5, .44], tilt: .92, spin: .6, yaw: .03, fov: 30, phone: { at: [.5, .42], zoom: 3.6 } },
   ask: { zoom: 1.9, focus: 'river', at: [.5, .48], tilt: 1.3, spin: .35, yaw: -.02, fov: 50, phone: { at: [.5, .44], zoom: 1.6 } },
   answer: { zoom: 2, focus: 'river', at: [.5, .48], tilt: 1.12, spin: 1.25, yaw: .05, fov: 58, phone: { at: [.5, .44], zoom: 1.7 } },
   // The card's chip at work, between the question and the answer.
