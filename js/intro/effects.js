@@ -140,6 +140,10 @@ const AT_CARD = {
 // While the card is still in the hand, the rings just spread as they rise.
 const SPREAD = { x: 0, y: 0, sx: 1.22, sy: 1.22, spin: 0 };
 const lerp = (a, b, k) => a + (b - a) * k;
+const blendShape = (a, b, k, out) => {
+  for (const key of ['x', 'y', 'sx', 'sy', 'spin']) out[key] = lerp(a[key], b[key], k);
+  return out;
+};
 
 export function buildEffects() {
   const table = new THREE.Group();   // in the reader's frame
@@ -161,6 +165,10 @@ export function buildEffects() {
     return mesh;
   });
   const up = makeRings(UP_COLOR), down = makeRings(COOL);
+  const landing = { ...AT_CARD };
+  // How far the beads on each wire have run. It adds up frame by frame, so a change of
+  // speed or of direction never makes them jump: they slow, stop and turn round.
+  let lastClock = null;
 
   // Lays one stream of rings out at clock time `t`: a ring leaves every EVERY seconds,
   // `level` bright, from `from` (at height `fromZ`) to `to` (at `toZ`), taking the shape
@@ -223,11 +231,15 @@ export function buildEffects() {
     table.visible = onCard.visible = any > .003;
     if (!table.visible) return;
     const t = b.clock, said = b.message?.started ? b.message : null;
+    const dt = lastClock === null ? 0 : Math.min(.1, Math.max(0, t - lastClock));
+    lastClock = t;
     const { amp, load } = talk;
 
     // Up: the reader's field, from its coil to the card's. In the question the whole
     // stream dims in each of the reader's gaps, as the field does everywhere at once.
-    const to = b.dock > .5 ? AT_CARD : SPREAD;
+    // Where the rings land: spread while the card is in the hand, on the card's coil once it
+    // is down, blending between the two as it docks so nothing jumps.
+    const to = blendShape(SPREAD, AT_CARD, smoothstep(0, 1, b.dock), landing);
     const top = cardZ + .00034;
     // On the light page, while the card is still in the hand, the rings are lighter.
     const paper = 1 - (b.dark || 0), halo = b.dark || 0;
@@ -247,10 +259,11 @@ export function buildEffects() {
     // blue and the other way, out of the chip, while it answers. Orange and blue would mix
     // to purple, so the colour switches over quickly to whichever current is the stronger.
     const share = b.reply / Math.max(.001, b.reply + .5 * Math.max(b.receive, b.power));
-    const answering = share > .5, tint = smoothstep(.4, .6, share);
+    // `way`: +1 into the chip, -1 out of it; it turns over with the colour.
+    const tint = smoothstep(.4, .6, share), way = 1 - 2 * tint;
     const sent = b.reply * (.45 + .55 * load);
     readerBand.uniforms.uAmount.value = talk.reader;
-    readerBand.uniforms.uPhase.value = t * 1.5;
+    readerBand.uniforms.uPhase.value += dt * 1.5;
     readerBand.uniforms.uColor.value.copy(WARM).lerp(COOL, talk.reading);
     readerBand.mesh.visible = talk.reader > .003;
     const flows = [[coilBand, Math.max(b.receive * amp, sent), 1.4, .05],
@@ -259,8 +272,7 @@ export function buildEffects() {
     for (const [{ mesh, uniforms }, amount, speed, base] of flows) {
       uniforms.uAmount.value = amount;
       uniforms.uBase.value = base;
-      uniforms.uPhase.value = t * speed;
-      uniforms.uDir.value = answering ? -1 : 1;
+      uniforms.uPhase.value += dt * speed * way;
       uniforms.uColor.value.copy(WARM).lerp(COOL, tint);
       mesh.visible = amount > .003;
     }
