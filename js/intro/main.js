@@ -644,7 +644,11 @@ function intro(experience) {
     let settled = true;
     const pace = docked ? 4.5 : 14;
     for (const key in shown) {
-      chase(shown[key], goal[key], pace, dt, key === 'gap' ? 1e-5 : .0008);
+      // The lights go down (and come back up) more slowly than the rest, over about a
+      // second and a half, like lights dimming in a cinema: at the same pace as the rest
+      // the whole page swung from paper to dark in half a second.
+      const omega = key === 'dark' ? Math.min(pace, 2.4) : pace;
+      chase(shown[key], goal[key], omega, dt, key === 'gap' ? 1e-5 : .0008);
       settled &&= resting(shown[key], goal[key]);
     }
     // The camera glides from shot to shot: its zoom in even steps (log), its aim and angle.
