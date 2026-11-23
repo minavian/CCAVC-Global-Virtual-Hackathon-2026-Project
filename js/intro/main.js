@@ -7,7 +7,7 @@
 import { follow, settle, smoother, spring } from './easing.js';
 import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose, clamp, ease, mix, measureStage, restingFrame, scrollTime } from './timeline.js';
 import { renderSignals } from './signals.js';
-import { APPROACH_TEXT, ASK, CARD_ID, IDLE, LAST, NEAREST, REAL_MS, SHOTS, STEPS, approach, approachBand, approachView, centimetres,
+import { APPROACH_DETAIL, APPROACH_TEXT, ASK, CARD_ID, IDLE, LAST, NEAREST, REAL_MS, SHOTS, STEPS, approach, approachBand, approachView, centimetres,
   message, power, talkLevels, view } from './cinema.js';
 
 const root = document.querySelector('.intro');
@@ -35,11 +35,11 @@ function intro(experience) {
     .map(name => [name, $('.' + name)]));
   const reduce = matchMedia('(prefers-reduced-motion: reduce)');
   const hud = $('.hud');
-  // The close-up's words and marks: the readout (one sentence at a time, with the radio
-  // frequency, the distance or the real time, and the power at the card), the check mark
-  // and the explanation at the end.
+  // The close-up's words and marks: the readout (one sentence at a time and a line of small
+  // print, with the radio frequency, the distance or the real time, and the chip's power),
+  // the check mark and the explanation at the end.
   const film = {
-    readout: $('.readout'), text: $('.readout-text'),
+    readout: $('.readout'), words: $('.readout-words'), text: $('.readout-text'), detail: $('.readout-detail'),
     middleLabel: $('.readout-middle small'), middleValue: $('.readout-middle b'), middleBar: $('.readout-middle i'),
     powerValue: $('.readout-power b'), powerBar: $('.readout-power i'),
     nav: $('.readout-nav'), back: $('.readout-back'), next: $('.readout-next'), count: $('.readout-count'),
@@ -47,6 +47,8 @@ function intro(experience) {
     check: $('.cine-check'), explain: $('.cine-explain'), replay: $('.replay'),
     backdrop: $('.cine-backdrop'), tag: $('.river-tag'), hint: $('.cine-hint'), nextLabel: 'Next',
   };
+  // The right arrow's drawing (index.html), put back after the ask step shows Ask instead.
+  const NEXT_ARROW = film.next.innerHTML;
   // The letters' weight in flight: thinnest leaving the card, full (as in styles.css) once out.
   const THIN = 100, FULL = 800;
   const weights = glyph.map(() => undefined);
@@ -248,13 +250,14 @@ function intro(experience) {
     node.style.translate = `0 ${(1 - amount) * lift}px`;
   };
 
-  // Swaps the readout's sentence, fading the new one in.
-  function say(text) {
-    if (text === shownText) return;
+  // Swaps the readout's sentence and its small print, fading the new ones in.
+  function say(text, detail = '') {
+    if (text === shownText && detail === film.detail.textContent) return;
     shownText = text;
     film.text.textContent = text;
+    film.detail.textContent = detail;
     if (!reduce.matches && text) {
-      film.text.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }],
+      film.words.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }],
         { duration: 420, easing: 'cubic-bezier(.2, .7, .2, 1)' });
     }
   }
@@ -266,12 +269,20 @@ function intro(experience) {
     show(film.readout, smoother(.45, 1, b.panel), 8);
     film.readout.style.visibility = on || docked ? 'visible' : 'hidden';
     film.readout.style.pointerEvents = b.panel > .5 ? '' : 'none';
-    film.readout.classList.toggle('is-docked', docked);
+    // On a phone the readout waits at the top while the card is dragged (styles.css) and
+    // moves to the bottom on the drop; it fades back in there rather than jump.
+    if (film.readout.classList.contains('is-docked') !== docked) {
+      film.readout.classList.toggle('is-docked', docked);
+      if (layout.compact && on && !reduce.matches) {
+        film.readout.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 500, easing: 'ease-out' });
+      }
+    }
 
     if (docked) {
       const plan = STEPS[step], { ms: [from, to] } = plan;
-      const text = plan.talk === 'ask' && talk ? plan.asking : plan.text;
-      if (text) say(text);
+      const asking = plan.talk === 'ask' && talk;
+      const text = asking ? plan.asking : plan.text;
+      if (text) say(text, asking ? plan.askingDetail : plan.detail);
       film.middleLabel.textContent = 'Real time';
       film.middleValue.textContent = from === to ? `${to.toFixed(1)} ms` : `${from.toFixed(1)}–${to.toFixed(1)} ms`;
       film.middleBar.style.setProperty('--from', from / REAL_MS);
@@ -281,7 +292,7 @@ function intro(experience) {
       film.powerBar.style.setProperty('--to', b.charge);
     } else if (on) {
       band = approachBand(cm, band);
-      say(APPROACH_TEXT[band]);
+      say(APPROACH_TEXT[band], APPROACH_DETAIL[band]);
       film.middleLabel.textContent = 'Distance';
       film.middleValue.textContent = cm.toFixed(1) + ' cm';
       film.middleBar.style.setProperty('--from', 0);
@@ -291,7 +302,7 @@ function intro(experience) {
       film.powerBar.style.setProperty('--to', share);
     }
 
-    // Back, Next and where you are, after the drop. In the ask step Next is Ask.
+    // The arrows and where you are, after the drop. In the ask step the right arrow is Ask.
     const navigable = docked && step < LAST;
     if (film.nav.hidden === navigable) film.nav.hidden = !navigable;
     if (navigable) {
@@ -299,9 +310,10 @@ function intro(experience) {
       const label = step === ASK ? (talk ? 'Asking…' : 'Ask') : 'Next';
       if (film.nextLabel !== label) {
         film.nextLabel = label;
-        film.next.innerHTML = label === 'Next' ? 'Next <span aria-hidden="true">→</span>' : label;
+        film.next.innerHTML = label === 'Next' ? NEXT_ARROW : 'Ask';
+        film.next.setAttribute('aria-label', label === 'Next' ? 'Next' : label === 'Ask' ? 'Ask the card' : 'Asking');
         film.next.setAttribute('aria-disabled', String(label !== 'Next' && label !== 'Ask'));
-        film.next.classList.toggle('is-ask', label === 'Ask');
+        film.next.classList.toggle('is-ask', label !== 'Next');
       }
       film.count.textContent = `${step + 1} of ${LAST}`;
       film.dots.forEach((dot, i) => {
