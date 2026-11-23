@@ -3,8 +3,6 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { buildReader, SIZE, TOP, COIL_Z, COIL_HALF, CHIP as READER_CHIP } from './reader-model.js';
 import { buildEffects } from './effects.js';
-import { buildRiver } from './river.js';
-import { buildField } from './field.js';
 import { HOVER } from './cinema.js';
 
 const cardURL = new URL('../../models/contactless-card.glb', import.meta.url);
@@ -46,9 +44,7 @@ function getCardMaterials(card) {
 }
 
 // Current in the card's coils, as comets of colour running round them: a solid head with
-// a tail fading out behind, so the direction of the current is plain to see. In the
-// conversation the current is shown steady instead (`uSteady`): it is an alternating
-// current, and there what matters is how strong it is from moment to moment. The coils are
+// a tail fading out behind, so the direction of the current is plain to see. The coils are
 // drawn by the model's own copper, so the glow follows the real traces. Each point works
 // out how far round its loop it is from where it sits: which side of the loop's rectangle
 // it is nearest (`uLoop`: centre and half size), and how far along that side. Each turn
@@ -62,7 +58,7 @@ function currentShader(material, uniforms) {
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCoil = position.xy;');
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
-        uniform float uCurrent; uniform float uPhase; uniform float uDir; uniform float uCount; uniform float uStagger; uniform float uNeutral; uniform float uSteady;
+        uniform float uCurrent; uniform float uPhase; uniform float uDir; uniform float uCount; uniform float uStagger; uniform float uNeutral;
         uniform vec3 uCurrentColor; uniform vec4 uLoop; uniform vec4 uInner;
         varying vec2 vCoil;
         // How far round the loop a point is (0 to 1, counter-clockwise from the middle of
@@ -81,7 +77,7 @@ function currentShader(material, uniforms) {
         vec4 loop = uLoop;
         if (uInner.z > 0. && abs(vCoil.x - uInner.x) < uInner.z + .0011 && abs(vCoil.y - uInner.y) < uInner.w + .0011) loop = uInner;
         float cometAt = fract(uDir * loopAlong(vCoil, loop) * uCount - uPhase);
-        float comet = mix(pow(cometAt, 2.6) * (1. - smoothstep(.95, 1., cometAt)), .55, uSteady);`)
+        float comet = pow(cometAt, 2.6) * (1. - smoothstep(.95, 1., cometAt));`)
       // The colour goes on after tone mapping, so the light page can't wash it out. Under
       // a blue current the copper first turns grey (uNeutral), or blue over orange would
       // read as purple.
@@ -323,7 +319,7 @@ export async function createCardScene(canvas) {
     const material = card.getObjectByName(name).material;
     const uniforms = {
       uCurrent: { value: 0 }, uPhase: { value: 0 }, uDir: { value: 1 }, uCount: { value: count },
-      uStagger: { value: stagger }, uNeutral: { value: 0 }, uSteady: { value: 0 }, uCurrentColor: { value: new THREE.Color() },
+      uStagger: { value: stagger }, uNeutral: { value: 0 }, uCurrentColor: { value: new THREE.Color() },
       uLoop: { value: new THREE.Vector4(...loop) }, uInner: { value: new THREE.Vector4(...inner) },
     };
     currentShader(material, uniforms);
@@ -342,10 +338,6 @@ export async function createCardScene(canvas) {
   const fx = buildEffects();
   table.add(fx.table);
   card.add(fx.onCard);
-  const river = buildRiver();
-  table.add(river.group);
-  const field = buildField();
-  table.add(field.group);
   const warm = fx.WARM, cool = fx.COOL;
   // The reader's light: cool white at rest, blue while it reads, green once it has checked.
   const idle = new THREE.Color(0xd8e6ff), reading = new THREE.Color(0x3f8cff), green = new THREE.Color(0x22c55e);
@@ -507,73 +499,59 @@ export async function createCardScene(canvas) {
 
     shade(Math.max(pose.xray, b.xray), b.card, b.copper, b.xray);
 
-    // Current in the card's coils: the reader's power coming in (warm, one way round), the
-    // answer going out (cool, the other way).
+    // Current in the card's coils: the reader's power coming in (orange, one way round and
+    // into the chip), the answer going out (blue, the other way, out of the chip).
     const clock = b.clock;
     const [perimeter, module] = copper;
-    // In the conversation (cinema.js `message`) both coils follow the signal together, as in
-    // life, as a receiver's demodulator sees it: in the question, each of the reader's gaps
-    // dips the current in both coils at once; in the answer, the card's coil turns blue while
-    // it answers and swells each time its switch closes, and the reader's coil dips with it.
+    // In the conversation (cinema.js `message`) everything follows the signal as a receiver's
+    // demodulator sees it: in each of the reader's gaps the current in both coils dips; in
+    // the answer the card's coil carries the answer and swells each time its switch closes,
+    // and the reader's coil dips a little with it.
     const said = b.message?.started ? b.message : null;
-    const answering_ = said?.dir < 0;
     // Each dip drawn half again as deep as the demodulator's, so the rhythm reads clearly.
-    const field_ = said ? Math.max(0, 1 - (1 - said.amp) * 1.5) : 1, switched = said ? said.load : 0;
-    const amp = .25 + .75 * field_, load = answering_ ? switched : 0;
-    const sending_ = answering_ ? 1 - (b.message.landed || 0) : 0;
-    const readerAmp = amp, readerLoad = load;
-    const steady = b.river || 0;
+    const amp = said ? Math.max(0, 1 - (1 - said.amp) * 1.5) : 1;
+    const load = said?.dir < 0 ? said.load : 0;
     // Orange and blue would mix to purple, so the colour switches over quickly.
-    const share = Math.max(sending_, b.reply / Math.max(.001, b.reply + Math.max(b.receive, b.power)));
+    const share = b.reply / Math.max(.001, b.reply + .5 * Math.max(b.receive, b.power));
     const answering = share > .5, tint = THREE.MathUtils.smoothstep(share, .4, .6);
-    perimeter.uniforms.uCurrent.value = Math.max(b.receive * amp, b.reply, sending_ * (.5 + .45 * load));
-    // Switching its load changes how much current the card's coil carries, not which way.
-    perimeter.uniforms.uDir.value = answering && !steady ? -1 : 1;
-    // In the conversation the comets move with the flow of power (river.js), so they slow
-    // in each gap with everything else; a little of the current glows evenly underneath.
-    const flowing = river.phase() * 3;
-    perimeter.uniforms.uPhase.value = steady ? flowing : clock * 1.1;
-    perimeter.uniforms.uSteady.value = steady * .3;
+    const sent = b.reply * (.45 + .55 * load);
+    perimeter.uniforms.uCurrent.value = Math.max(b.receive * amp, sent);
+    perimeter.uniforms.uDir.value = answering ? -1 : 1;
+    perimeter.uniforms.uPhase.value = clock * 1.1;
     perimeter.uniforms.uCurrentColor.value.copy(warm).lerp(cool, tint);
-    perimeter.uniforms.uNeutral.value = tint * Math.min(1, Math.max(b.reply, sending_) * 1.5);
-    module.uniforms.uCurrent.value = Math.max(b.power * (steady ? amp : 1), b.receive * .6 * amp, b.reply, sending_ * (.5 + .45 * load));
-    module.uniforms.uDir.value = answering && !steady ? -1 : 1;
-    module.uniforms.uPhase.value = steady ? flowing * 1.3 : clock * 1.4;
-    module.uniforms.uSteady.value = steady * .3;
+    perimeter.uniforms.uNeutral.value = tint * Math.min(1, b.reply * 1.5);
+    module.uniforms.uCurrent.value = Math.max(b.power * amp, b.receive * .6 * amp, sent);
+    module.uniforms.uDir.value = answering ? -1 : 1;
+    module.uniforms.uPhase.value = clock * 1.4;
     module.uniforms.uCurrentColor.value.copy(warm).lerp(cool, tint);
-    module.uniforms.uNeutral.value = tint * Math.min(1, Math.max(b.reply, sending_) * 1.5);
+    module.uniforms.uNeutral.value = tint * Math.min(1, b.reply * 1.5);
     const work = b.blink * (.5 + .5 * Math.sin(clock * Math.PI * 2 * 1.8)) ** 2;
     die.emissive.copy(dieGlow);
-    die.emissiveIntensity = b.power * .6 + work * 2.4;
+    die.emissiveIntensity = b.power * .6 * amp + work * 2.4;
 
-    // The reader: its body goes see-through to show its coil, and the coil carries the
-    // signal out (warm), then the answer in toward the reader's chip (cool). In the
-    // conversation its coil carries the field's current all along: it goes out in each gap,
-    // and dips a little each time the card's switch closes, as the reader feels the answer.
-    const sending = said ? b.emit * readerAmp * (1 - .25 * readerLoad) : Math.max(b.emit, b.read);
-    const reading = said ? 0 : THREE.MathUtils.smoothstep(b.read / Math.max(.001, b.read + b.emit), .4, .6);
+    // The reader: its body goes see-through to show its coil, and the coil carries its
+    // current (orange, round toward its far end), then the answer in toward the reader's
+    // chip (blue). In the conversation its current dips in each gap, and a little each time
+    // the card's switch closes, as the reader feels the answer.
+    const sending = said ? b.emit * amp * (1 - .25 * load) : Math.max(b.emit, b.read);
+    const reading = THREE.MathUtils.smoothstep(b.read / Math.max(.001, b.read + b.emit), .4, .6);
     let led = [idle, 1.1];
     if (b.check > .01) led = [ledMix.copy(idle).lerp(green, b.check), 1.1 + b.check * 1.6];
     else if (b.read > .05) led = [ledMix.copy(idle).lerp(reading, b.read), 1.1 + b.read * 1.2];
     reader.set({
       opacity: readerRest.opacity * b.reader,
       shellOpacity: b.shell,
-      glow: sending,
-      flow: steady ? flowing : clock * (b.read > b.emit ? 1.1 : .9),
-      direction: steady || b.read <= b.emit ? -1 : 1,
-      steady: steady * .3,
+      glow: Math.max(sending, said ? b.read : 0),
+      flow: clock * (b.read > b.emit ? 1.1 : .9),
+      direction: b.read <= b.emit ? -1 : 1,
       color: mixColor.copy(warm).lerp(cool, reading),
-      neutral: said ? 0 : reading * Math.min(1, b.read * 1.5),
+      neutral: reading * Math.min(1, b.read * 1.5),
       led,
       thinking: b.thinking * (.6 + .4 * Math.sin(clock * Math.PI * 2 * 1.4)),
     });
 
-    fx.update(b, TOP + b.gap + .0004, HOVER.spin, { amp, load: sending_ * (.55 + .45 * load), steady });
-    river.update({ amount: b.river || 0, amp: field_, load, answer: sending_, process: b.process || 0, clock,
-      pixels: renderer.domElement.height, flux: b.flux || 0,
-      parts: [b.flowReader ?? 1, b.flowGap ?? 1, b.flowCard ?? 1, b.flowChip ?? 1],
-      reading: said && said.beat > .01 ? { at: said.dir > 0 ? 'card' : 'reader', beat: said.beat } : null });
-    field.update({ lines: b.lines || 0, amp: .15 + .85 * field_, echo: b.echo || 0, load, flow: river.phase() });
+    cardTop = TOP + b.gap + .0008;
+    fx.update(b, TOP + b.gap + .0004, { amp, load });
 
     // The lights go down for the conversation: less room light, more rim.
     const dark = b.dark || 0;
@@ -595,20 +573,21 @@ export async function createCardScene(canvas) {
   }
 
   // Points the close-up's marks are placed by, on screen.
-  // The parts the close-up names, in the reader's frame (the card lying on it, cinema.js
-  // HOVER): the near side of the reader's coil, the top of the field's arch beside the card,
-  // the far end of the card's coil, the near side of the card's coil, and the card's chip.
+  // The parts the close-up names, in the reader's frame (the card lying over it, cinema.js
+  // HOVER, as high as it is shown): the right side of the reader's coil, the right side of
+  // the field's rings halfway up, the right end of the card's coil, and the card's chip.
+  let cardTop = TOP;
   const onCard = (x, y, z) => {
     const c = Math.cos(HOVER.spin), s = Math.sin(HOVER.spin);
     return point.set(HOVER.x + x * c - y * s, HOVER.y + x * s + y * c, z);
   };
   const PARTS = {
-    readerCoil: () => point.set(COIL_HALF * .45, -COIL_HALF, COIL_Z),
-    field: () => point.set(-.052, -.012, COIL_Z + .03),
-    cardCoil: () => onCard(.0402, .008, TOP + .0124),
-    current: () => onCard(.012, -.024, TOP + .0124),
-    cardChip: () => onCard(-.0277, .0031, TOP + .0128),
-    middle: () => point.set(0, 0, (COIL_Z + TOP + .0124) / 2),
+    readerCoil: () => point.set(COIL_HALF, -COIL_HALF * .35, COIL_Z),
+    field: () => point.set(COIL_HALF * 1.08, -COIL_HALF * .3, (COIL_Z + cardTop) / 2),
+    cardCoil: () => onCard(.0402, -.008, cardTop),
+    cardChip: () => onCard(-.0277, .0031, cardTop + .0004),
+    // The middle of the picture: each label sits out from its part, away from here.
+    middle: () => point.set(0, 0, (COIL_Z + cardTop) / 2),
   };
   function anchor(name) {
     if (PARTS[name]) return toScreen(table.localToWorld(PARTS[name]()));
@@ -626,5 +605,5 @@ export async function createCardScene(canvas) {
     return project((lipX + sheet.hingeX - u) / 2, .002, (lipZ + sheet.pivotZ) / 2 + .0006);
   }
 
-  return { resize, draw, project, mouth, anchor, setReader, riverFocus: () => river.focus.toArray(), parts: { copper, die, reader, renderer, table, card, rig, camera, world } };
+  return { resize, draw, project, mouth, anchor, setReader, parts: { copper, die, reader, renderer, table, card, rig, camera, world } };
 }

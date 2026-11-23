@@ -18,8 +18,6 @@ const GLASS = .0034;  // how far the glass top sits in from the edge
 // along the coil each vertex is (0 to 1), so the pulses follow the wire round every turn.
 // Each pulse is a comet: a bright head with a tail fading out behind it, so you can see
 // which way the current runs. `uDir` is +1 toward the reader's chip, -1 away from it.
-// `uSteady` shows the current as an even glow instead (the conversation, where what
-// matters is how strong the alternating current is from moment to moment).
 export function flowShader(material, uniforms) {
   material.onBeforeCompile = shader => {
     Object.assign(shader.uniforms, uniforms);
@@ -28,11 +26,11 @@ export function flowShader(material, uniforms) {
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCoilT = coilT;');
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
-        uniform float uGlow; uniform float uFlow; uniform float uPulses; uniform float uDir; uniform float uNeutral; uniform float uSteady; uniform vec3 uGlowColor;
+        uniform float uGlow; uniform float uFlow; uniform float uPulses; uniform float uDir; uniform float uNeutral; uniform vec3 uGlowColor;
         varying float vCoilT;`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
         float cometAt = fract(uDir * vCoilT * uPulses - uFlow);
-        float comet = mix(pow(cometAt, 2.6) * (1. - smoothstep(.95, 1., cometAt)), .5, uSteady);
+        float comet = pow(cometAt, 2.6) * (1. - smoothstep(.95, 1., cometAt));
         totalEmissiveRadiance += uGlowColor * uGlow * .15;`)
       // The colour goes on after tone mapping, so the light page can't wash it out. Under
       // a blue current the copper first turns grey (uNeutral), or blue over orange would
@@ -148,7 +146,7 @@ export function buildReader() {
   for (let i = 0; i < uv.count; i++) along[i] = uv.getX(i);
   coilGeometry.setAttribute('coilT', new THREE.BufferAttribute(along, 1));
   const copper = new THREE.MeshStandardMaterial({ color: 0xb87333, metalness: .85, roughness: .3 });
-  const flow = { uGlow: { value: 0 }, uFlow: { value: 0 }, uPulses: { value: 14 }, uDir: { value: 1 }, uNeutral: { value: 0 }, uSteady: { value: 0 }, uGlowColor: { value: new THREE.Color() } };
+  const flow = { uGlow: { value: 0 }, uFlow: { value: 0 }, uPulses: { value: 14 }, uDir: { value: 1 }, uNeutral: { value: 0 }, uGlowColor: { value: new THREE.Color() } };
   flowShader(copper, flow);
   add(coilGeometry, copper, 0, inside);
 
@@ -161,7 +159,7 @@ export function buildReader() {
   // opacity: the whole reader. shell: the body only, so the inside shows through.
   // glow, flow, direction, color: the current in the coil; neutral greys the copper under
   // a blue current. led: [color, strength]. thinking: the chip's light.
-  function set({ opacity = 1, shellOpacity = 1, glow = 0, flow: phase = 0, direction = 1, neutral = 0, steady = 0, color, led: light, thinking = 0 }) {
+  function set({ opacity = 1, shellOpacity = 1, glow = 0, flow: phase = 0, direction = 1, neutral = 0, color, led: light, thinking = 0 }) {
     group.visible = opacity > .002;
     if (opacity !== last.opacity || shellOpacity !== last.shell) {
       last.opacity = opacity;
@@ -186,7 +184,6 @@ export function buildReader() {
     flow.uFlow.value = phase;
     flow.uDir.value = direction;
     flow.uNeutral.value = neutral;
-    flow.uSteady.value = steady;
     if (color) flow.uGlowColor.value.copy(color);
     if (light) {
       ledColor.copy(light[0]);

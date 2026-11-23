@@ -42,7 +42,7 @@
   <script src="js/deep.js" defer></script>
   <script src="js/landing.js?v=6" defer></script>
   <script type="module" src="js/taps.js"></script>
-  <script type="module" src="js/intro/main.js?v=24"></script>
+  <script type="module" src="js/intro/main.js?v=25"></script>
 </head>
 <body>
   <main class="hero">
@@ -136,7 +136,7 @@
            the arrows on its sides step through the tap; in the conversation the right one
            becomes Ask. While a message is on the air, its label holds still at the top in
            the middle: which way it goes, what it says, and its signal as the other side
-           feels it (js/intro/field.js and river.js draw the field and the power). -->
+           feels it (js/intro/effects.js draws the field as rings that carry it). -->
       <div class="cine">
         <section class="readout" aria-label="What is happening now">
           <div class="readout-words" aria-live="polite">
@@ -162,7 +162,6 @@
           <span class="cine-label" data-part="readerCoil">Reader’s coil</span>
           <span class="cine-label" data-part="field">Magnetic field</span>
           <span class="cine-label" data-part="cardCoil">Card’s coil</span>
-          <span class="cine-label" data-part="current">Electricity</span>
           <span class="cine-label" data-part="cardChip">Chip</span>
         </div>
         <!-- It plays by itself until the visitor steps in; this pauses or plays it again. -->
