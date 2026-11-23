@@ -237,11 +237,11 @@ The first version eased each keyframe in and out separately (smoothstep), and fo
 
 ### The close-up: how a tap works (`js/intro/cinema.js`, `effects.js`, `reader-model.js`)
 
-Owner: Mina Vian · 2026-11-23. Rebuilt as an interactive close-up by Claude Code for Mina Vian · 2026-11-23.
+Owner: Mina Vian · 2026-11-23. Rebuilt as an interactive close-up · 2026-11-23, updated 2026-11-23.
 
 **What it does.** It shows what happens in a tap, driven by the visitor, not played like a video. It stays on the page's paper background.
 1. **Bring the card near.** As you drag the card toward the reader, the close-up comes in and follows the card's distance. The camera pushes in on the reader, and the reader turns see-through to show its copper coil, with the current running round it and its field rising. The card turns see-through too, a current starts to run round its coil, and close enough, the current runs into the chip and it lights up. Pull the card back and it all runs backwards.
-2. **Drop it.** The card settles onto the reader, and you step through the tap at your own pace with **Next** and **Back** (or the arrow keys): the reader's signal, the current round the card's coil, the current into the chip, the chip working, its answer (blue current, waves and bits going down to the reader), the reader reading and checking it, and the check mark. Every step is a live loop that runs for as long as you look at it. Then the explanation, with **Watch again** and **Try again**. Escape takes the card off.
+2. **Drop it.** The card settles onto the reader, and you step through the tap from step 1 at your own pace with **Next** and **Back** (or the arrow keys): the reader's signal, the current round the card's coil, the current into the chip, the chip working, its answer (blue current, waves and bits going down to the reader), the reader reading and checking it, and the check mark. Every step is a live loop that runs for as long as you look at it. Then the explanation, with **Watch again** and **Try again**. Escape takes the card off.
 
 **How it works.**
 - **The readout** (`index.html` `.readout`, `paintFilm` in `main.js`). One panel, in the place where "Here's how" was, is the only text on screen during the close-up. The instructions fade out before it fades in, and the explanation only appears once it has gone, so there are never two texts to read at once. It says one sentence at a time (a polite live region for screen readers) above three small meters:
@@ -276,6 +276,7 @@ Owner: Mina Vian · 2026-11-23. Rebuilt as an interactive close-up by Claude Cod
 - Q: Why does the card trail the pointer? A: A softer spring makes the card feel like it has weight, so it glides instead of sticking to the cursor. It is about a fifth of a second behind a moving pointer.
 - Q: Why only one sentence at a time? A: Nobody can read two texts at once. The readout swaps its sentence, and the rest of the page fades out while it shows.
 - Q: Where is the chip's processing? A: Two places: the card's chip beats while it works out its answer, and the reader's chip glows while it checks the answer.
+- Q: The drag already showed the current. Why does a drop start at step 1? A: The drag and the steps show different things. The drag shows how distance changes the power. The steps are the tap itself, slowed down, so they start at 0 ms with the reader's signal. An earlier version opened a drop on step 3, which skipped two steps and read as starting in the middle. A drop and a keyboard press now both start at step 1 (`confirmDrop` in `main.js`).
 
 ---
 

@@ -107,8 +107,8 @@ export const STEPS = [
   { text: '', ms: [5, 5], shot: 'rest', explain: true,
     levels: { gap: .0016, check: 1, page: 1, panel: 0, explain: 1 } },
 ].map(step => ({ ...step, levels: { ...IDLE, dock: 1, gap: .012, page: DIM, panel: 1, ...step.levels } }));
-// A drag has just shown the first two steps live, so a drop starts at the third.
-export const AFTER_DRAG = 2;
+// Every drop starts at step 1. The drag shows how distance changes the power; the steps
+// are the tap itself, slowed down, so they always begin with the reader's signal.
 export const LAST = STEPS.length - 1;
 
 // Points the camera looks at, in the reader's frame (metres). `gap` is the card's height.
