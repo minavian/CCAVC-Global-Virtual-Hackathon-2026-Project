@@ -296,7 +296,7 @@ function intro(experience) {
     }
     const now = Math.min(length, Math.max(0, said.n));
     film.traceClip.setAttribute('width', now);
-    const level = dir > 0 ? said.amp : 1 - .6 * said.load;
+    const level = dir > 0 ? said.exact : 1 - .6 * said.exact;
     film.traceDot.style.left = `${now / length * 100}%`;
     film.traceDot.style.top = `${traceY(dir, level) / 24 * 100}%`;
     film.traceDot.style.opacity = said.n >= length ? 0 : 1;

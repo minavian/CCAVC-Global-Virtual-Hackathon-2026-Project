@@ -138,14 +138,34 @@ export const BIT_SECONDS = .15;
 
 // The signal over the frame, one value a sample. The question: the reader's field at the
 // card (1 on, 0 in a gap). The answer: the card's switch (1 while it switches the load).
+// What a receiver makes of a signal: a real card (and a real reader) runs what it picks up
+// through a smoothing filter before it decides on each bit (its demodulator: here two RC
+// stages, each with a time constant of 10 samples, about a third of a bit). A 2.36 µs gap
+// comes out of it as a soft dip, and a burst of the card's load as a soft swell. The 3D
+// follows this, so the picture pulses with the message instead of strobing; the trace under
+// the label shows the exact signal.
+function demodulate(signal, start, tau = 10) {
+  const k = 1 - Math.exp(-1 / tau), out = new Float32Array(signal.length);
+  let a = start, b = start;
+  for (let n = 0; n < signal.length; n++) {
+    a += (signal[n] - a) * k;
+    b += (a - b) * k;
+    out[n] = b;
+  }
+  return out;
+}
+
 function onTheAir(bytes, dir) {
   const bits = iso ? iso.standardFrame(bytes) : [];
-  if (!iso) return { bits, length: BIT * 3, signal: new Float32Array(BIT * 3).fill(dir > 0 ? 1 : 0), lastGap: 0 };
+  if (!iso) {
+    const flat = new Float32Array(BIT * 3).fill(dir > 0 ? 1 : 0);
+    return { bits, length: BIT * 3, signal: flat, soft: flat, lastGap: 0 };
+  }
   if (dir > 0) {
     const { pauses, length } = iso.millerPauses(bits);
     const signal = air ? air.fieldAtTag(length, pauses, iso.PAUSE)
       : Float32Array.from({ length }, (_, n) => (pauses.some(p => n >= p && n < p + iso.PAUSE) ? 0 : 1));
-    return { bits, length, signal, lastGap: pauses[pauses.length - 1] };
+    return { bits, length, signal, soft: demodulate(signal, 1), lastGap: pauses[pauses.length - 1] };
   }
   // The switch itself flickers with the 847.5 kHz subcarrier (two samples closed, two open),
   // far too fast to see even slowed down, so this keeps where it is switching at all.
@@ -155,14 +175,7 @@ function onTheAir(bytes, dir) {
     for (let k = 0; k < SUB; k++) closed |= raw[n + k];
     on.fill(closed, n, n + SUB);
   }
-  // Softened over 8 samples (about a quarter of a bit), so each burst swells and fades in
-  // about 25 ms as shown instead of strobing. The trace under the label keeps `raw`.
-  const signal = on.map((_, n) => {
-    let sum = 0;
-    for (let k = -4; k < 4; k++) sum += on[Math.min(on.length - 1, Math.max(0, n + k))];
-    return sum / 8;
-  });
-  return { bits, length: raw.length, signal, raw };
+  return { bits, length: raw.length, signal: on, soft: demodulate(on, 0), raw };
 }
 const say = (dir, words, bytes) => ({ dir, words, bytes, ...onTheAir(bytes, dir) });
 export const TALK = {
@@ -181,23 +194,27 @@ export const TALK_MS = {
 };
 
 // A message `seconds` after its sender started it, as shown. `n`: how far into its frame it
-// is (samples). `amp`: the reader's field now (it drops to 0 in each of the question's gaps).
-// `load`: the card's switch now (the answer; 1 while closed). `decoded`: how many bits the
-// receiving chip has read (each is read at the end of its bit time); `beat`: 1 just as it
-// reads one, fading over the bit. `done` once the frame is over, `landed` rising to 1 just
-// after. `realMs`: how far into the frame, in real time; `frameMs`: the whole frame.
+// is (samples). `amp`: the reader's field as the card's demodulator sees it (a soft dip in
+// each of the question's gaps); `load`: the card's switch as the reader sees it (a soft
+// swell in each burst); `exact`: the signal itself, without the smoothing. `decoded`: how
+// many bits the receiving chip has read (each at the end of its bit time); `beat`: a soft
+// pulse each time it has read a whole byte. `done` once the frame is over, `landed` rising
+// to 1 just after. `realMs`: how far into the frame, in real time; `frameMs`: the whole frame.
 export function message(name, seconds) {
-  const talk = TALK[name], { length, signal, dir } = talk;
+  const talk = TALK[name], { length, signal, soft, dir } = talk;
   const n = seconds / BIT_SECONDS * BIT;
-  const i = Math.floor(n);
-  const now = n < 0 || n >= length - 1 ? (dir > 0 ? 1 : 0) : signal[i] + (signal[i + 1] - signal[i]) * (n - i);
+  const i = Math.floor(n), idle = dir > 0 ? 1 : 0;
+  const at = values => (n < 0 || n >= length - 1 ? idle : values[i] + (values[i + 1] - values[i]) * (n - i));
+  const now = at(soft);
   const bitsIn = n / BIT - 1;   // bit k sits in the frame's bit time k + 1 (the first is the start of frame)
-  const reading = bitsIn >= 1 && bitsIn < talk.bits.length + 1;
+  // A byte is nine bits with its check bit: how many are read, and how long (in bits) since the last.
+  const bytesRead = Math.floor(bitsIn / 9), since = bitsIn - 9 * bytesRead;
+  const beat = bytesRead >= 1 && bytesRead <= talk.bytes.length && n < length + 4 * BIT
+    ? smoother(0, .6, since) * Math.exp(-since * .45) : 0;
   return {
     ...talk, name, n, bit: BIT, started: n >= 0,
-    amp: dir > 0 ? now : 1, load: dir > 0 ? 0 : now,
-    decoded: clamp(Math.floor(bitsIn), 0, talk.bits.length),
-    beat: reading ? Math.exp(-(bitsIn % 1) * 5) : 0,
+    amp: dir > 0 ? now : 1, load: dir > 0 ? 0 : now, exact: at(signal),
+    decoded: clamp(Math.floor(bitsIn), 0, talk.bits.length), beat,
     done: n >= length, landed: smoother(length, length + 3 * BIT, n),
     realMs: ms(clamp(n, 0, length)), frameMs: ms(length),
   };

@@ -512,13 +512,13 @@ export async function createCardScene(canvas) {
     const clock = b.clock;
     const [perimeter, module] = copper;
     // In the conversation (cinema.js `message`) both coils follow the signal together, as in
-    // life: in the question, each of the reader's gaps stops the current in both coils at
-    // once; in the answer, the card's coil turns blue while it answers and its current
-    // changes each time its switch closes, and the reader's coil dips a little with it. The
-    // copper never goes fully dark, so a gap reads as a dip.
+    // life, as a receiver's demodulator sees it: in the question, each of the reader's gaps
+    // dips the current in both coils at once; in the answer, the card's coil turns blue while
+    // it answers and swells each time its switch closes, and the reader's coil dips with it.
     const said = b.message?.started ? b.message : null;
     const answering_ = said?.dir < 0;
-    const field_ = said ? said.amp : 1, switched = said ? said.load : 0;
+    // Each dip drawn half again as deep as the demodulator's, so the rhythm reads clearly.
+    const field_ = said ? Math.max(0, 1 - (1 - said.amp) * 1.5) : 1, switched = said ? said.load : 0;
     const amp = .25 + .75 * field_, load = answering_ ? switched : 0;
     const sending_ = answering_ ? 1 - (b.message.landed || 0) : 0;
     const readerAmp = amp, readerLoad = load;
