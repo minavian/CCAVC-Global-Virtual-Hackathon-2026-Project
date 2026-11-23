@@ -4,7 +4,8 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { buildReader, SIZE, TOP, CHIP as READER_CHIP } from './reader-model.js';
 import { buildEffects } from './effects.js';
 import { buildRiver } from './river.js';
-import { HOVER, LEG, RUN } from './cinema.js';
+import { buildField } from './field.js';
+import { HOVER } from './cinema.js';
 
 const cardURL = new URL('../../models/contactless-card.glb', import.meta.url);
 const brass = new THREE.Color('#624725');
@@ -343,6 +344,8 @@ export async function createCardScene(canvas) {
   card.add(fx.onCard);
   const river = buildRiver();
   table.add(river.group);
+  const field = buildField();
+  table.add(field.group);
   const warm = fx.WARM, cool = fx.COOL;
   // The reader's light: cool white at rest, blue while it reads, green once it has checked.
   const idle = new THREE.Color(0xd8e6ff), reading = new THREE.Color(0x3f8cff), green = new THREE.Color(0x22c55e);
@@ -508,16 +511,17 @@ export async function createCardScene(canvas) {
     // answer going out (cool, the other way).
     const clock = b.clock;
     const [perimeter, module] = copper;
-    // In the conversation (cinema.js `message`), each coil follows the signal where it sits
-    // along the way: in the question, the reader's field (each gap dims its current); in the
-    // answer, the card's switch (the card's coil turns blue while its answer goes out, and
-    // swells with each burst; the reader's coil dips when a burst reaches it). The river
-    // draws the exact pattern; the coils show it gently, so nothing flashes.
+    // In the conversation (cinema.js `message`) both coils follow the signal together, as in
+    // life: in the question, each of the reader's gaps stops the current in both coils at
+    // once; in the answer, the card's coil turns blue while it answers and its current
+    // changes each time its switch closes, and the reader's coil dips a little with it. The
+    // copper never goes fully dark, so a gap reads as a dip.
     const said = b.message?.started ? b.message : null;
-    const asking = said?.dir > 0, answering_ = said?.dir < 0;
-    const amp = asking ? .45 + .55 * said.levelAt(LEG.card[0]) : 1;
-    const load = answering_ ? said.levelAt(LEG.card[0]) : 0, sending_ = answering_ ? said.onAir(LEG.card[0]) : 0;
-    const readerAmp = asking ? .45 + .55 * said.levelAt(LEG.gap[0]) : 1, readerLoad = answering_ ? said.levelAt(LEG.gap[0]) : 0;
+    const answering_ = said?.dir < 0;
+    const field_ = said ? said.amp : 1, switched = said ? said.load : 0;
+    const amp = .25 + .75 * field_, load = answering_ ? switched : 0;
+    const sending_ = answering_ ? 1 - (b.message.landed || 0) : 0;
+    const readerAmp = amp, readerLoad = load;
     const steady = b.river || 0;
     // Orange and blue would mix to purple, so the colour switches over quickly.
     const share = Math.max(sending_, b.reply / Math.max(.001, b.reply + Math.max(b.receive, b.power)));
@@ -561,7 +565,10 @@ export async function createCardScene(canvas) {
     });
 
     fx.update(b, TOP + b.gap + .0004, HOVER.spin, { amp, load: sending_ * (.55 + .45 * load), steady });
-    river.update({ amount: b.river || 0, message: b.message, process: b.process || 0, clock, pixels: renderer.domElement.height, run: RUN });
+    river.update({ amount: b.river || 0, amp: field_, load, answer: sending_, process: b.process || 0, clock,
+      pixels: renderer.domElement.height,
+      reading: said && said.beat > .01 ? { at: said.dir > 0 ? 'card' : 'reader', beat: said.beat } : null });
+    field.update({ lines: b.river || 0, amp: .15 + .85 * field_, echo: b.echo || 0, load });
 
     // The lights go down for the conversation: less room light, more rim.
     const dark = b.dark || 0;
@@ -585,7 +592,6 @@ export async function createCardScene(canvas) {
   // Points the close-up's marks are placed by, on screen.
   function anchor(name) {
     if (name === 'chip') return project(-.0277, .0031, .0004);
-    if (name === 'river') return toScreen(table.localToWorld(point.copy(river.head)));   // the message's front
     if (name === 'readerChip') return toScreen(table.localToWorld(point.set(READER_CHIP.x, READER_CHIP.y, READER_CHIP.z + .002)));
     return toScreen(table.localToWorld(point.set(0, .006, TOP)));   // the reader's top
   }
@@ -599,5 +605,5 @@ export async function createCardScene(canvas) {
     return project((lipX + sheet.hingeX - u) / 2, .002, (lipZ + sheet.pivotZ) / 2 + .0006);
   }
 
-  return { resize, draw, project, mouth, anchor, setReader, riverShowing: river.showing, riverFocus: () => river.focus.toArray(), parts: { copper, die, reader, renderer, table, card, rig, camera, world } };
+  return { resize, draw, project, mouth, anchor, setReader, riverFocus: () => river.focus.toArray(), parts: { copper, die, reader, renderer, table, card, rig, camera, world } };
 }
