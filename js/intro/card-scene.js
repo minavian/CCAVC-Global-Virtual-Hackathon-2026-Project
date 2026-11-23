@@ -561,7 +561,7 @@ export async function createCardScene(canvas) {
     });
 
     fx.update(b, TOP + b.gap + .0004, HOVER.spin, { amp, load: sending_ * (.55 + .45 * load), steady });
-    river.update({ amount: b.river || 0, message: b.message, clock, pixels: renderer.domElement.height, run: RUN });
+    river.update({ amount: b.river || 0, message: b.message, process: b.process || 0, clock, pixels: renderer.domElement.height, run: RUN });
 
     // The lights go down for the conversation: less room light, more rim.
     const dark = b.dark || 0;
