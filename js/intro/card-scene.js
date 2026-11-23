@@ -499,6 +499,7 @@ export async function createCardScene(canvas) {
 
     shade(Math.max(pose.xray, b.xray), b.card, b.copper, b.xray);
 
+    const dark = b.dark || 0;
     // Current in the card's coils: the reader's power coming in (orange, one way round and
     // into the chip), the answer going out (blue, the other way, out of the chip).
     const clock = b.clock;
@@ -515,12 +516,14 @@ export async function createCardScene(canvas) {
     const share = b.reply / Math.max(.001, b.reply + .5 * Math.max(b.receive, b.power));
     const answering = share > .5, tint = THREE.MathUtils.smoothstep(share, .4, .6);
     const sent = b.reply * (.45 + .55 * load);
-    perimeter.uniforms.uCurrent.value = Math.max(b.receive * amp, sent);
+    // The copper only takes a tint of it: the bright moving light is drawn over the outer
+    // turn (effects.js), so it reads as light running round, not as the copper's own colour.
+    perimeter.uniforms.uCurrent.value = Math.max(b.receive * amp, sent) * .3;
     perimeter.uniforms.uDir.value = answering ? -1 : 1;
     perimeter.uniforms.uPhase.value = clock * 1.1;
     perimeter.uniforms.uCurrentColor.value.copy(warm).lerp(cool, tint);
     perimeter.uniforms.uNeutral.value = tint * Math.min(1, b.reply * 1.5);
-    module.uniforms.uCurrent.value = Math.max(b.power * amp, b.receive * .6 * amp, sent);
+    module.uniforms.uCurrent.value = Math.max(b.power * amp, b.receive * .6 * amp, sent) * .4;
     module.uniforms.uDir.value = answering ? -1 : 1;
     module.uniforms.uPhase.value = clock * 1.4;
     module.uniforms.uCurrentColor.value.copy(warm).lerp(cool, tint);
@@ -534,27 +537,31 @@ export async function createCardScene(canvas) {
     // chip (blue). In the conversation its current dips in each gap, and a little each time
     // the card's switch closes, as the reader feels the answer.
     const sending = said ? b.emit * amp * (1 - .25 * load) : Math.max(b.emit, b.read);
-    const reading = THREE.MathUtils.smoothstep(b.read / Math.max(.001, b.read + b.emit), .4, .6);
+    // How far the reader's coil has turned blue, as it takes the answer in.
+    const takingIn = THREE.MathUtils.smoothstep(b.read / Math.max(.001, b.read + b.emit), .4, .6);
     let led = [idle, 1.1];
     if (b.check > .01) led = [ledMix.copy(idle).lerp(green, b.check), 1.1 + b.check * 1.6];
     else if (b.read > .05) led = [ledMix.copy(idle).lerp(reading, b.read), 1.1 + b.read * 1.2];
+    const readerCurrent = Math.max(sending, said ? b.read : 0);
     reader.set({
       opacity: readerRest.opacity * b.reader,
       shellOpacity: b.shell,
-      glow: Math.max(sending, said ? b.read : 0),
+      // A tint on the copper; the bright moving light is drawn over its outer turn
+      // (effects.js). In the dark the copper itself goes darker, so the light stands out.
+      glow: readerCurrent * (1 - .75 * dark),
+      dim: dark,
       flow: clock * (b.read > b.emit ? 1.1 : .9),
       direction: b.read <= b.emit ? -1 : 1,
-      color: mixColor.copy(warm).lerp(cool, reading),
-      neutral: reading * Math.min(1, b.read * 1.5),
+      color: mixColor.copy(warm).lerp(cool, takingIn),
+      neutral: takingIn * Math.min(1, b.read * 1.5),
       led,
       thinking: b.thinking * (.6 + .4 * Math.sin(clock * Math.PI * 2 * 1.4)),
     });
 
     cardTop = TOP + b.gap + .0008;
-    fx.update(b, TOP + b.gap + .0004, { amp, load });
+    fx.update(b, TOP + b.gap + .0004, { amp, load, reader: readerCurrent * dark, reading: takingIn });
 
     // The lights go down for the conversation: less room light, more rim.
-    const dark = b.dark || 0;
     world.environmentIntensity = .82 * (1 - .58 * dark);
     sky.intensity = 1.2 * (1 - .62 * dark);
     for (const { light, intensity } of keys) light.intensity = intensity * (1 - .45 * dark);

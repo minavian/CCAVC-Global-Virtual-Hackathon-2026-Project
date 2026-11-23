@@ -489,7 +489,9 @@ function intro(experience) {
     film.next.classList.toggle('is-timing', timing >= 0);
     if (timing >= 0) film.next.style.setProperty('--auto', timing.toFixed(3));
     paintAuto();
-    paintLabels3D(docked && available ? STEPS[step].labels ?? [] : []);
+    // While the card's chip works out its answer, its label points to it.
+    const working = docked && STEPS[step].talk === 'answer' && b.message && !b.message.started;
+    paintLabels3D(docked && available ? (working ? ['chip'] : STEPS[step].labels ?? []) : []);
 
     // The lights going down: the backdrop, and the readout turning dark with it.
     film.backdrop.style.opacity = b.dark;
@@ -523,7 +525,8 @@ function intro(experience) {
       film.tag.style.transform = tag.at ? `translate3d(${tag.at.x}px, ${tag.at.y}px, 0)` : '';
       if (tag.kind !== 'check') paintTrace(said);
     }
-    film.hint.classList.toggle('is-shown', docked && b.dark > .6 && !orbited);
+    // Not while it plays by itself: then there is nothing to do but watch.
+    film.hint.classList.toggle('is-shown', docked && b.dark > .6 && !orbited && !auto.on);
 
     // The check mark, drawn over the reader, and the explanation at the end.
     const top = available ? scene.anchor('readerTop') : { x: layout.reader.x, y: layout.reader.y - layout.reader.height * .3 };
@@ -613,10 +616,8 @@ function intro(experience) {
       // With reduced motion, a message shows finished, on one still frame.
       said = plan.talk && talk?.name === plan.talk ? message(talk.name, reduce.matches ? 99 : clock - talk.start) : null;
       goal = said ? talkLevels(plan.levels, said) : plan.levels;
-      // Aim where the card is going, so the camera and the card arrive together. While the
-      // card's chip works out its answer, the camera goes in close on it.
-      const working = plan.talk === 'answer' && said && !said.started;
-      look = view(working ? 'work' : plan.shot, goal.gap, rest, layout.compact);
+      // Aim where the card is going, so the camera and the card arrive together.
+      look = view(plan.shot, goal.gap, rest, layout.compact);
       if (plan.talk && !reduce.matches) {
         // While they talk the camera never quite stops: a slight, slow drift.
         look.spin += Math.sin(clock * .19) * .035;

@@ -13,6 +13,7 @@ export { SIZE, HEIGHT, TOP, COIL_Z, COIL_HALF, COIL_RADIUS, CHIP, squarePoint };
 const EDGE = .0048;   // how round the slab's edge is (its bevel radius)
 const SQUIRCLE = 5;   // the plan's superellipse power: 2 is a circle, higher is squarer
 const GLASS = .0034;  // how far the glass top sits in from the edge
+const COPPER = new THREE.Color(0xb87333), DARK_COPPER = new THREE.Color(0x3a2618);
 
 // Current in a copper coil, drawn as pulses of colour running along it. `coilT` is how far
 // along the coil each vertex is (0 to 1), so the pulses follow the wire round every turn.
@@ -145,7 +146,7 @@ export function buildReader() {
   const uv = coilGeometry.attributes.uv, along = new Float32Array(uv.count);
   for (let i = 0; i < uv.count; i++) along[i] = uv.getX(i);
   coilGeometry.setAttribute('coilT', new THREE.BufferAttribute(along, 1));
-  const copper = new THREE.MeshStandardMaterial({ color: 0xb87333, metalness: .85, roughness: .3 });
+  const copper = new THREE.MeshStandardMaterial({ color: COPPER, metalness: .85, roughness: .3 });
   const flow = { uGlow: { value: 0 }, uFlow: { value: 0 }, uPulses: { value: 14 }, uDir: { value: 1 }, uNeutral: { value: 0 }, uGlowColor: { value: new THREE.Color() } };
   flowShader(copper, flow);
   add(coilGeometry, copper, 0, inside);
@@ -158,8 +159,9 @@ export function buildReader() {
 
   // opacity: the whole reader. shell: the body only, so the inside shows through.
   // glow, flow, direction, color: the current in the coil; neutral greys the copper under
-  // a blue current. led: [color, strength]. thinking: the chip's light.
-  function set({ opacity = 1, shellOpacity = 1, glow = 0, flow: phase = 0, direction = 1, neutral = 0, color, led: light, thinking = 0 }) {
+  // a blue current; dim darkens the copper (in the dark close-up, so the current's light
+  // stands out on it). led: [color, strength]. thinking: the chip's light.
+  function set({ opacity = 1, shellOpacity = 1, glow = 0, flow: phase = 0, direction = 1, neutral = 0, dim = 0, color, led: light, thinking = 0 }) {
     group.visible = opacity > .002;
     if (opacity !== last.opacity || shellOpacity !== last.shell) {
       last.opacity = opacity;
@@ -181,6 +183,7 @@ export function buildReader() {
       led.visible = glowing > .05;
     }
     flow.uGlow.value = glow;
+    copper.color.copy(COPPER).lerp(DARK_COPPER, dim * .7);
     flow.uFlow.value = phase;
     flow.uDir.value = direction;
     flow.uNeutral.value = neutral;

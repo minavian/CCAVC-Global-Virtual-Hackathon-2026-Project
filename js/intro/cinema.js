@@ -258,10 +258,10 @@ export const STEPS = [
     levels: { card: .7, emit: .5, field: 1 } },
   { text: 'The field makes electricity in the card’s coil.', detail: 'Nothing touches. The field does it.',
     ms: [.1, .3], shot: 'coils', labels: ['cardCoil'], hold: 5,
-    levels: { emit: .4, field: .5, receive: 1 } },
+    levels: { emit: .3, field: .26, receive: 1 } },
   { text: 'That electricity powers the chip.', detail: 'No battery. The reader is the battery.',
     ms: [.3, 1], shot: 'chip', labels: ['chip'], hold: 5,
-    levels: { emit: .15, field: .2, receive: .4, power: 1, blink: .4, charge: 1 } },
+    levels: { reader: .3, emit: .1, field: .1, receive: .4, power: 1, blink: .4, charge: 1 } },
   // `asking`: what the readout says once the question is on its way; `waiting`: while the
   // card's chip works out its answer, before the answer goes out.
   { text: 'Your turn. Ask the card who it is.', detail: 'The field stays on. It powers the card.',
@@ -309,11 +309,9 @@ export const SHOTS = {
   // One view for the whole of the power and the conversation, so nothing jumps: from the
   // front and a little above, the reader's coil at the bottom, the card's coil above it,
   // and the gap between them, where the field crosses. The chip's step moves in on the
-  // chip from the same angle. `phone` is the framing on a narrow screen.
-  coils: { zoom: 1.55, focus: 'gap', at: [.5, .45], tilt: 1.2, spin: .12, yaw: 0, fov: 30, phone: { at: [.5, .44], zoom: 1.6 } },
-  chip: { zoom: 2.3, focus: 'chip', at: [.42, .42], tilt: 1.2, spin: .12, yaw: 0, fov: 30, phone: { at: [.3, .42], zoom: 1.9 } },
-  // The card's chip at work, between the question and the answer.
-  work: { zoom: 2.3, focus: 'chip', at: [.42, .42], tilt: 1.2, spin: .12, yaw: 0, fov: 30, phone: { at: [.3, .42], zoom: 1.9 } },
+  // chip, a little more from above, while the reader fades back. `phone` is the framing on a narrow screen.
+  coils: { zoom: 2.05, focus: 'gap', at: [.5, .42], tilt: 1.2, spin: .12, yaw: 0, fov: 30, phone: { at: [.5, .44], zoom: 1.7 } },
+  chip: { zoom: 3.6, focus: 'chip', at: [.42, .42], tilt: .95, spin: .12, yaw: 0, fov: 30, phone: { at: [.32, .42], zoom: 2.6 } },
   read: { zoom: 2.2, focus: 'readerChip', at: [.5, .4], tilt: .92, spin: -.75, yaw: .02, fov: 16 },
   done: { zoom: 2.1, focus: 'top', at: [.5, .42], tilt: .96, spin: -.92, yaw: .03, fov: 0 },
 };
