@@ -266,11 +266,13 @@ function intro(experience) {
     }
   }
 
-  // The message's signal under its label (cinema.js `message`), as its sender makes it. The
-  // question: the reader's field, full on, with a gap for each pause. The answer: the card's
-  // switch, closed in bursts that flicker with the 847.5 kHz subcarrier. The line is laid
-  // out once per message and drawn up to now; its bytes appear once they reach the far chip.
-  const traceY = (dir, level) => (dir > 0 ? 3 + (1 - level) * 18 : 21 - level * 18);
+  // The message's signal under its label (cinema.js `message`), as the receiver feels it.
+  // The question: the reader's field at the card, full on, with a drop to nothing for each
+  // gap. The answer: the field at the reader, with a dip each time the card's switch closes
+  // (drawn far deeper than the few percent it really is, and flickering with the 847.5 kHz
+  // subcarrier). The line is laid out once per message and drawn up to now; each byte
+  // appears once the receiving chip has read it.
+  const traceY = (dir, level) => 3 + (1 - level) * 18;
   function paintTrace(said) {
     const { length, dir } = said;
     if (film.traceFor !== said.name) {
@@ -278,10 +280,10 @@ function intro(experience) {
       film.trace.setAttribute('viewBox', `0 0 ${length} 24`);
       let d = '';
       for (let n = 0; n < length; n++) {
-        d += `${n ? 'L' : 'M'}${n} ${traceY(dir, dir > 0 ? said.signal[n] : said.raw[n]).toFixed(2)}`;
+        d += `${n ? 'L' : 'M'}${n} ${traceY(dir, dir > 0 ? said.signal[n] : 1 - .6 * said.raw[n]).toFixed(2)}`;
       }
       film.traceLine.setAttribute('d', d);
-      film.traceTrack.setAttribute('d', `M0 ${traceY(dir, dir > 0 ? 1 : 0)}H${length}`);
+      film.traceTrack.setAttribute('d', `M0 3H${length}`);
       // Each byte sits under its 8 bits (bit k is the frame's bit time k + 1; a byte's ninth
       // bit is its check bit).
       film.bytes.replaceChildren(...said.bytes.map((byte, k) => {
@@ -294,7 +296,7 @@ function intro(experience) {
     }
     const now = Math.min(length, Math.max(0, said.n));
     film.traceClip.setAttribute('width', now);
-    const level = said.levelAt(dir > 0 ? 0 : 1);   // at the sender's chip
+    const level = dir > 0 ? said.amp : 1 - .6 * said.load;
     film.traceDot.style.left = `${now / length * 100}%`;
     film.traceDot.style.top = `${traceY(dir, level) / 24 * 100}%`;
     film.traceDot.style.opacity = said.n >= length ? 0 : 1;
@@ -319,14 +321,11 @@ function intro(experience) {
 
     if (docked) {
       const plan = STEPS[step], { ms: [from, to] } = plan, msg = b.message;
-      // In the conversation the small print says where the message is (cinema.js `stages`),
-      // and while the card's chip works on the question, the readout says so.
+      // In the conversation the readout follows the message, and while the card's chip works
+      // on the question, it says so.
       let text = plan.text, detail = plan.detail;
-      if (plan.talk === 'ask' && talk) { text = plan.asking; detail = plan.stages[msg?.stage ?? 'wire']; }
-      else if (plan.talk === 'answer' && msg) {
-        if (!msg.started) { text = plan.waiting; detail = plan.waitingDetail; }
-        else detail = plan.stages[msg.stage];
-      }
+      if (plan.talk === 'ask' && talk) { text = plan.asking; detail = plan.askingDetail; }
+      else if (plan.talk === 'answer' && msg && !msg.started) { text = plan.waiting; detail = plan.waitingDetail; }
       if (text) say(text, detail);
       film.middleLabel.textContent = 'Real time';
       const said = b.message?.started && !b.message.done ? b.message : null;
@@ -492,28 +491,22 @@ function intro(experience) {
       // With reduced motion, a message shows finished, on one still frame.
       said = plan.talk && talk?.name === plan.talk ? message(talk.name, reduce.matches ? 99 : clock - talk.start) : null;
       goal = said ? talkLevels(plan.levels, said) : plan.levels;
-      // Aim where the card is going, so the camera and the card arrive together.
-      look = view(plan.shot, goal.gap, rest, layout.compact);
-      if (said?.started && available && !reduce.matches) {
-        // The camera rides with the message: it leans toward its bits and moves in a little,
-        // then settles back once every bit has landed.
-        const ride = smoother(0, .1, said.n / said.run) * (1 - said.landed) * .5;
-        const bits = scene.riverFocus();
-        look.focus = look.focus.map((value, i) => value + (bits[i] - value) * ride);
-        look.zoom *= 1 + ride * .45;
-      }
+      // Aim where the card is going, so the camera and the card arrive together. While the
+      // card's chip works out its answer, the camera goes in close on it.
+      const working = plan.talk === 'answer' && said && !said.started;
+      look = view(working ? 'work' : plan.shot, goal.gap, rest, layout.compact);
       if (plan.talk && !reduce.matches) {
-        // While they talk the camera never quite stops: a slow drift round the river.
+        // While they talk the camera never quite stops: a slow drift round the coils.
         look.spin += Math.sin(clock * .19) * .08;
         look.tilt += Math.sin(clock * .14 + 1) * .03;
       }
       look.spin += orbit.spin;
       look.tilt = clamp(look.tilt + orbit.tilt, .2, 1.48);
-      // The question has reached the card's chip: the camera turns to the card, and the card
-      // answers the standard's wait after the reader's last gap reached it (ANSWER_AFTER).
+      // The question is over: the camera goes to the card's chip, which answers the standard's
+      // wait after the reader's last gap (ANSWER_AFTER), on the same clock.
       if (said?.done && talk.name === 'ask') {
         talk.doneAt ??= clock;
-        if (clock - talk.doneAt > .3) go(step + 1, talk.start + ANSWER_AFTER);
+        if (clock - talk.doneAt > .1) go(step + 1, talk.start + ANSWER_AFTER);
       }
     } else if (canDrop) {
       goal = approach(cm);
