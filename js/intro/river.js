@@ -1,19 +1,20 @@
 // The conversation between the reader and the card, drawn as light (the `ask` and `answer`
 // steps in cinema.js). What flows is the real signal (cinema.js `message`), along the real
 // way it takes, chip, coil, coil, chip, in three legs (cinema.js `LEGS`):
-// - the reader's side: out of the reader's chip, along its wire into its coil, and half
-//   way round the coil, on the coil's own copper;
-// - the gap: the field the two coils share. Each thread is a real field line of the
-//   reader's coil (biot.js): it rises from inside the reader's coil, through the card's
-//   coil, and curls over the card's copper;
-// - the card's side: once round the card's big coil, then round the small coil about the
-//   chip module and along its wire into the card's chip.
+// - the reader's side: out of the reader's chip along its wire to its coil. The current is
+//   in the whole coil at once, so every turn of the coil lights together;
+// - the gap: the field the two coils share, rising from all the way round the reader's coil
+//   to all the way round the card's. Each thread is a real field line of the reader's coil
+//   (biot.js): it rises from just inside the reader's copper, through the card's coil, and
+//   curls over the card's copper. The whole card coil lights together where they land;
+// - the card's side: from the card's coil through the small coil round the chip module and
+//   along its wire into the card's chip.
 // The reader's field is on all the time: it is the orange stream, and its ripples run from
 // the reader to the card, carrying the card's power. The reader's question is that stream
 // with its real gaps cut in. The card's answer is its load switching, blue bursts that run
-// back the other way while the orange stream keeps flowing. Radio waves rise from the
-// reader's coil with the same signal (a ring is missing where the reader made a gap), and
-// in the answer come back down from the card's coil.
+// back the other way while the orange stream keeps flowing. Radio waves in the whole coil's
+// shape rise from the reader's coil with the same signal (a ring is missing where the reader
+// made a gap), and in the answer come back down from the whole of the card's coil.
 // In life all of this crosses the 15 mm gap in 50 picoseconds, a millionth of a bit; here
 // the crossing is slowed far more than the bits, so you can follow the message across.
 // Everything is in the reader's frame (metres). The lights are down while it shows, so it
@@ -24,8 +25,9 @@ import { rectPoint, ringGeometry } from './effects.js';
 import { READER_WIRE, linkingStretch } from './biot.js';
 import { HOVER, LEG, TALK_GAP } from './cinema.js';
 
-const CABLE = 7, DROPS = 1500, ECHOES = 800, BITS = 48, RINGS = 10;
-const SAMPLES = { reader: 110, gap: 80, card: 190 };
+const CABLE = 5, DROPS = 1500, ECHOES = 800, BITS = 48, RINGS = 10;
+// Points per thread: the reader's wire, a turn of a coil, a field line, the card's wire.
+const SAMPLES = { reader: 60, turn: 150, gap: 70, card: 90 };
 const WARM = new THREE.Color('#ff7d1f'), COOL = new THREE.Color('#4a93ff');
 const TAU = Math.PI * 2;
 // Light added over whatever is behind (the dark, or the page while the lights fade), with
@@ -67,56 +69,70 @@ function resample(points, count) {
 }
 const smoothLine = (points, count) => new THREE.CatmullRomCurve3(points, false, 'centripetal').getSpacedPoints(count);
 
-// The reader's side, from its chip: up the wire to the coil's inner end, then round the coil
-// the way the wire is wound, outward, half a turn along the front to the middle of its left
-// side. The coil is reader-model.js's: five turns from the outside in, its inner end on the right.
-const coilAt = s => squarePoint(COIL_HALF - s * .0115, COIL_RADIUS - s * .0055, s * 5);   // s: 0 outer end, 1 inner end
-function readerWay() {
-  const lead = smoothLine([
+// The reader's side, from its chip up the wire to the coil's inner end (reader-model.js's
+// coil: five turns from the outside in, its inner end on the right).
+function readerLead() {
+  return smoothLine([
     V(READER_CHIP.x, READER_CHIP.y, READER_CHIP.z + .0011),
     V(READER_CHIP.x + .0055, READER_CHIP.y + .0035, READER_CHIP.z + .0009),
     V(.0225, -.013, READER_CHIP.z + .0009),
     V(.0245, -.004, COIL_Z - .0012),
     V(.0245, 0, COIL_Z),
-  ], 40);
-  const coil = [];
-  for (let i = 1; i <= 90; i++) {
-    const [x, y] = coilAt(1 - .1 * i / 90);
-    coil.push(V(x, y, COIL_Z));
-  }
-  return resample([...lead, ...coil], SAMPLES.reader);
+  ], SAMPLES.reader - 1);
+}
+// The reader's coil, every turn of it (closed loops a hair over the copper).
+const readerTurns = () => Array.from({ length: 5 }, (_, k) => {
+  const s = (k + .5) / 5;
+  return Array.from({ length: SAMPLES.turn }, (_, i) => {
+    const [x, y] = squarePoint(COIL_HALF - s * .0115, COIL_RADIUS - s * .0055, i / SAMPLES.turn);
+    return V(x, y, COIL_Z + .0002);
+  });
+});
+// The card's coil, every turn of it, on the traces effects.js draws over the card's copper.
+const cardTurns = () => Array.from({ length: 4 }, (_, k) => Array.from({ length: SAMPLES.turn }, (_, i) => {
+  const [x, y] = rectPoint(.0402 - k * .0008, .024 - k * .0008, .0028, i / SAMPLES.turn);
+  return onCard(-.0003 + x, y, CARD_Z);
+}));
+
+// The card's copper seen from above: how far a point is from it (in the card's plane and
+// up), and the nearest point on it.
+const CARD_HALF = [.0392, .0232];
+function nearestOnCard(x, y) {
+  const [lx0, ly] = cardLocal(x, y), lx = lx0 + .0003, [hx, hy] = CARD_HALF;
+  const ox = Math.abs(lx) - hx, oy = Math.abs(ly) - hy;
+  let px, py;
+  if (ox > 0 || oy > 0) { px = Math.min(hx, Math.max(-hx, lx)); py = Math.min(hy, Math.max(-hy, ly)); }
+  else if (-ox < -oy) { px = Math.sign(lx) * hx; py = ly; }
+  else { px = lx; py = Math.sign(ly) * hy; }
+  return { point: onCard(px - .0003, py, CARD_Z), flat: Math.hypot(lx - px, ly - py) };
 }
 
 // The gap: real field lines of the reader's coil (biot.js) that rise through the card's coil
-// and curl over the card's copper on its left side. Seeds sit just inside the reader's coil,
-// along its left side, so the lines make one ribbon. Each joins the reader's copper at its
-// start and the card's copper at its end with a few millimetres of curve.
+// and curl over the card's copper, from seeds all the way round the reader's coil, just
+// inside its copper, in two rings. Each joins the reader's copper at its start and the
+// card's copper at its end with a few millimetres of curve.
 function gapLines() {
-  const cardWire = (x, y, z) => Math.hypot(cardLocal(x, y)[0] + .0003 + .0392, z - CARD_Z);
-  const lines = [];
-  for (const share of [.7, .73, .76, .79]) {
-    for (const y of [-.0135, -.0081, -.0027, .0027, .0081, .0135]) {
-      const found = linkingStretch(READER_WIRE, [-share * .02565, y, COIL_Z], CARD_Z, cardWire);
-      if (!found || found.miss > .011) continue;
+  const cardWire = (x, y, z) => Math.hypot(nearestOnCard(x, y).flat, z - CARD_Z);
+  const lines = [], AROUND = 36;
+  for (const share of [.74, .8]) {
+    for (let i = 0; i < AROUND; i++) {
+      const f = (i + (share > .77 ? .5 : 0)) / AROUND;
+      const [x, y] = squarePoint(.02565 * share, .01105 * share, f);
+      const found = linkingStretch(READER_WIRE, [x, y, COIL_Z], CARD_Z, cardWire);
+      if (!found || found.miss > .016) continue;
       const field = found.points.map(p => V(...p));
-      const end = field[field.length - 1], wire = onCard(-.0392 - .0003, cardLocal(end.x, end.y)[1], CARD_Z);
-      const start = V(-.0256, y * .9, COIL_Z);
-      lines.push({ y, share, points: smoothLine([start, ...field.slice(1, -1), end, wire], SAMPLES.gap - 1) });
+      const end = field[field.length - 1];
+      const [cx, cy] = squarePoint(.02565, .01105, f);
+      lines.push({ f, points: smoothLine([V(cx, cy, COIL_Z + .0002), ...field.slice(1, -1), end, nearestOnCard(end.x, end.y).point], SAMPLES.gap - 1) });
     }
   }
   return lines;
 }
 
-// The card's side: once round the big coil from the middle of its left side, then over to
-// the small coil round the chip module, once round that, and along its wire into the chip.
-// The shapes are the traces effects.js draws over the card's copper.
-function cardWay() {
-  const z = CARD_Z, points = [];
-  for (let i = 0; i <= 150; i++) {
-    const [x, y] = rectPoint(.0402, .024, .0028, .5 + i / 150);
-    points.push(onCard(-.0003 + x, y, z));
-  }
-  points.push(onCard(-.0375, .0018, z), onCard(-.0345, .003, z));
+// The card's side: from the card's coil, through the small loop that couples it to the chip
+// module, once round the module's coil, and along its wire into the chip.
+function cardTail() {
+  const z = CARD_Z, points = [onCard(-.0405, 0, z), onCard(-.0375, .0018, z), onCard(-.0345, .003, z)];
   for (let i = 0; i <= 40; i++) {
     const [x, y] = rectPoint(.006, .0054, .0012, .5 + i / 40);
     points.push(onCard(-.0278 + x, .0031 + y, z));
@@ -187,27 +203,26 @@ export function buildRiver() {
   group.visible = false;
   const rand = random(1356);
 
-  // Every thread: which leg it belongs to, how far along the way its ends are, and its points.
+  // Every thread: which leg it belongs to, how far along the way its ends are, and its
+  // points. A coil's turns sit at one place along the way (`at`): the whole coil at once.
   const threads = [];
-  const addThread = (leg, extra = {}) => {
-    const thread = { leg, from: LEG[leg][0], to: LEG[leg][1], count: SAMPLES[leg], points: new Float32Array(SAMPLES[leg] * 3), seed: rand(), ...extra };
+  const addThread = (leg, line, extra = {}) => {
+    const [from, to] = extra.at === undefined ? LEG[leg] : [extra.at, extra.at];
+    const points = extra.closed ? [...line, line[0]] : line;
+    const thread = { leg, from, to, count: points.length, points: new Float32Array(points.length * 3), seed: rand(), ...extra };
+    points.forEach((p, i) => thread.points.set([p.x, p.y, p.z], i * 3));
     threads.push(thread);
     return thread;
   };
-  const fill = (array, points) => points.forEach((p, i) => array.set([p.x, p.y, p.z], i * 3));
-  const readerLine = readerWay(), cardLine = cardWay(), gap = gapLines();
-  const readerCable = Array.from({ length: CABLE }, (_, k) => addThread('reader', { k }));
-  const lanes = gap.map(line => addThread('gap', { line }));
-  const cardCable = Array.from({ length: CABLE }, (_, k) => addThread('card', { k }));
-  readerCable.forEach(thread => fill(thread.points, cable(readerLine, thread.k, .00062, 26)));
-  lanes.forEach(thread => fill(thread.points, thread.line.points));
-  cardCable.forEach(thread => fill(thread.points, cable(cardLine, thread.k, .00055, 40)));
-  // The way the bits ride: the middle of each leg (in the gap, the middle field line).
-  const middle = lanes.reduce((best, lane) => (Math.abs(lane.line.y) + Math.abs(lane.line.share - .76) * .1
-    < Math.abs(best.line.y) + Math.abs(best.line.share - .76) * .1 ? lane : best), lanes[0]);
-  const spine = { reader: new Float32Array(SAMPLES.reader * 3), gap: middle.points, card: new Float32Array(SAMPLES.card * 3) };
-  fill(spine.reader, readerLine);
-  fill(spine.card, cardLine);
+  const lead = readerLead(), tail = cardTail(), gap = gapLines();
+  const leadCable = Array.from({ length: CABLE }, (_, k) => addThread('reader', cable(lead, k, .00055, 18)));
+  readerTurns().forEach(turn => addThread('reader', turn, { at: LEG.reader[1], closed: true }));
+  const lanes = gap.map(line => addThread('gap', line.points, { f: line.f }));
+  cardTurns().forEach(turn => addThread('card', turn, { at: LEG.card[0], closed: true }));
+  const tailCable = Array.from({ length: CABLE }, (_, k) => addThread('card', cable(tail, k, .0005, 30)));
+  // The way the bits ride: the reader's wire, the field lines, the card's wire.
+  const flat = line => { const array = new Float32Array(line.length * 3); line.forEach((p, i) => array.set([p.x, p.y, p.z], i * 3)); return array; };
+  const spine = { reader: flat(lead), card: flat(tail) };
 
   // A point `p` of the way along an array of points (0 at its start, 1 at its end).
   function along(array, count, p, out) {
@@ -218,8 +233,10 @@ export function buildRiver() {
   // Which leg a place along the whole way (0 at the reader's chip, 1 at the card's) is on.
   const legAt = w => (w < LEG.gap[0] ? 'reader' : w < LEG.card[0] ? 'gap' : 'card');
   const share = (leg, w) => (w - LEG[leg][0]) / (LEG[leg][1] - LEG[leg][0]);
+  // A point on the wires (the gap has no one middle: there it is the field line facing you).
   function wayPoint(w, out) {
     const leg = legAt(w);
+    if (leg === 'gap') return along(lanes[0].points, lanes[0].count, share('gap', w), out);
     return along(spine[leg], SAMPLES[leg], share(leg, w), out);
   }
 
@@ -295,7 +312,7 @@ export function buildRiver() {
   // from the card while it answers, only where its switch is closed. Most are in the gap.
   const pick = () => {
     const r = rand();
-    return r < .26 ? readerCable[Math.floor(rand() * CABLE)] : r < .66 ? lanes[Math.floor(rand() * lanes.length)] : cardCable[Math.floor(rand() * CABLE)];
+    return r < .14 ? leadCable[Math.floor(rand() * CABLE)] : r < .86 ? lanes[Math.floor(rand() * lanes.length)] : tailCable[Math.floor(rand() * CABLE)];
   };
   const drops = Array.from({ length: DROPS + ECHOES }, (_, i) => ({
     thread: pick(), offset: rand(), speed: .96 + rand() * .08, size: .0004 + rand() ** 3 * .0008, cool: i >= DROPS,
@@ -463,7 +480,8 @@ export function buildRiver() {
       sprite.visible = s > 0 && s < 1;
       if (!sprite.visible) return;
       const w = dir > 0 ? s : 1 - s, leg = legAt(w);
-      if (leg === 'gap') along(lanes[(j * 7) % lanes.length].points, SAMPLES.gap, share('gap', w), sprite.position);
+      // Across the gap the bits rise all the way round, each on its own field line.
+      if (leg === 'gap') along(lanes[(j * 13) % lanes.length].points, SAMPLES.gap, share('gap', w), sprite.position);
       else wayPoint(w, sprite.position);
       sprite.position.z += .0005 * Math.sin(j * 1.9 + clock * 2);
       sprite.material.map = digits[dir][sent[j]];
@@ -478,7 +496,9 @@ export function buildRiver() {
     const way = s => (dir > 0 ? s : 1 - s);
     wayPoint(way(Math.min(1, Math.max(0, reach))), front.position);
     front.material.color.copy(dir < 0 ? COOL : WARM);
-    front.material.opacity = said ? amount * smooth(0, .01, reach) * (1 - smooth(1, 1.01, reach)) * .9 : 0;
+    // On the wires only: across the gap the front is the whole curtain of light at once.
+    const onWire = legAt(way(Math.min(1, Math.max(0, reach)))) !== 'gap';
+    front.material.opacity = said && onWire ? amount * smooth(0, .01, reach) * (1 - smooth(1, 1.01, reach)) * .9 : 0;
     front.scale.setScalar(.007);
     wayPoint(way(1), flash.position);
     flash.material.color.copy(dir < 0 ? COOL : WARM);
