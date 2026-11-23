@@ -45,7 +45,8 @@ function intro(experience) {
     nav: $('.readout-nav'), back: $('.readout-back'), next: $('.readout-next'), count: $('.readout-count'),
     dots: [...experience.querySelectorAll('.readout-dots li')],
     check: $('.cine-check'), explain: $('.cine-explain'), replay: $('.replay'),
-    backdrop: $('.cine-backdrop'), tag: $('.river-tag'), hint: $('.cine-hint'), nextLabel: 'Next',
+    backdrop: $('.cine-backdrop'), tag: $('.river-tag'), tagNote: $('.river-tag small'), tagWords: $('.river-tag b'),
+    hint: $('.cine-hint'), nextLabel: 'Next',
   };
   // The right arrow's drawing (index.html), put back after the ask step shows Ask instead.
   const NEXT_ARROW = film.next.innerHTML;
@@ -328,18 +329,27 @@ function intro(experience) {
     if (film.readout.classList.contains('is-dark') !== dark) film.readout.classList.toggle('is-dark', dark);
     stage.classList.toggle('is-docked', navigable);
 
-    // The label riding on the message's front, and the ID by the reader's chip while it checks.
+    // The message's label, holding still at the top in the middle for as long as the message
+    // flows (it used to ride on the front, which moved too fast to read); and the ID by the
+    // reader's chip while it checks.
     let tag = null;
     if (docked && available && b.message && scene.riverShowing()) {
-      tag = { text: b.message.words, at: scene.anchor('river'), kind: b.message.dir > 0 ? 'ask' : 'answer' };
+      const asking = b.message.dir > 0;
+      tag = {
+        kind: asking ? 'ask' : 'answer', text: b.message.words,
+        note: `${asking ? 'Reader → card' : 'Card → reader'} · ${b.message.bits.length} bits`,
+      };
     } else if (docked && available && STEPS[step].shot === 'read') {
-      tag = { text: CARD_ID, at: scene.anchor('readerChip'), kind: 'check' };
+      tag = { kind: 'check', text: CARD_ID, note: '', at: scene.anchor('readerChip') };
     }
     film.tag.classList.toggle('is-shown', Boolean(tag));
     if (tag) {
-      if (film.tag.textContent !== tag.text) film.tag.textContent = tag.text;
+      if (film.tagWords.textContent !== tag.text) {
+        film.tagWords.textContent = tag.text;
+        film.tagNote.textContent = tag.note;
+      }
       film.tag.dataset.kind = tag.kind;
-      film.tag.style.transform = `translate3d(${tag.at.x}px, ${tag.at.y}px, 0)`;
+      film.tag.style.transform = tag.at ? `translate3d(${tag.at.x}px, ${tag.at.y}px, 0)` : '';
     }
     film.hint.classList.toggle('is-shown', docked && b.dark > .6 && !orbited);
 
