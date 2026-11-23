@@ -1,10 +1,9 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { smoother } from './easing.js';
-import { buildReader, SIZE, TOP, COIL_Z, COIL_HALF } from './reader-model.js';
+import { buildReader, SIZE, TOP } from './reader-model.js';
 import { buildEffects } from './effects.js';
-import { HOVER, REST } from './cinema.js';
+import { HOVER } from './cinema.js';
 
 const cardURL = new URL('../../models/contactless-card.glb', import.meta.url);
 const brass = new THREE.Color('#624725');
@@ -19,7 +18,9 @@ const STEPS = 16;     // Simpson steps when the shader follows the bent sheet
 
 // Every material on the card gets its own copy, so the card can fade as a whole (the
 // close-up) and the X-ray can fade the shell. `end` is how much of a shell layer stays
-// in the X-ray; parts that are not shell keep all of theirs.
+// in the X-ray; parts that are not shell keep all of theirs. The coils are marked, so the
+// close-up can dim them on their own.
+const COILS = ['perimeter-and-coupling-antenna', 'module-antenna'];
 function getCardMaterials(card) {
   const fades = new Map([
     ['front-protective-overlay', .07], ['front-printed-pvc', .065],
@@ -36,14 +37,19 @@ function getCardMaterials(card) {
       node = node.parent;
     }
     const material = part.material = part.material.clone();
-    layers.push({ material, end, shell: end < 1, opacity: material.opacity, transparent: material.transparent, depthWrite: material.depthWrite });
+    layers.push({ material, end, shell: end < 1, copper: COILS.includes(part.name),
+      opacity: material.opacity, transparent: material.transparent, depthWrite: material.depthWrite });
   });
   return layers;
 }
 
-// Current in the card's coils, as pulses of light running round them. The coils are
-// drawn by the model's own copper, so the glow follows the real traces: the angle round
-// `uCenter` tells each point how far round the loop it is.
+// Current in the card's coils, as comets of colour running round them: a solid head with
+// a tail fading out behind, so the direction of the current is plain to see. The coils are
+// drawn by the model's own copper, so the glow follows the real traces. Each point works
+// out how far round its loop it is from where it sits: which side of the loop's rectangle
+// it is nearest (`uLoop`: centre and half size), and how far along that side. Each turn
+// further in starts a little further round, as on one wire wound inward. The big coil
+// also has a small coupling loop round the chip module (`uInner`); points inside it use that.
 function currentShader(material, uniforms) {
   material.onBeforeCompile = shader => {
     Object.assign(shader.uniforms, uniforms);
@@ -52,12 +58,29 @@ function currentShader(material, uniforms) {
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCoil = position.xy;');
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
-        uniform float uCurrent; uniform float uPhase; uniform vec3 uCurrentColor; uniform vec2 uCenter;
-        varying vec2 vCoil;`)
+        uniform float uCurrent; uniform float uPhase; uniform float uDir; uniform float uCount; uniform float uStagger;
+        uniform vec3 uCurrentColor; uniform vec4 uLoop; uniform vec4 uInner;
+        varying vec2 vCoil;
+        // How far round the loop a point is (0 to 1, counter-clockwise from the middle of
+        // the right side), plus a little more for each turn in.
+        float loopAlong(vec2 p, vec4 loop) {
+          vec2 q = p - loop.xy, h = loop.zw;
+          float right = h.x - q.x, top = h.y - q.y, left = h.x + q.x, bottom = h.y + q.y;
+          float inset = min(min(right, top), min(left, bottom));
+          float t = q.y;                                                   // right side
+          if (inset == top) t = h.y + (h.x - q.x);
+          else if (inset == left) t = h.y + 2. * h.x + (h.y - q.y);
+          else if (inset == bottom) t = 3. * h.y + 2. * h.x + (q.x + h.x);
+          return t / (4. * (h.x + h.y)) + inset * uStagger;
+        }`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-        float around = atan(vCoil.y - uCenter.y, vCoil.x - uCenter.x) / 6.2831853;
-        float pulse = pow(.5 + .5 * cos(6.2831853 * (around * 4. - uPhase)), 6.);
-        totalEmissiveRadiance += uCurrentColor * uCurrent * (.2 + 4.2 * pulse);`);
+        vec4 loop = uLoop;
+        if (uInner.z > 0. && abs(vCoil.x - uInner.x) < uInner.z + .0011 && abs(vCoil.y - uInner.y) < uInner.w + .0011) loop = uInner;
+        float cometAt = fract(uDir * loopAlong(vCoil, loop) * uCount - uPhase);
+        float comet = pow(cometAt, 2.6) * (1. - smoothstep(.95, 1., cometAt));`)
+      // The colour goes on after tone mapping, so the light page can't wash it out.
+      .replace('#include <tonemapping_fragment>', `#include <tonemapping_fragment>
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, uCurrentColor, clamp(uCurrent * (.06 + .94 * comet), 0., 1.));`);
   };
 }
 
@@ -224,12 +247,6 @@ export async function createCardScene(canvas) {
     light.position.set(x, y, z);
     world.add(light);
   }
-  // A cool light from behind, only in the close-up, so the dark reader keeps its edges
-  // against the dark backdrop.
-  const rim = new THREE.DirectionalLight(0xcfe4ff, 0);
-  rim.position.set(-2, 5, -7);
-  world.add(rim);
-
   const card = asset.scene.getObjectByName('contactless-card');
   const box = new THREE.Box3().setFromObject(card);
   const widthInMeters = box.max.x - box.min.x;
@@ -270,7 +287,6 @@ export async function createCardScene(canvas) {
   );
   edge.renderOrder = 10;
   face.add(edge);
-  const edgeInk = new THREE.Color(0x514b42), edgeLight = new THREE.Color(0xd9d3c7);
 
   const scan = new THREE.Mesh(
     new THREE.PlaneGeometry(.0012, .046),
@@ -280,20 +296,26 @@ export async function createCardScene(canvas) {
   scan.renderOrder = 11;
   card.add(scan);
 
-  // The card's two coils: the big one round the edge, and the chip module's little one.
-  // Each can carry a glowing current (see `currentShader`).
-  const copper = [['perimeter-and-coupling-antenna', [0, 0]], ['module-antenna', [0, 0]]].map(([name, center]) => {
+  // The card's two coils: the big one round the edge (with its small coupling loop round
+  // the chip module), and the chip module's little one. Each can carry a current (see
+  // `currentShader`). Their loops are the coils' outer turns, in each mesh's own frame.
+  const coils = [
+    ['perimeter-and-coupling-antenna', [-.0003, 0, .0408, .0246], [-.0278, .0031, .006, .0054], 6, 100],
+    ['module-antenna', [0, 0, .0061, .0054], [0, 0, 0, 0], 2, 220],
+  ];
+  const copper = coils.map(([name, loop, inner, count, stagger]) => {
     const material = card.getObjectByName(name).material;
     const uniforms = {
-      uCurrent: { value: 0 }, uPhase: { value: 0 },
-      uCurrentColor: { value: new THREE.Color() }, uCenter: { value: new THREE.Vector2(...center) },
+      uCurrent: { value: 0 }, uPhase: { value: 0 }, uDir: { value: 1 }, uCount: { value: count },
+      uStagger: { value: stagger }, uCurrentColor: { value: new THREE.Color() },
+      uLoop: { value: new THREE.Vector4(...loop) }, uInner: { value: new THREE.Vector4(...inner) },
     };
     currentShader(material, uniforms);
     material.needsUpdate = true;
     return { material, uniforms, original: material.color.clone(), metalness: material.metalness };
   });
   const die = card.getObjectByName('silicon-die').material;
-  const dieGlow = new THREE.Color(0xfff1d6);
+  const dieGlow = new THREE.Color('#ff9a2e');
 
   // The reader and what moves between it and the card. The reader's frame (`table`) is
   // the stage for the close-up: the camera turns it, and the card docks onto it.
@@ -305,23 +327,25 @@ export async function createCardScene(canvas) {
   table.add(fx.table);
   card.add(fx.onCard);
   const warm = fx.WARM, cool = fx.COOL;
-  const amber = new THREE.Color(0xff8a2a), green = new THREE.Color(0x3ee08f), mixColor = new THREE.Color(), ledMix = new THREE.Color();
+  // The reader's light: cool white at rest, blue while it reads, green once it has checked.
+  const idle = new THREE.Color(0xd8e6ff), reading = new THREE.Color(0x3f8cff), green = new THREE.Color(0x22c55e);
+  const mixColor = new THREE.Color(), ledMix = new THREE.Color();
 
-  let width, height, glass = -1, fade = -1;
+  let width, height, glass = -1, fade = -1, copperFade = -1;
   let readerRest = { x: 0, y: 0, width: 1, opacity: 0 };
   const point = new THREE.Vector3();
 
-  // The card's shown place, and where it was when it last changed course (`from`), so a
-  // change of course is a blend, never a jump.
+  // The card's place: free (following the drag on screen), lying over the reader, and the
+  // blend of the two that is shown.
+  const free = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), scale: 1 };
+  const docked = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), scale: 1 };
   const shown = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), scale: 1 };
-  const from = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), scale: 1 };
-  const goal = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), scale: 1 };
-  const view = { zoom: 1, x: 0, y: 0, tilt: REST.tilt, spin: REST.spin, yaw: REST.yaw };
-  const viewFrom = { ...view };
-  let docking = false, releasedAt = -1;
-  const RELEASE = 900;   // ms to undock and pull the camera back when the close-up is cancelled
+  const camera2D = { x: 0, y: 0, zoom: 1 };
   const hover = new THREE.Matrix4(), dockMatrix = new THREE.Matrix4(), hoverQuaternion = new THREE.Quaternion();
   const unitScale = new THREE.Vector3(1, 1, 1), tmpScale = new THREE.Vector3(), euler = new THREE.Euler();
+  // While the card is dragged, the camera pushes in a little and the card grows with it, up
+  // to this much. Beyond it (the close-ups after the drop) the free card keeps its size.
+  const GROW = 1.3;
 
   function resize(w, h) {
     width = w;
@@ -346,11 +370,13 @@ export async function createCardScene(canvas) {
     table.updateMatrixWorld(true);
   }
 
-  // How the card would stand from its scroll pose alone.
+  // The card where the drag puts it: locked to its place on the screen, whatever the camera
+  // does, so it stays under the finger.
   function freePose(pose, out) {
-    out.position.set(pose.x - width / 2, height / 2 - pose.y, 0);
+    const { x, y, zoom } = camera2D;
+    out.position.set(x + (pose.x - width / 2) / zoom, y + (height / 2 - pose.y) / zoom, 0);
     out.quaternion.setFromEuler(euler.set(pose.pitch, pose.yaw, pose.roll, 'YXZ'));
-    out.scale = pose.width / widthInMeters;
+    out.scale = pose.width / widthInMeters * Math.min(zoom, GROW) / zoom;
   }
 
   // Lying flat over the reader, `gap` metres above its top.
@@ -368,47 +394,31 @@ export async function createCardScene(canvas) {
     out.scale = a.scale + (b.scale - a.scale) * k;
   }
 
-  const copy = (a, b) => { b.position.copy(a.position); b.quaternion.copy(a.quaternion); b.scale = a.scale; };
-
-  // The close-up starts (or replays): the card sets off from where it is shown now.
-  function capture() {
-    copy(shown, from);
-    docking = true;
-    releasedAt = -1;
-  }
-
-  // The close-up is cancelled: the card and the camera glide back from where they are.
-  function release() {
-    if (!docking) return;
-    copy(shown, from);
-    Object.assign(viewFrom, view);
-    docking = false;
-    releasedAt = performance.now();
-  }
-
-  const releasing = () => releasedAt >= 0 && performance.now() - releasedAt < RELEASE;
-
-  // Fades the card as a whole (`amount`) and its shell for the X-ray (`see`). In the dark
-  // of the close-up (`clear`), the shell goes clearer still, so the copper stands out.
+  // Fades the card as a whole (`amount`), its shell for the X-ray (`see`) and its coils
+  // on their own (`coil`), so the close-up can show one part and dim the rest. In the
+  // close-up's X-ray (`clear`) every shell layer goes down to a fifth or less, so the
+  // copper and the chip are what you see.
   let clearness = -1;
-  function shade(see, amount, clear = 0) {
-    if (see === glass && amount === fade && clear === clearness) return;
+  function shade(see, amount, coil, clear) {
+    if (see === glass && amount === fade && coil === copperFade && clear === clearness) return;
     const glassChanged = see !== glass;
     glass = see;
     fade = amount;
+    copperFade = coil;
     clearness = clear;
-    const faded = amount < .999;
     for (const layer of layers) {
       const { material } = layer;
       const shellSee = layer.shell ? glass : 0;
+      const value = amount * (layer.copper ? coil : 1);
+      const faded = value < .999;
       const transparent = layer.transparent || shellSee > 0 || faded;
       if (transparent !== material.transparent) {
         material.transparent = transparent;
         material.needsUpdate = true;
       }
       material.depthWrite = (layer.shell && glass > 0) || faded ? false : layer.depthWrite;
-      const end = layer.end * (1 - .6 * clear);
-      material.opacity = THREE.MathUtils.lerp(layer.opacity, layer.opacity * end, shellSee) * amount;
+      const end = Math.min(layer.end, THREE.MathUtils.lerp(layer.end, .18, clear));
+      material.opacity = THREE.MathUtils.lerp(layer.opacity, layer.opacity * end, shellSee) * value;
     }
     if (glassChanged) {
       for (const { material, original, metalness } of copper) {
@@ -425,91 +435,72 @@ export async function createCardScene(canvas) {
     edge.material.opacity = glass * .82 * amount;
   }
 
-  // `pose` comes from the scroll (main.js). `shot` is the close-up's beats (cinema.js)
-  // with its camera in `shot.view`, or null when there is no close-up.
-  function draw(pose, shot = null) {
-    const now = performance.now();
+  // `pose` is the card on the screen (main.js: the scroll, the drag). `b` is what the
+  // close-up shows (cinema.js levels, glided), with its camera in `b.view` and its live
+  // clock in `b.clock`.
+  function draw(pose, b) {
     bend.hinge.value = pose.mouth * HINGE;
     bend.curl.value = (pose.curl ?? pose.mouth) * CURL;
 
-    // The camera's angle on the reader, and its zoom.
-    const back = releasing() ? smoother(0, RELEASE, now - releasedAt) : 1;
-    if (shot) {
-      Object.assign(view, { zoom: shot.view.zoom, tilt: shot.view.tilt, spin: shot.view.spin, yaw: shot.view.yaw });
-    } else if (releasedAt >= 0) {
-      view.zoom = Math.exp(Math.log(viewFrom.zoom) * (1 - back));
-      view.tilt = viewFrom.tilt + (REST.tilt - viewFrom.tilt) * back;
-      view.spin = viewFrom.spin + (REST.spin - viewFrom.spin) * back;
-      view.yaw = viewFrom.yaw + (REST.yaw - viewFrom.yaw) * back;
-      view.x = viewFrom.x * (1 - back);
-      view.y = viewFrom.y * (1 - back);
-    } else {
-      Object.assign(view, { zoom: 1, x: 0, y: 0, tilt: REST.tilt, spin: REST.spin, yaw: REST.yaw });
-    }
+    // The camera: its angle on the reader, its zoom, and the point it keeps in place.
+    const view = b.view;
     placeTable(view);
+    point.set(...view.focus);
+    table.localToWorld(point);
+    camera2D.zoom = view.zoom;
+    camera2D.x = point.x - (view.at[0] - .5) * width / view.zoom;
+    camera2D.y = point.y - (.5 - view.at[1]) * height / view.zoom;
+    camera.zoom = view.zoom;
+    camera.position.set(camera2D.x, camera2D.y, 1700);
+    camera.updateProjectionMatrix();
 
-    // The card: free, docking onto the reader, or gliding back after a cancel.
-    freePose(pose, goal);
-    if (shot) {
-      dockPose(shot.gap, goal);
-      blend(from, goal, shot.dock, shown);
-    } else if (releasing()) {
-      blend(from, goal, back, shown);
-    } else {
-      copy(goal, shown);
-    }
+    // The card: free, lying on the reader, or on its way between the two.
+    freePose(pose, free);
+    dockPose(b.gap, docked);
+    blend(free, docked, b.dock, shown);
     rig.position.copy(shown.position);
     rig.quaternion.copy(shown.quaternion);
     rig.scale.setScalar(shown.scale);
 
-    if (shot) {
-      // Keep the point being looked at where the shot wants it on screen.
-      point.set(...shot.view.focus);
-      table.localToWorld(point);
-      view.x = point.x - (shot.view.anchor[0] - .5) * width / view.zoom;
-      view.y = point.y - (.5 - shot.view.anchor[1]) * height / view.zoom;
-    }
-    camera.zoom = view.zoom;
-    camera.position.set(view.x, view.y, 1700);
-    camera.updateProjectionMatrix();
+    shade(Math.max(pose.xray, b.xray), b.card, b.copper, b.xray);
 
-    const dark = shot ? shot.dark : 0;
-    rim.intensity = 2.4 * dark;
-    shade(shot ? shot.xray : pose.xray, shot ? shot.cardFade : 1, dark);
-    edge.material.color.copy(edgeInk).lerp(edgeLight, dark);
-
-    // Current in the card's coils: the reader's power coming in (warm), the answer going out (cool).
-    const b = shot ?? {};
+    // Current in the card's coils: the reader's power coming in (warm, one way round), the
+    // answer going out (cool, the other way).
+    const clock = b.clock;
     const [perimeter, module] = copper;
-    const incoming = b.receive ?? 0, outgoing = b.reply ?? 0;
-    perimeter.uniforms.uCurrent.value = Math.max(incoming * .9 + outgoing * 1.1, (b.hint ?? 0) * .5);
-    perimeter.uniforms.uPhase.value = b.cardFlow ?? 0;
-    perimeter.uniforms.uCurrentColor.value.copy(warm).lerp(cool, outgoing / Math.max(.001, incoming + outgoing));
-    module.uniforms.uCurrent.value = Math.max((b.sparks ?? 0) * 1.4, (b.power ?? 0) * .45, outgoing);
-    module.uniforms.uPhase.value = (b.cardFlow ?? 0) * 1.6;
-    module.uniforms.uCurrentColor.value.copy(warm).lerp(cool, outgoing);
+    // Orange and blue would mix to purple, so the colour switches over quickly.
+    const share = b.reply / Math.max(.001, b.reply + Math.max(b.receive, b.power));
+    const answering = share > .5, tint = THREE.MathUtils.smoothstep(share, .4, .6);
+    perimeter.uniforms.uCurrent.value = Math.max(b.receive, b.reply);
+    perimeter.uniforms.uDir.value = answering ? -1 : 1;
+    perimeter.uniforms.uPhase.value = clock * 1.1;
+    perimeter.uniforms.uCurrentColor.value.copy(warm).lerp(cool, tint);
+    module.uniforms.uCurrent.value = Math.max(b.power, b.receive * .6, b.reply);
+    module.uniforms.uDir.value = answering ? -1 : 1;
+    module.uniforms.uPhase.value = clock * 1.4;
+    module.uniforms.uCurrentColor.value.copy(warm).lerp(cool, tint);
+    const work = b.blink * (.5 + .5 * Math.sin(clock * Math.PI * 2 * 1.8)) ** 2;
     die.emissive.copy(dieGlow);
-    die.emissiveIntensity = (b.power ?? 0) * .5 + (b.blink ?? 0) * 3.2;
+    die.emissiveIntensity = b.power * .6 + work * 2.4;
 
-    // The reader: the shell goes see-through to show its coil, and the coil carries the
-    // signal out (warm), then the answer in (cool).
-    const read = b.read ?? 0, emit = b.emit ?? 0;
-    let led = [amber, 1.6];
-    if (shot && shot.check > 0) led = [ledMix.copy(amber).lerp(green, shot.check), 1.6 + shot.check * 1.4];
-    else if (read > .05) led = [ledMix.copy(amber).lerp(cool, b.thinking), 1.6 + b.thinking * 1.6];
+    // The reader: its body goes see-through to show its coil, and the coil carries the
+    // signal out (warm), then the answer in toward the reader's chip (cool).
+    const sending = Math.max(b.emit, b.read);
+    let led = [idle, 1.1];
+    if (b.check > .01) led = [ledMix.copy(idle).lerp(green, b.check), 1.1 + b.check * 1.6];
+    else if (b.read > .05) led = [ledMix.copy(idle).lerp(reading, b.read), 1.1 + b.read * 1.2];
     reader.set({
-      opacity: readerRest.opacity * (shot ? shot.readerFade : 1),
-      shellOpacity: shot ? shot.readerShell : 1,
-      glow: Math.max(emit, read * 1.15),
-      flow: shot ? (read > emit ? -shot.flow * 1.3 : shot.flow) : 0,
-      color: mixColor.copy(warm).lerp(cool, read / Math.max(.001, read + emit)),
+      opacity: readerRest.opacity * b.reader,
+      shellOpacity: b.shell,
+      glow: sending,
+      flow: clock * (b.read > b.emit ? 1.1 : .9),
+      direction: b.read > b.emit ? 1 : -1,
+      color: mixColor.copy(warm).lerp(cool, THREE.MathUtils.smoothstep(b.read / Math.max(.001, b.read + b.emit), .4, .6)),
       led,
-      thinking: b.thinking ?? 0,
+      thinking: b.thinking * (.6 + .4 * Math.sin(clock * Math.PI * 2 * 1.4)),
     });
 
-    if (shot) fx.update(shot, TOP + shot.gap + .0004, HOVER.spin);
-    else fx.table.visible = fx.onCard.visible = false;
-    renderer.toneMappingExposure = .98 + dark * .12;
+    fx.update(b, TOP + b.gap + .0004, HOVER.spin);
     renderer.render(world, camera);
   }
 
@@ -523,11 +514,9 @@ export async function createCardScene(canvas) {
     return toScreen(card.localToWorld(point));
   }
 
-  // Points the close-up's notes point at, on screen.
+  // Points the close-up's marks are placed by, on screen.
   function anchor(name) {
     if (name === 'chip') return project(-.0277, .0031, .0004);
-    if (name === 'cardCoil') return project(.0352, -.0205, .0002);
-    if (name === 'readerCoil') return toScreen(table.localToWorld(point.set(COIL_HALF - .001, -.016, COIL_Z)));
     return toScreen(table.localToWorld(point.set(0, .006, TOP)));   // the reader's top
   }
 
@@ -540,5 +529,5 @@ export async function createCardScene(canvas) {
     return project((lipX + sheet.hingeX - u) / 2, .002, (lipZ + sheet.pivotZ) / 2 + .0006);
   }
 
-  return { resize, draw, project, mouth, anchor, setReader, capture, release, busy: releasing, parts: { copper, die, reader, renderer } };
+  return { resize, draw, project, mouth, anchor, setReader, parts: { copper, die, reader, renderer, table, card, rig, camera, world } };
 }

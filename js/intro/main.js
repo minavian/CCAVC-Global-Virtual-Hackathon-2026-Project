@@ -1,11 +1,12 @@
 // What RFID is: the card intro after the everyday taps (index.html `.intro`).
 // A sticky stage that scrolling plays: the card opens and lets out the letters R, F, I, D,
 // the letters spell the name, an X-ray shows the antenna and chip, and the visitor drags
-// the card onto a reader. See EXPLAINED.md.
+// the card onto a reader. Bringing it near opens a close-up that follows the card's
+// distance; dropping it lets the visitor step through the tap. See EXPLAINED.md.
 import { follow, settle, smoother, spring } from './easing.js';
 import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose, clamp, ease, mix, measureStage, restingFrame, scrollTime } from './timeline.js';
 import { renderSignals } from './signals.js';
-import { LENGTH, SKIP_TO, STEPS, beats as shotBeats, camera as shotCamera } from './cinema.js';
+import { AFTER_DRAG, APPROACH_TEXT, IDLE, LAST, NEAREST, REAL_MS, STEPS, approach, approachBand, approachView, centimetres, power, view } from './cinema.js';
 
 const root = document.querySelector('.intro');
 if (root) intro(root);
@@ -16,6 +17,7 @@ function intro(experience) {
   const sceneCanvas = $('.card-scene');
   const poster = $('.card-poster');
   const shadow = $('.card-shadow');
+  const frameLines = $('.frame');
   const signalCanvas = $('.signal');
   const signal = signalCanvas.getContext('2d');
   const letters = [...experience.querySelectorAll('.letter')];
@@ -31,31 +33,39 @@ function intro(experience) {
     .map(name => [name, $('.' + name)]));
   const reduce = matchMedia('(prefers-reduced-motion: reduce)');
   const hud = $('.hud');
-  // The close-up after the drop (cinema.js): its backdrop, notes, step captions, check
-  // mark, explanation and buttons.
+  // The close-up's words and marks: the readout (one sentence at a time, with the radio
+  // frequency, the distance or the real time, and the power at the card), the check mark
+  // and the explanation at the end.
   const film = {
-    backdrop: $('.cine-backdrop'), root: $('.cine'), badge: $('.cine-badge'), clock: $('.cine-clock'),
-    notes: [$('.cine-note-reader'), $('.cine-note-tag')], lines: [...experience.querySelectorAll('.cine-lines g')],
-    step: $('.cine-step'), stepNumber: $('.cine-step-number'), stepText: $('.cine-step-text'),
-    check: $('.cine-check'), explain: $('.cine-explain'), skip: $('.cine-skip'), replay: $('.replay'),
+    readout: $('.readout'), text: $('.readout-text'),
+    middleLabel: $('.readout-middle small'), middleValue: $('.readout-middle b'), middleBar: $('.readout-middle i'),
+    powerValue: $('.readout-power b'), powerBar: $('.readout-power i'),
+    nav: $('.readout-nav'), back: $('.readout-back'), next: $('.readout-next'), count: $('.readout-count'),
+    dots: [...experience.querySelectorAll('.readout-dots li')],
+    check: $('.cine-check'), explain: $('.cine-explain'), replay: $('.replay'),
   };
   // The letters' weight in flight: thinnest leaving the card, full (as in styles.css) once out.
   const THIN = 100, FULL = 800;
   const weights = glyph.map(() => undefined);
   // Which line of the stacked name each letter sits on: R, F, then I and D together.
   const STACK_ROW = [0, 1, 2, 2];
+  // While dragged, the card glides behind the pointer instead of sticking to it: a softer
+  // spring (lower is lazier) whose speed also tips the card the way it is moving.
+  const GLIDE = 10, RETURN = 10, LEAN = 2600;
 
   let scene, available = false, layout, scrollDistance, startY = 0, onScreen = false;
   let raf = 0, needsMeasure = true, dirty = true, nowBefore, playhead;
   let pointer, wasDragged = false, canDrop = false, detected = false, focusCard = false;
-  let paintedPose, mouse;
+  let paintedPose, mouse, focusWhenDone = false;
   // Everything that moves follows its target through a critically damped spring
   // (easing.js), so its speed never jumps: the playhead, the drag offset, the lift and the tilt.
   const motion = { time: null, x: spring(), y: spring(), lift: spring(), pitch: spring(), yaw: spring() };
-  // The close-up's clock and camera, while it runs or holds its last frame. `veil` eases
-  // to 1 while there is a close-up and back to 0 after, and fades whatever it covers.
-  let shot = null, lastBeats = null, shownStep = -2, noteBoxes = [];
-  const veil = spring();
+  // The close-up (cinema.js). `step` is the step shown after a drop (-1 before one),
+  // `band` the sentence shown while dragging. Every level and the camera glide toward their
+  // targets on springs too, so moving the card, or pressing Next or Back, never jumps.
+  let step = -1, band = -1, clock = 0, cm = 10, shownText = null;
+  const shown = Object.fromEntries(Object.keys(IDLE).map(key => [key, spring(IDLE[key])]));
+  let lens = null;
 
   function wake() {
     if (!raf && onScreen) raf = requestAnimationFrame(frame);
@@ -91,15 +101,9 @@ function intro(experience) {
     signal?.setTransform(ratio, 0, 0, ratio, 0, 0);
     if (available) scene.resize(w, h);
     place(reader, layout.reader.x, layout.reader.y, layout.reader.width, layout.reader.height);
-    if (shot) shot.track = cameraFor(layout);
-    // The notes' boxes, so their pointer lines can start at their edges without
-    // measuring the page every frame.
-    noteBoxes = film.notes.map(note => ({ left: note.offsetLeft, top: note.offsetTop, width: note.offsetWidth, height: note.offsetHeight }));
     needsMeasure = false;
     return true;
   }
-
-  const cameraFor = box => shotCamera({ x: box.reader.x / box.width, y: box.reader.y / box.height }, box.compact);
 
   function place(node, x, y, width, height, rotation = 0) {
     node.style.width = width + 'px';
@@ -194,8 +198,7 @@ function intro(experience) {
     });
   }
 
-  function paint(time, pose, visual, beat) {
-    const hidden = veil.value;
+  function paint(time, pose, visual, b) {
     panels.meaning.style.opacity = visual.meaning;
     panels.definition.style.opacity = visual.definition;
     panels.definition.style.translate = `0 ${(1 - visual.definition) * 12}px`;
@@ -204,101 +207,110 @@ function intro(experience) {
     panels.question.style.opacity = visual.question;
     panels.question.style.translate = `0 ${(1 - visual.question) * 14}px`;
     stage.classList.toggle('show-callouts', visual.callouts > .001);
-    // The instructions make way for the close-up and its explanation.
-    panels.instruction.style.opacity = visual.instruction * (1 - hidden);
-    reader.style.opacity = visual.reader;
+    // The readout takes the instructions' place. They hand over, never overlap: the
+    // instructions are gone before the readout comes in (`paintFilm`), one text at a time.
+    panels.instruction.style.opacity = visual.instruction * (1 - smoother(0, .45, Math.max(b.panel, b.dock)));
+    // Everything else steps back while the close-up shows something.
+    reader.style.opacity = visual.reader * b.reader;
     scrollGuide.style.opacity = 1 - ease(5.14, 5.62, time);
-    hud.style.opacity = 1 - (beat?.dark ?? 0) * hidden;
+    hud.style.opacity = b.page;
+    frameLines.style.opacity = .16 * b.page;
 
-    const faceWidth = pose.width * Math.cos(pose.yaw);
-    const faceHeight = pose.width * .63 * Math.cos(pose.pitch);
+    // While the camera pushes in during a drag, the card grows with it (card-scene.js, GROW).
+    const grow = Math.min(b.view.zoom, 1.3);
+    const faceWidth = pose.width * Math.cos(pose.yaw) * grow;
+    const faceHeight = pose.width * .63 * Math.cos(pose.pitch) * grow;
     place(poster, pose.x, pose.y, faceWidth, faceHeight, -pose.roll);
-    poster.style.setProperty('--xray', pose.xray);
-    place(shadow, pose.x + 10, pose.y + pose.width * .33, pose.width * .87, pose.width * .15);
-    shadow.style.opacity = (1 - pose.xray * .8) * (1 - hidden);
+    poster.style.setProperty('--xray', Math.max(pose.xray, b.xray));
+    poster.style.opacity = b.card;
+    place(shadow, pose.x + 10, pose.y + pose.width * .33 * grow, pose.width * .87 * grow, pose.width * .15 * grow);
+    shadow.style.opacity = (1 - Math.max(pose.xray, b.xray) * .8) * (1 - b.dock);
     if (canDrop) place(dropButton, pose.x, pose.y, faceWidth + 8, faceHeight + 8, -pose.roll);
     if (available) {
       scene.setReader({ x: layout.reader.x, y: layout.reader.y, width: layout.reader.width, opacity: visual.reader });
-      scene.draw(pose, shot && beat ? { ...beat, view: shot.track(beat.c) } : null);
+      scene.draw(pose, b);
     }
     paintedPose = pose;
   }
 
-  // The close-up's words and marks, laid over the 3D. `b` is the shot's beats, `v` the veil.
-  function paintFilm(b, v) {
-    const show = (node, amount, lift = 10) => {
-      node.style.opacity = amount;
-      node.style.translate = `0 ${(1 - amount) * lift}px`;
-    };
-    film.backdrop.style.opacity = b.dark * v;
-    film.badge.style.opacity = b.badge * v;
-    const ms = b.ms.toFixed(2) + ' ms';
-    if (film.clock.textContent !== ms) film.clock.textContent = ms;
+  const show = (node, amount, lift = 10) => {
+    node.style.opacity = amount;
+    node.style.translate = `0 ${(1 - amount) * lift}px`;
+  };
 
-    // The two notes, each with a line to the part it names.
-    const anchors = available
-      ? [scene.anchor('readerCoil'), scene.anchor('cardCoil')]
-      : [layout.reader, layout.reader];
-    [b.noteReader, b.noteTag].forEach((amount, i) => {
-      const value = amount * v;
-      show(film.notes[i], value);
-      const box = noteBoxes[i], line = film.lines[i];
-      line.style.opacity = value;
-      if (!box || value < .002) return;
-      const end = anchors[i];
-      const fromLeft = end.x < box.left;
-      const start = layout.compact
-        ? { x: Math.min(Math.max(end.x, box.left + 12), box.left + box.width - 12), y: box.top - 8 }
-        : { x: fromLeft ? box.left - 12 : box.left + box.width + 12, y: box.top + 22 };
-      const [path, dot] = line.children;
-      path.setAttribute('d', `M${start.x} ${start.y}L${end.x} ${end.y}`);
-      dot.setAttribute('cx', end.x);
-      dot.setAttribute('cy', end.y);
-      path.style.strokeDashoffset = 1 - value;
-    });
-
-    // One step caption at a time, at the bottom.
-    if (b.step !== shownStep) {
-      shownStep = b.step;
-      film.stepNumber.textContent = b.step < 0 ? '' : `${b.step + 1} / ${STEPS.length}`;
-      film.stepText.textContent = b.step < 0 ? '' : STEPS[b.step][1];
+  // Swaps the readout's sentence, fading the new one in.
+  function say(text) {
+    if (text === shownText) return;
+    shownText = text;
+    film.text.textContent = text;
+    if (!reduce.matches && text) {
+      film.text.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }],
+        { duration: 420, easing: 'cubic-bezier(.2, .7, .2, 1)' });
     }
-    show(film.step, b.stepIn * v, 12);
+  }
+
+  // The close-up's words and marks, laid over the 3D. `b` is what is shown (cinema.js levels).
+  function paintFilm(b) {
+    const docked = detected && step >= 0;
+    const on = b.panel > .01;
+    show(film.readout, smoother(.45, 1, b.panel), 8);
+    film.readout.style.visibility = on || docked ? 'visible' : 'hidden';
+    film.readout.style.pointerEvents = b.panel > .5 ? '' : 'none';
+    film.readout.classList.toggle('is-docked', docked);
+
+    if (docked) {
+      const { text, ms: [from, to] } = STEPS[step];
+      if (text) say(text);
+      film.middleLabel.textContent = 'Real time';
+      film.middleValue.textContent = from === to ? `${to.toFixed(1)} ms` : `${from.toFixed(1)}–${to.toFixed(1)} ms`;
+      film.middleBar.style.setProperty('--from', from / REAL_MS);
+      film.middleBar.style.setProperty('--to', Math.max(to, from + .06) / REAL_MS);
+      film.powerValue.textContent = Math.round(power(NEAREST) * 100) + '%';
+      film.powerBar.style.setProperty('--to', 1);
+    } else if (on) {
+      band = approachBand(cm, band);
+      say(APPROACH_TEXT[band]);
+      film.middleLabel.textContent = 'Distance';
+      film.middleValue.textContent = cm.toFixed(1) + ' cm';
+      film.middleBar.style.setProperty('--from', 0);
+      film.middleBar.style.setProperty('--to', 1 - (cm - NEAREST) / (10 - NEAREST));
+      const share = power(cm);
+      film.powerValue.textContent = Math.round(share * 100) + '%';
+      film.powerBar.style.setProperty('--to', share);
+    }
+
+    // Back, Next and where you are, after the drop.
+    const navigable = docked && step < LAST;
+    if (film.nav.hidden === navigable) film.nav.hidden = !navigable;
+    if (navigable) {
+      film.back.disabled = step === 0;
+      film.count.textContent = `${step + 1} of ${LAST}`;
+      film.dots.forEach((dot, i) => {
+        dot.classList.toggle('is-done', i < step);
+        dot.classList.toggle('is-now', i === step);
+      });
+    }
 
     // The check mark, drawn over the reader, and the explanation at the end.
     const top = available ? scene.anchor('readerTop') : { x: layout.reader.x, y: layout.reader.y - layout.reader.height * .3 };
     film.check.style.transform = `translate(${top.x}px, ${top.y - layout.reader.width * .16}px) translate(-50%, -100%)`;
-    film.check.style.opacity = Math.min(1, b.check * 3) * v;
+    film.check.style.opacity = Math.min(1, b.check * 3) * (1 - b.explain);
     film.check.style.setProperty('--draw', b.check);
-    show(film.explain, b.explain * v, 16);
-    film.explain.classList.toggle('is-shown', b.explain * v > .02);
-    film.skip.hidden = !shot || b.c >= SKIP_TO;
-    if (b.check > .5 && status.textContent === '') status.textContent = 'Card detected.';
-    const done = b.explain > .3 && v > .5;
-    if (retry.hidden === done) {
-      retry.hidden = film.replay.hidden = !done;
+    // The explanation comes in once the readout has gone, so they never show together.
+    const explain = b.explain * (1 - smoother(.3, .45, b.panel));
+    show(film.explain, explain, 16);
+    film.explain.classList.toggle('is-shown', explain > .02);
+    if (docked && step >= LAST - 1 && b.check > .5 && status.textContent === '') status.textContent = 'Card detected.';
+    const done = docked && step === LAST && explain > .3;
+    if (retry.hidden === done) retry.hidden = film.replay.hidden = !done;
+    // Whoever pressed Next to get here lands on Watch again once it shows.
+    if (done && focusWhenDone) {
+      focusWhenDone = false;
+      film.replay.focus({ preventScroll: true });
     }
   }
 
-  // Starts the close-up (or replays it). With reduced motion, or no 3D, it goes straight
-  // to its last frame: the card on the reader, the check mark and the explanation.
-  function startFilm() {
-    const still = reduce.matches || !available;
-    shot = { c: still ? LENGTH : 0, hold: false, track: cameraFor(layout) };
-    shownStep = -2;
-    if (available) scene.capture();
-    stage.classList.add('in-film');
-    invalidate();
-  }
-
-  function stopFilm() {
-    if (!shot) return;
-    shot = null;
-    if (available) scene.release();
-    status.textContent = '';
-    stage.classList.remove('in-film');
-  }
-
+  // How far the card's centre is from the reader's, as a share of the drop zone (1 is its edge).
   function readerDistance(x, y) {
     const target = layout.reader;
     return Math.hypot((x - target.x) / (target.width * .38), (y - target.y) / (target.height * .40));
@@ -333,12 +345,14 @@ function intro(experience) {
     }
 
     const base = cardPose(time, layout);
-    const x = detected ? layout.reader.x : pointer?.moved ? pointer.x : base.x;
-    const y = detected ? layout.reader.y : pointer?.moved ? pointer.y : base.y;
+    const held = Boolean(pointer?.moved);
+    const x = detected ? layout.reader.x : held ? pointer.x : base.x;
+    const y = detected ? layout.reader.y : held ? pointer.y : base.y;
     const before = [motion.x.value, motion.y.value, motion.lift.value, motion.pitch.value, motion.yaw.value];
-    const held = pointer?.moved;
-    const offsetX = chase(motion.x, x - base.x, held ? 40 : 14, dt, .2);
-    const offsetY = chase(motion.y, y - base.y, held ? 40 : 14, dt, .2);
+    // Held, the card glides behind the pointer; let go, it glides home or onto the reader.
+    const glide = held ? GLIDE : RETURN;
+    const offsetX = chase(motion.x, x - base.x, glide, dt, .2);
+    const offsetY = chase(motion.y, y - base.y, glide, dt, .2);
     const proximity = held ? 1 - ease(.48, 1.8, readerDistance(pointer.x, pointer.y)) : 0;
     const liftTarget = detected ? -1 : held ? .5 - proximity * .75 : 0;
     const lift = chase(motion.lift, liftTarget, 18, dt, .002);
@@ -346,30 +360,69 @@ function intro(experience) {
     const hoverPitch = chase(motion.pitch, tilt.pitch, 14, dt, .0003);
     const hoverYaw = chase(motion.yaw, tilt.yaw, 14, dt, .0003);
     const changed = [offsetX, offsetY, lift, hoverPitch, hoverYaw].some((value, i) => value !== before[i]);
+    // It leans into its own motion, the way a card held at one corner swings as it moves.
+    const leanX = clamp(motion.x.velocity / LEAN, -1, 1), leanY = clamp(motion.y.velocity / LEAN, -1, 1);
     const pose = { ...base, x: base.x + offsetX, y: base.y + offsetY - Math.max(0, lift) * 12,
-      width: base.width * (1 + lift * .07), pitch: base.pitch + lift * .22 + hoverPitch,
-      yaw: base.yaw + lift * .18 + hoverYaw, roll: base.roll + lift * .085 };
+      width: base.width * (1 + lift * .07), pitch: base.pitch + lift * .22 + hoverPitch - leanY * .2,
+      yaw: base.yaw + lift * .18 + hoverYaw + leanX * .26, roll: base.roll + lift * .085 - leanX * .1 };
     const visual = beats(time);
-    // The close-up runs on its own clock, not the scroll. Its veil eases in and out.
-    if (shot && !shot.hold && shot.c < LENGTH) shot.c = Math.min(LENGTH, shot.c + dt);
-    const veilTarget = shot ? 1 : 0;
-    chase(veil, veilTarget, 6, dt, .001);
-    const beat = shot ? (lastBeats = shotBeats(shot.c)) : lastBeats;
-    const filming = Boolean(shot) || !resting(veil, veilTarget) || (available && scene.busy());
+
+    // The close-up. Dragging, it follows the card's distance from the reader (where the card
+    // is shown, so it matches what you see); after a drop, the step the visitor is on.
+    const rest = { x: layout.reader.x / layout.width, y: layout.reader.y / layout.height };
+    cm = centimetres(readerDistance(pose.x, pose.y));
+    const docked = detected && step >= 0;
+    let goal, look;
+    if (docked) {
+      goal = STEPS[step].levels;
+      // Aim where the card is going, so the camera and the card arrive together.
+      look = view(STEPS[step].shot, goal.gap, rest, layout.compact);
+    } else if (canDrop) {
+      goal = approach(cm);
+      look = approachView(cm, rest, layout.compact);
+    } else {
+      goal = IDLE;
+      look = view('rest', IDLE.gap, rest, layout.compact);
+    }
+    let settled = true;
+    const pace = docked ? 4.5 : 14;
+    for (const key in shown) {
+      chase(shown[key], goal[key], pace, dt, key === 'gap' ? 1e-5 : .0008);
+      settled &&= resting(shown[key], goal[key]);
+    }
+    // The camera glides from shot to shot: its zoom in even steps (log), its aim and angle.
+    const aim = [Math.log(look.zoom), ...look.focus, ...look.at, look.tilt, look.spin, look.yaw];
+    lens ??= aim.map(value => spring(value));
+    const lensPace = docked ? 3.4 : 12;
+    lens.forEach((state, i) => {
+      chase(state, aim[i], lensPace, dt, i >= 1 && i <= 3 ? 1e-6 : 2e-4);
+      settled &&= resting(state, aim[i]);
+    });
+    const levels = Object.fromEntries(Object.entries(shown).map(([key, state]) => [key, state.value]));
+    const [z, fx, fy, fz, ax, ay, tiltAngle, spin, yaw] = lens.map(state => state.value);
+    const live = levels.panel > .001 || levels.dock > .001 || docked;
+    // The loops (the current, the waves, the bits) run on their own clock while the close-up
+    // shows. With reduced motion they hold still on one frame.
+    if (live && !reduce.matches && !document.hidden) clock += dt;
+    if (reduce.matches) clock = .4;
+    const b = { ...levels, clock, view: { zoom: Math.exp(z), focus: [fx, fy, fz], at: [ax, ay], tilt: tiltAngle, spin, yaw } };
+
     // Where the letters and the spray leave from: the gap of the open mouth.
     const mouthPoint = () => available ? scene.mouth() : fromCard(pose, -.039, .002, .003 + pose.mouth * .010);
-    if (dirty || readyChanged || time !== playhead || changed || filming) {
+    if (dirty || readyChanged || time !== playhead || changed || !settled || live) {
       dirty = false;
-      paint(time, pose, visual, beat);
+      paint(time, pose, visual, b);
       paintLetters(time, visual, mouthPoint());
-      if (beat) paintFilm(beat, veil.value);
+      paintFilm(b);
     }
     if (signal) {
       const mouth = mouthPoint();
       const callouts = paintLabels(pose, visual.callouts);
-      const clock = reduce.matches ? 0 : now / 1000;
-      renderSignals(signal, { layout, time, clock,
-        mouth, card: pose, visual, labels: callouts, proximity, confirmed: Number(detected) });
+      const tick = reduce.matches ? 0 : now / 1000;
+      // The flat rings round the reader step aside once the 3D close-up shows its field.
+      const away = { ...visual, reader: visual.reader * (1 - Math.max(levels.panel, levels.dock)) };
+      renderSignals(signal, { layout, time, clock: tick,
+        mouth, card: pose, visual: away, labels: callouts, proximity, confirmed: Number(detected) });
     }
     playhead = time;
     if (focusCard && canDrop && !detected) {
@@ -378,10 +431,9 @@ function intro(experience) {
     }
     const moving = (!reduce.matches && !resting(motion.time, target)) ||
       !resting(motion.x, x - base.x) || !resting(motion.y, y - base.y) || !resting(motion.lift, liftTarget) ||
-      !resting(motion.pitch, tilt.pitch) || !resting(motion.yaw, tilt.yaw) ||
-      (shot && !shot.hold && shot.c < LENGTH) || !resting(veil, veilTarget) || (available && scene.busy());
+      !resting(motion.pitch, tilt.pitch) || !resting(motion.yaw, tilt.yaw) || !settled;
     const liveSignals = !document.hidden && signal && (visual.definition > 0 || visual.reader > 0);
-    if (!reduce.matches && (moving || liveSignals)) wake();
+    if ((!reduce.matches && (moving || liveSignals || live)) || (reduce.matches && !settled)) wake();
   }
 
   function stopPointer() {
@@ -393,64 +445,65 @@ function intro(experience) {
 
   function resetDrop() {
     stopPointer();
-    stopFilm();
     wasDragged = false;
     detected = false;
+    step = -1;
+    band = -1;
     status.textContent = '';
+    focusWhenDone = false;
     retry.hidden = film.replay.hidden = true;
+    film.nav.hidden = true;
     dropButton.hidden = !canDrop;
     invalidate();
   }
 
-  // The card is on the reader: play the close-up.
-  function confirmDrop() {
+  // The card is on the reader: start stepping through the tap, from `start`.
+  function confirmDrop(start) {
     if (!canDrop || detected) return;
     detected = true;
     const refocus = document.activeElement === dropButton;
     dropButton.hidden = true;
-    startFilm();
+    go(start);
     if (refocus) {
-      focusWhenDone = true;
-      if (!reduce.matches && available) {
-        film.skip.hidden = false;
-        film.skip.focus({ preventScroll: true });
-      }
+      film.nav.hidden = false;
+      film.readout.style.visibility = 'visible';
+      film.next.focus({ preventScroll: true });
     }
     invalidate();
   }
 
-  let focusWhenDone = false;
-  film.skip.addEventListener('click', () => {
-    if (!shot) return;
-    shot.c = Math.max(shot.c, SKIP_TO);
-    focusWhenDone = true;
-    invalidate();
-  });
-  film.replay.addEventListener('click', () => {
+  // Moves to step `index` (the last one is the explanation).
+  function go(index) {
     if (!detected) return;
-    focusWhenDone = false;
-    startFilm();
-  });
-  // Keyboard users land on the buttons when the explanation appears.
-  new MutationObserver(() => {
-    if (focusWhenDone && !retry.hidden) {
-      focusWhenDone = false;
-      film.replay.focus({ preventScroll: true });
-    }
-  }).observe(retry, { attributes: true, attributeFilter: ['hidden'] });
+    const leaving = stage.contains(document.activeElement) && document.activeElement !== dropButton;
+    step = clamp(index, 0, LAST);
+    focusWhenDone = step === LAST && leaving;
+    film.nav.hidden = step >= LAST;
+    if (step < LAST - 1) status.textContent = '';
+    invalidate();
+  }
 
-  // With ?debug in the address: __intro.shot(16) freezes the close-up at 16 s, __intro.play() runs it.
+  film.next.addEventListener('click', () => go(step + 1));
+  film.back.addEventListener('click', () => go(step - 1));
+  film.replay.addEventListener('click', () => {
+    go(0);
+    film.next.focus({ preventScroll: true });
+  });
+  // The arrow keys step too, and Escape takes the card off the reader.
+  stage.addEventListener('keydown', event => {
+    if (!detected || event.altKey || event.ctrlKey || event.metaKey) return;
+    if (event.key === 'ArrowRight' && step < LAST) { event.preventDefault(); go(step + 1); }
+    else if (event.key === 'ArrowLeft' && step > 0) { event.preventDefault(); go(step - 1); }
+    else if (event.key === 'Escape') { event.preventDefault(); resetDrop(); dropButton.focus({ preventScroll: true }); }
+  });
+
+  // With ?debug in the address: __intro.step(3) docks the card and shows step 4.
   if (new URLSearchParams(location.search).has('debug')) {
     window.__intro = {
-      shot(c) {
-        if (!shot) { detected = true; dropButton.hidden = true; startFilm(); }
-        shot.c = c;
-        shot.hold = true;
-        veil.value = 1;
-        veil.velocity = 0;
-        invalidate();
+      step(index) {
+        if (!detected) { detected = true; dropButton.hidden = true; }
+        go(index);
       },
-      play() { if (shot) shot.hold = false; invalidate(); },
       scene: () => scene,
     };
   }
@@ -478,9 +531,10 @@ function intro(experience) {
   dropButton.addEventListener('pointerdown', event => {
     if (!canDrop || pointer || event.button !== 0) return;
     const rect = stage.getBoundingClientRect();
+    // Where on the card it was grabbed, so the card keeps that spot under the pointer.
     pointer = {
       id: event.pointerId, startX: event.clientX, startY: event.clientY,
-      dx: paintedPose.x + rect.left - event.clientX, dy: paintedPose.y + rect.top - event.clientY,
+      dx: paintedPose.x - (event.clientX - rect.left), dy: paintedPose.y - (event.clientY - rect.top),
     };
     wasDragged = false;
     dropButton.setPointerCapture(event.pointerId);
@@ -491,8 +545,9 @@ function intro(experience) {
     if (pointer?.id !== event.pointerId) return;
     if (!pointer.moved && Math.hypot(event.clientX - pointer.startX, event.clientY - pointer.startY) < 5) return;
     pointer.moved = true;
-    pointer.x = clamp(event.clientX + pointer.dx, paintedPose.width * .28, layout.width - paintedPose.width * .28);
-    pointer.y = clamp(event.clientY + pointer.dy, paintedPose.width * .19, layout.height - paintedPose.width * .19);
+    const rect = stage.getBoundingClientRect();
+    pointer.x = clamp(event.clientX - rect.left + pointer.dx, paintedPose.width * .28, layout.width - paintedPose.width * .28);
+    pointer.y = clamp(event.clientY - rect.top + pointer.dy, paintedPose.width * .19, layout.height - paintedPose.width * .19);
     stage.classList.add('dragging');
     wake();
   });
@@ -500,9 +555,10 @@ function intro(experience) {
   dropButton.addEventListener('pointerup', event => {
     if (pointer?.id !== event.pointerId) return;
     wasDragged = Boolean(pointer.moved);
-    const onReader = wasDragged && readerDistance(event.clientX + pointer.dx, event.clientY + pointer.dy) <= 1;
+    // Dropped where it is heading: the card is still gliding there.
+    const onReader = wasDragged && readerDistance(pointer.x, pointer.y) <= 1;
     stopPointer();
-    if (onReader) confirmDrop();
+    if (onReader) confirmDrop(AFTER_DRAG);
     invalidate();
   });
 
@@ -514,8 +570,9 @@ function intro(experience) {
     });
   }
 
+  // A keyboard press or a plain tap on the card puts it on the reader, from the first step.
   dropButton.addEventListener('click', event => {
-    if (!wasDragged || event.detail === 0) confirmDrop();
+    if (!wasDragged || event.detail === 0) confirmDrop(0);
   });
 
   retry.addEventListener('click', () => {
