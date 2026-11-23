@@ -265,7 +265,9 @@ export function buildEffects() {
     const tint = smoothstep(.4, .6, share), way = 1 - 2 * tint;
     const sent = b.reply * (.45 + .55 * load);
     readerBand.uniforms.uAmount.value = talk.reader;
-    readerBand.uniforms.uPhase.value += dt * 1.5;
+    // Round the same way as the copper's comets under it, and back the other way as the
+    // reader takes the answer in.
+    readerBand.uniforms.uPhase.value += dt * 1.5 * (1 - 2 * talk.reading);
     readerBand.uniforms.uColor.value.copy(WARM).lerp(COOL, talk.reading);
     readerBand.mesh.visible = talk.reader > .003;
     const flows = [[coilBand, Math.max(b.receive * amp, sent), 1.4, .05],

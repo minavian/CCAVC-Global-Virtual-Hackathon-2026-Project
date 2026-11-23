@@ -541,8 +541,9 @@ export async function createCardScene(canvas) {
     const sending = said ? b.emit * amp * (1 - .25 * load) : Math.max(b.emit, b.read);
     // How far the reader's coil has turned blue, as it takes the answer in.
     const takingIn = THREE.MathUtils.smoothstep(b.read / Math.max(.001, b.read + b.emit), .4, .6);
-    // Its comets run away from its chip while it sends and toward it while it reads,
-    // slowing and turning round between the two.
+    // Its comets run round the same way as the bright beads on its outer turn
+    // (effects.js) while it sends, and the other way while it reads, slowing and turning
+    // round between the two.
     readerPhase += dt * (1 - 2 * takingIn);
     let led = [idle, 1.1];
     if (b.check > .01) led = [ledMix.copy(idle).lerp(green, b.check), 1.1 + b.check * 1.6];
@@ -556,7 +557,7 @@ export async function createCardScene(canvas) {
       glow: readerCurrent * (1 - .75 * dark),
       dim: dark,
       flow: readerPhase,
-      direction: -1,
+      direction: 1,
       color: mixColor.copy(warm).lerp(cool, takingIn),
       neutral: takingIn * Math.min(1, b.read * 1.5),
       led,
@@ -628,9 +629,18 @@ export async function createCardScene(canvas) {
       for (const key in material) if (material[key]?.isTexture) renderer.initTexture(material[key]);
     await renderer.compileAsync(world, camera);
     const solid = [...materials].filter(material => !material.transparent);
+    // Some graphics drivers (Chrome on Windows draws through Direct3D) only finish a shader
+    // the first time something is really drawn with it. So everything is also drawn once,
+    // every part shown, in each look; the canvas stays hidden until this is done.
+    const kept = [];
+    world.traverse(object => { kept.push([object, object.visible, object.frustumCulled]); object.visible = true; object.frustumCulled = false; });
+    renderer.render(world, camera);
     for (const material of solid) { material.transparent = true; material.needsUpdate = true; }
     await renderer.compileAsync(world, camera);
+    renderer.render(world, camera);
     for (const material of solid) { material.transparent = false; material.needsUpdate = true; }
+    for (const [object, visible, culled] of kept) { object.visible = visible; object.frustumCulled = culled; }
+    renderer.clear();
   }
   try { await warmUp(); } catch (error) { console.warn('Could not prepare the shaders ahead.', error); }
 
