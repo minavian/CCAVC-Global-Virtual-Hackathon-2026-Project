@@ -6,36 +6,13 @@
 import * as THREE from 'three';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
-import { SIZE, HEIGHT, TOP, COIL_Z, COIL_HALF, COIL_RADIUS, CHIP } from './reader-size.js';
+import { SIZE, HEIGHT, TOP, COIL_Z, COIL_HALF, COIL_RADIUS, CHIP, squarePoint } from './reader-size.js';
 
-export { SIZE, HEIGHT, TOP, COIL_Z, COIL_HALF, COIL_RADIUS, CHIP };
+export { SIZE, HEIGHT, TOP, COIL_Z, COIL_HALF, COIL_RADIUS, CHIP, squarePoint };
 
 const EDGE = .0048;   // how round the slab's edge is (its bevel radius)
 const SQUIRCLE = 5;   // the plan's superellipse power: 2 is a circle, higher is squarer
 const GLASS = .0034;  // how far the glass top sits in from the edge
-
-// A point `f` of the way round a rounded square (half-width `half`, corner radius `r`),
-// counter-clockwise from the middle of the right edge.
-export function squarePoint(half, r, f) {
-  const s = 2 * (half - r), a = Math.PI * r / 2, c = half - r;
-  let d = (((f % 1) + 1) % 1) * 4 * (s + a);
-  if (d < s / 2) return [half, d];
-  d -= s / 2;
-  const parts = [
-    [c, c, 0], [c, half, -1, 0, s], [-c, c, Math.PI / 2], [-half, c, 0, -1, s],
-    [-c, -c, Math.PI], [-c, -half, 1, 0, s], [c, -c, 1.5 * Math.PI], [half, -c, 0, 1, s / 2],
-  ];
-  for (const p of parts) {
-    if (p.length === 3) {
-      if (d < a) { const t = p[2] + d / r; return [p[0] + r * Math.cos(t), p[1] + r * Math.sin(t)]; }
-      d -= a;
-    } else {
-      if (d < p[4]) return [p[0] + p[2] * d, p[1] + p[3] * d];
-      d -= p[4];
-    }
-  }
-  return [half, 0];
-}
 
 // Current in a copper coil, drawn as pulses of colour running along it. `coilT` is how far
 // along the coil each vertex is (0 to 1), so the pulses follow the wire round every turn.

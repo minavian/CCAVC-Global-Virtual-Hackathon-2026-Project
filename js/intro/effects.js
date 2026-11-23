@@ -29,8 +29,8 @@ function glowTexture() {
   return new THREE.CanvasTexture(canvas);
 }
 
-// A thin band in the shape of the reader's coil: one wave front.
-function ringGeometry() {
+// A thin band in the shape of the reader's coil: one wave front (river.js uses it too).
+export function ringGeometry() {
   const outer = new THREE.Shape(), inner = new THREE.Path();
   const steps = 160, half = COIL_HALF - .002, radius = COIL_RADIUS - .002, band = .0013;
   for (let i = 0; i <= steps; i++) {
