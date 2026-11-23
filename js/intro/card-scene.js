@@ -58,7 +58,7 @@ function currentShader(material, uniforms) {
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCoil = position.xy;');
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
-        uniform float uCurrent; uniform float uPhase; uniform float uDir; uniform float uCount; uniform float uStagger;
+        uniform float uCurrent; uniform float uPhase; uniform float uDir; uniform float uCount; uniform float uStagger; uniform float uNeutral;
         uniform vec3 uCurrentColor; uniform vec4 uLoop; uniform vec4 uInner;
         varying vec2 vCoil;
         // How far round the loop a point is (0 to 1, counter-clockwise from the middle of
@@ -78,8 +78,11 @@ function currentShader(material, uniforms) {
         if (uInner.z > 0. && abs(vCoil.x - uInner.x) < uInner.z + .0011 && abs(vCoil.y - uInner.y) < uInner.w + .0011) loop = uInner;
         float cometAt = fract(uDir * loopAlong(vCoil, loop) * uCount - uPhase);
         float comet = pow(cometAt, 2.6) * (1. - smoothstep(.95, 1., cometAt));`)
-      // The colour goes on after tone mapping, so the light page can't wash it out.
+      // The colour goes on after tone mapping, so the light page can't wash it out. Under
+      // a blue current the copper first turns grey (uNeutral), or blue over orange would
+      // read as purple.
       .replace('#include <tonemapping_fragment>', `#include <tonemapping_fragment>
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(dot(gl_FragColor.rgb, vec3(.2126, .7152, .0722))), clamp(uNeutral, 0., 1.) * .9);
         gl_FragColor.rgb = mix(gl_FragColor.rgb, uCurrentColor, clamp(uCurrent * (.06 + .94 * comet), 0., 1.));`);
   };
 }
@@ -307,7 +310,7 @@ export async function createCardScene(canvas) {
     const material = card.getObjectByName(name).material;
     const uniforms = {
       uCurrent: { value: 0 }, uPhase: { value: 0 }, uDir: { value: 1 }, uCount: { value: count },
-      uStagger: { value: stagger }, uCurrentColor: { value: new THREE.Color() },
+      uStagger: { value: stagger }, uNeutral: { value: 0 }, uCurrentColor: { value: new THREE.Color() },
       uLoop: { value: new THREE.Vector4(...loop) }, uInner: { value: new THREE.Vector4(...inner) },
     };
     currentShader(material, uniforms);
@@ -475,10 +478,12 @@ export async function createCardScene(canvas) {
     perimeter.uniforms.uDir.value = answering ? -1 : 1;
     perimeter.uniforms.uPhase.value = clock * 1.1;
     perimeter.uniforms.uCurrentColor.value.copy(warm).lerp(cool, tint);
+    perimeter.uniforms.uNeutral.value = tint * Math.min(1, b.reply * 1.5);
     module.uniforms.uCurrent.value = Math.max(b.power, b.receive * .6, b.reply);
     module.uniforms.uDir.value = answering ? -1 : 1;
     module.uniforms.uPhase.value = clock * 1.4;
     module.uniforms.uCurrentColor.value.copy(warm).lerp(cool, tint);
+    module.uniforms.uNeutral.value = tint * Math.min(1, b.reply * 1.5);
     const work = b.blink * (.5 + .5 * Math.sin(clock * Math.PI * 2 * 1.8)) ** 2;
     die.emissive.copy(dieGlow);
     die.emissiveIntensity = b.power * .6 + work * 2.4;
@@ -486,6 +491,7 @@ export async function createCardScene(canvas) {
     // The reader: its body goes see-through to show its coil, and the coil carries the
     // signal out (warm), then the answer in toward the reader's chip (cool).
     const sending = Math.max(b.emit, b.read);
+    const reading = THREE.MathUtils.smoothstep(b.read / Math.max(.001, b.read + b.emit), .4, .6);
     let led = [idle, 1.1];
     if (b.check > .01) led = [ledMix.copy(idle).lerp(green, b.check), 1.1 + b.check * 1.6];
     else if (b.read > .05) led = [ledMix.copy(idle).lerp(reading, b.read), 1.1 + b.read * 1.2];
@@ -495,7 +501,8 @@ export async function createCardScene(canvas) {
       glow: sending,
       flow: clock * (b.read > b.emit ? 1.1 : .9),
       direction: b.read > b.emit ? 1 : -1,
-      color: mixColor.copy(warm).lerp(cool, THREE.MathUtils.smoothstep(b.read / Math.max(.001, b.read + b.emit), .4, .6)),
+      color: mixColor.copy(warm).lerp(cool, reading),
+      neutral: reading * Math.min(1, b.read * 1.5),
       led,
       thinking: b.thinking * (.6 + .4 * Math.sin(clock * Math.PI * 2 * 1.4)),
     });
