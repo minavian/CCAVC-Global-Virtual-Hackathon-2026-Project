@@ -135,11 +135,12 @@ export const SAMPLES_PER_BIT = BIT;
 export const BIT_SECONDS = .1;
 
 // The way a message travels, from the reader's chip (0) to the card's chip (1), in three
-// legs (river.js draws each): along the reader's wire from its chip into its coil and half
-// way round it; across the gap along the field the coils share; round the card's coil and
-// in through its small coil and wires to its chip. The answer takes the same legs back.
-// Each leg takes this many seconds.
-export const LEGS = [['reader', .35], ['gap', .65], ['card', .5]];
+// legs (river.js draws each): along the reader's wire from its chip to its coil (the whole
+// coil at once); across the gap along the field the coils share, from all the way round one
+// coil to all the way round the other; from the card's coil (the whole coil at once) in
+// through its small coil and wires to its chip. The answer takes the same legs back. Each
+// leg takes this many seconds.
+export const LEGS = [['reader', .3], ['gap', .7], ['card', .5]];
 export const RUN = LEGS.reduce((sum, [, seconds]) => sum + seconds, 0);
 // Where each leg starts and ends along the way, from 0 at the reader's chip to 1 at the card's.
 export const LEG = {};
@@ -286,8 +287,8 @@ const FOCUS = {
     return [HOVER.x + x * k - y * s, HOVER.y + x * s + y * k, cardZ(gap)];
   },
   readerChip: () => [READER_CHIP.x, READER_CHIP.y, (READER_CHIP.z + COIL_Z) / 2],
-  // The river's middle, where it rises between the coils (river.js).
-  river: gap => [-.024, -.003, COIL_Z + (cardZ(gap) - COIL_Z) * .8],
+  // The river's middle: between the coils, where its curtain rises all the way round (river.js).
+  river: gap => [0, 0, COIL_Z + (cardZ(gap) - COIL_Z) * .8],
 };
 
 // The camera for each step: zoom, what it looks at, where that sits on screen (shares of
@@ -301,8 +302,8 @@ export const SHOTS = {
   power: { zoom: 7.5, focus: 'chip', at: [.5, .4], tilt: .82, spin: -.72, yaw: .03, fov: 18 },
   // The conversation: low between the card and the reader, the lens wide open.
   // `phone` is the framing on a narrow screen.
-  ask: { zoom: 2.3, focus: 'river', at: [.5, .46], tilt: 1.3, spin: .35, yaw: -.02, fov: 50, phone: { at: [.36, .44], zoom: 1.35 } },
-  answer: { zoom: 2.5, focus: 'river', at: [.5, .46], tilt: 1.12, spin: 1.25, yaw: .05, fov: 58, phone: { at: [.5, .44], zoom: 1.7 } },
+  ask: { zoom: 1.9, focus: 'river', at: [.5, .48], tilt: 1.3, spin: .35, yaw: -.02, fov: 50, phone: { at: [.5, .44], zoom: 1.6 } },
+  answer: { zoom: 2, focus: 'river', at: [.5, .48], tilt: 1.12, spin: 1.25, yaw: .05, fov: 58, phone: { at: [.5, .44], zoom: 1.7 } },
   read: { zoom: 2.2, focus: 'readerChip', at: [.5, .4], tilt: .92, spin: -.75, yaw: .02, fov: 16 },
   done: { zoom: 2.1, focus: 'top', at: [.5, .42], tilt: .96, spin: -.92, yaw: .03, fov: 0 },
 };
