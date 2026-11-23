@@ -817,11 +817,14 @@ html[data-intro] .stage-light { opacity: 0; }
   from { box-shadow: 0 0 0 0 rgba(255, 125, 31, .6); }
   to { box-shadow: 0 0 0 16px rgba(255, 125, 31, 0); }
 }
-/* The words a message carries, riding on its front; and the ID by the reader's chip. */
+/* The words a message carries, and the ID by the reader's chip while it checks. */
 .intro .river-tag {
   position: absolute;
   left: 0;
   top: 0;
+  display: grid;
+  justify-items: center;
+  gap: .4rem;
   margin: 0;
   padding: .45rem .8rem;
   border: 1px solid rgba(255, 125, 31, .75);
@@ -835,6 +838,23 @@ html[data-intro] .stage-light { opacity: 0; }
   opacity: 0;
   transition: opacity .35s ease;
   pointer-events: none;
+}
+.intro .river-tag b { font-weight: inherit; }
+.intro .river-tag small {
+  font: 650 .66rem/1 "Inter Tight", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, .62);
+}
+.intro .river-tag small:empty { display: none; }
+/* A message's label holds still, at the top in the middle, while the message flows. */
+.intro .river-tag:is([data-kind="ask"], [data-kind="answer"]) {
+  left: 50%;
+  top: clamp(1.25rem, 8dvh, 4.5rem);
+  padding: .65rem 1.2rem .75rem;
+  border-radius: 18px;
+  font-size: clamp(1rem, 1.5vw, 1.25rem);
+  translate: -50% 0;
 }
 .intro .river-tag.is-shown { opacity: 1; }
 .intro .river-tag[data-kind="answer"] { border-color: rgba(74, 147, 255, .85); box-shadow: 0 0 26px rgba(74, 147, 255, .45); }
