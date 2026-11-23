@@ -411,6 +411,7 @@ export async function createCardScene(canvas) {
   // close-up's X-ray (`clear`) every shell layer goes down to a fifth or less, so the
   // copper and the chip are what you see.
   let clearness = -1;
+  let lastClock = null, readerPhase = 0;
   function shade(see, amount, coil, clear) {
     if (see === glass && amount === fade && coil === copperFade && clear === clearness) return;
     const glassChanged = see !== glass;
@@ -514,18 +515,19 @@ export async function createCardScene(canvas) {
     const load = said?.dir < 0 ? said.load : 0;
     // Orange and blue would mix to purple, so the colour switches over quickly.
     const share = b.reply / Math.max(.001, b.reply + .5 * Math.max(b.receive, b.power));
-    const answering = share > .5, tint = THREE.MathUtils.smoothstep(share, .4, .6);
+    const tint = THREE.MathUtils.smoothstep(share, .4, .6), way = 1 - 2 * tint;
+    // The comets' place adds up frame by frame (see effects.js), so they never jump.
+    const dt = lastClock === null ? 0 : Math.min(.1, Math.max(0, clock - lastClock));
+    lastClock = clock;
     const sent = b.reply * (.45 + .55 * load);
     // The copper only takes a tint of it: the bright moving light is drawn over the outer
     // turn (effects.js), so it reads as light running round, not as the copper's own colour.
     perimeter.uniforms.uCurrent.value = Math.max(b.receive * amp, sent) * .3;
-    perimeter.uniforms.uDir.value = answering ? -1 : 1;
-    perimeter.uniforms.uPhase.value = clock * 1.1;
+    perimeter.uniforms.uPhase.value += dt * 1.1 * way;
     perimeter.uniforms.uCurrentColor.value.copy(warm).lerp(cool, tint);
     perimeter.uniforms.uNeutral.value = tint * Math.min(1, b.reply * 1.5);
     module.uniforms.uCurrent.value = Math.max(b.power * amp, b.receive * .6 * amp, sent) * .4;
-    module.uniforms.uDir.value = answering ? -1 : 1;
-    module.uniforms.uPhase.value = clock * 1.4;
+    module.uniforms.uPhase.value += dt * 1.4 * way;
     module.uniforms.uCurrentColor.value.copy(warm).lerp(cool, tint);
     module.uniforms.uNeutral.value = tint * Math.min(1, b.reply * 1.5);
     const work = b.blink * (.5 + .5 * Math.sin(clock * Math.PI * 2 * 1.8)) ** 2;
@@ -539,6 +541,9 @@ export async function createCardScene(canvas) {
     const sending = said ? b.emit * amp * (1 - .25 * load) : Math.max(b.emit, b.read);
     // How far the reader's coil has turned blue, as it takes the answer in.
     const takingIn = THREE.MathUtils.smoothstep(b.read / Math.max(.001, b.read + b.emit), .4, .6);
+    // Its comets run away from its chip while it sends and toward it while it reads,
+    // slowing and turning round between the two.
+    readerPhase += dt * (1 - 2 * takingIn);
     let led = [idle, 1.1];
     if (b.check > .01) led = [ledMix.copy(idle).lerp(green, b.check), 1.1 + b.check * 1.6];
     else if (b.read > .05) led = [ledMix.copy(idle).lerp(reading, b.read), 1.1 + b.read * 1.2];
@@ -550,8 +555,8 @@ export async function createCardScene(canvas) {
       // (effects.js). In the dark the copper itself goes darker, so the light stands out.
       glow: readerCurrent * (1 - .75 * dark),
       dim: dark,
-      flow: clock * (b.read > b.emit ? 1.1 : .9),
-      direction: b.read <= b.emit ? -1 : 1,
+      flow: readerPhase,
+      direction: -1,
       color: mixColor.copy(warm).lerp(cool, takingIn),
       neutral: takingIn * Math.min(1, b.read * 1.5),
       led,
@@ -611,6 +616,23 @@ export async function createCardScene(canvas) {
     const lipX = sheet.hingeX - along, lipZ = sheet.pivotZ + up;
     return project((lipX + sheet.hingeX - u) / 2, .002, (lipZ + sheet.pivotZ) / 2 + .0006);
   }
+
+  // Compile every shader and upload every texture now, while the page loads, so the first
+  // drop and each step's first look don't stall while the graphics card prepares them. Each
+  // material that starts solid is compiled twice: solid, and see-through, the way the
+  // close-up's X-ray and fades show it (three.js builds a different shader for each).
+  async function warmUp() {
+    const materials = new Set();
+    world.traverse(object => { for (const material of [].concat(object.material ?? [])) materials.add(material); });
+    for (const material of materials)
+      for (const key in material) if (material[key]?.isTexture) renderer.initTexture(material[key]);
+    await renderer.compileAsync(world, camera);
+    const solid = [...materials].filter(material => !material.transparent);
+    for (const material of solid) { material.transparent = true; material.needsUpdate = true; }
+    await renderer.compileAsync(world, camera);
+    for (const material of solid) { material.transparent = false; material.needsUpdate = true; }
+  }
+  try { await warmUp(); } catch (error) { console.warn('Could not prepare the shaders ahead.', error); }
 
   return { resize, draw, project, mouth, anchor, setReader, parts: { copper, die, reader, renderer, table, card, rig, camera, world } };
 }
