@@ -1,18 +1,24 @@
-// What the close-up shows moving between the reader and the card (see cinema.js):
-// - wave fronts rising from the reader's coil to the card (the reader's signal),
-// - wave fronts going back down from the card's coil to the reader (the answer),
-// - current running round the card's coils and along the chip's two wires into the chip,
-//   and the chip's glow,
-// - a glow on the reader's chip while it checks the answer.
-// The waves live in the reader's frame; the wires and the chip's glow live in
-// the card's frame, so they move with it. Units are metres.
-// The page behind is light, so nothing here adds light: every mark is a saturated colour
-// laid over the scene with ordinary blending, which reads on paper as well as on the dark reader.
+// What the close-up shows moving between the reader and the card (see cinema.js). It has
+// one simple picture language, so each step adds one thing you can follow:
+// - Electricity is light running along a wire (here: round the card's coils and into its
+//   chip; the reader's coil is drawn in reader-model.js).
+// - The magnetic field is rings that leave one coil in its shape and arrive at the other in
+//   that one's shape. Orange rings rise from the reader to the card: the reader's field,
+//   which powers the card and carries the question. Blue rings come down from the card to
+//   the reader: the answer.
+// - The chips glow while they have power or work, and flash as they read each byte.
+// The rings live in the reader's frame; the wires and the chip's glow live in the card's
+// frame, so they move with it. Units are metres.
+// The page behind is light while the card is dragged, so nothing here adds light: every
+// mark is a saturated colour laid over the scene with ordinary blending, which reads on
+// paper as well as on the dark close-up.
 import * as THREE from 'three';
 import { squarePoint, COIL_Z, COIL_HALF, COIL_RADIUS, CHIP as READER_CHIP } from './reader-model.js';
+import { HOVER } from './cinema.js';
 
 const WARM = new THREE.Color('#f26a0c');   // the reader's signal and the power it brings
-const COOL = new THREE.Color('#1d6ee8');   // the card's answer
+const COOL = new THREE.Color('#2f7dff');   // the card's answer
+const UP_COLOR = new THREE.Color('#ff8a2a'); // the reader's field
 const MODULE = new THREE.Vector2(-.0277, .0031);   // the chip module's centre on the card
 const smoothstep = (lo, hi, x) => { const t = Math.min(1, Math.max(0, (x - lo) / (hi - lo))); return t * t * (3 - 2 * t); };
 
@@ -29,10 +35,12 @@ function glowTexture() {
   return new THREE.CanvasTexture(canvas);
 }
 
-// A thin band in the shape of the reader's coil: one wave front (river.js uses it too).
-export function ringGeometry() {
+// A band in the shape of the reader's coil, `band` metres wide, centred on its outer
+// turn: one ring of the field (a thin bright core, and a wide faint halo round it).
+const RING_HALF = COIL_HALF - .002;
+function ringGeometry(band) {
   const outer = new THREE.Shape(), inner = new THREE.Path();
-  const steps = 160, half = COIL_HALF - .002, radius = COIL_RADIUS - .002, band = .0013;
+  const steps = 160, half = RING_HALF + band / 2, radius = COIL_RADIUS - .002 + band / 2;
   for (let i = 0; i <= steps; i++) {
     const [x, y] = squarePoint(half, radius, i / steps);
     if (i) outer.lineTo(x, y); else outer.moveTo(x, y);
@@ -111,22 +119,60 @@ function currentWire(points, { radius, closed = false, count = 2, base = .3 }) {
   return { mesh, uniforms };
 }
 
+// The rings: how long one takes to cross from coil to coil, and how often one leaves.
+// The crossing is only drawn slowed down: in life the field between the coils changes
+// everywhere at once.
+const CROSS = 1.5, EVERY = .3;
+// A ring's place and shape: on the reader's coil, and on the card's coil once the card lies
+// over the reader (its outer turn is 80 by 49 mm, turned with the card).
+const AT_READER = { x: 0, y: 0, sx: 1, sy: 1, spin: 0 };
+const AT_CARD = {
+  x: HOVER.x - .0003 * Math.cos(HOVER.spin), y: HOVER.y - .0003 * Math.sin(HOVER.spin),
+  sx: .0402 / RING_HALF, sy: .0246 / RING_HALF, spin: HOVER.spin,
+};
+// While the card is still in the hand, the rings just spread as they rise.
+const SPREAD = { x: 0, y: 0, sx: 1.22, sy: 1.22, spin: 0 };
+const lerp = (a, b, k) => a + (b - a) * k;
+
 export function buildEffects() {
   const table = new THREE.Group();   // in the reader's frame
   const onCard = new THREE.Group();  // in the card's frame
   const glow = glowTexture();
 
-  // Wave fronts: four going up (the signal) and four coming down (the answer).
-  const ring = ringGeometry();
-  const makeRings = color => Array.from({ length: 5 }, () => {
-    const mesh = new THREE.Mesh(ring, new THREE.MeshBasicMaterial({
-      color, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, toneMapped: false,
+  // The field's rings: enough of each to fill the gap. Each is a core and a halo.
+  const core = ringGeometry(.0013), halo = ringGeometry(.0055);
+  const makeRings = color => Array.from({ length: Math.ceil(CROSS / EVERY) + 1 }, () => {
+    const mesh = new THREE.Mesh(core, new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: 0, depthWrite: false, depthTest: false, side: THREE.DoubleSide, toneMapped: false,
     }));
-    mesh.renderOrder = 5;
+    const around = new THREE.Mesh(halo, mesh.material.clone());
+    mesh.add(around);
+    mesh.renderOrder = 6;
+    around.renderOrder = 5;
+    mesh.frustumCulled = around.frustumCulled = false;
     table.add(mesh);
     return mesh;
   });
-  const up = makeRings(WARM), down = makeRings(COOL);
+  const up = makeRings(UP_COLOR), down = makeRings(COOL);
+
+  // Lays one stream of rings out at clock time `t`: a ring leaves every EVERY seconds,
+  // `level` bright, from `from` (at height `fromZ`) to `to` (at `toZ`), taking the shape
+  // of the coil it is reaching as it goes. Each is brightest halfway across.
+  function stream(rings, t, level, from, to, fromZ, toZ) {
+    const newest = Math.floor(t / EVERY);
+    rings.forEach((mesh, i) => {
+      const p = (t - (newest - i) * EVERY) / CROSS;
+      const shape = p * p * (3 - 2 * p);
+      const opacity = p < 0 || p > 1 ? 0 : level * Math.sin(Math.PI * p) ** 1.2 * .85;
+      mesh.visible = opacity > .004;
+      if (!mesh.visible) return;
+      mesh.material.opacity = opacity;
+      mesh.children[0].material.opacity = opacity * .2;
+      mesh.position.set(lerp(from.x, to.x, shape), lerp(from.y, to.y, shape), lerp(fromZ, toZ, p));
+      mesh.rotation.z = lerp(from.spin, to.spin, shape);
+      mesh.scale.set(lerp(from.sx, to.sx, shape), lerp(from.sy, to.sy, shape), 1);
+    });
+  }
 
   // The reader's chip, glowing while it checks the answer.
   const think = new THREE.Sprite(overlay(glow, COOL));
@@ -153,64 +199,55 @@ export function buildEffects() {
   onCard.add(die);
 
   // Called every frame with the shown levels (cinema.js), the live clock `b.clock` in
-  // seconds, how high the card floats over the reader and how it is turned. In the
-  // conversation `talk` has the reader's field right now (`amp`), the card's switch (`load`)
-  // and how far the currents are shown steady rather than as comets (`steady`).
-  function update(b, cardZ, spin, talk = { amp: 1, load: 0, steady: 0 }) {
+  // seconds, and how high the card's coil is over the reader. `talk` has the reader's field
+  // right now as the card feels it (`amp`, 0 in a gap) and the card's switch (`load`).
+  function update(b, cardZ, talk = { amp: 1, load: 0 }) {
     const any = b.field + b.reply + b.thinking + b.power + b.blink + b.read + b.receive;
     table.visible = onCard.visible = any > .003;
     if (!table.visible) return;
-    const t = b.clock;
+    const t = b.clock, said = b.message?.started ? b.message : null;
+    const { amp, load } = talk;
 
-    // The reader's signal rises from its coil and spreads as it climbs to the card.
-    up.forEach((mesh, i) => {
-      const p = ((t * .5 + i / up.length) % 1 + 1) % 1;
-      mesh.position.set(0, 0, COIL_Z + (cardZ - COIL_Z - .0012) * p);
-      mesh.scale.setScalar(.92 + .22 * p);
-      mesh.material.opacity = b.field * Math.sin(Math.PI * p) ** 1.5 * .92;
-      mesh.visible = mesh.material.opacity > .004;
-    });
-    // The answer leaves in the card's shape and lands in the reader's.
-    down.forEach((mesh, i) => {
-      const p = ((t * .55 + i / down.length) % 1 + 1) % 1;
-      mesh.position.set(.002 * (1 - p), -.003 * (1 - p), cardZ - .0012 - (cardZ - COIL_Z - .0012) * p);
-      mesh.rotation.z = spin * (1 - p);
-      mesh.scale.set(1.13 - .13 * p, .7 + .3 * p, 1);
-      mesh.material.opacity = b.reply * Math.sin(Math.PI * p) ** 2 * .55;
-      mesh.visible = mesh.material.opacity > .004;
-    });
+    // Up: the reader's field, from its coil to the card's. In the question the whole
+    // stream dims in each of the reader's gaps, as the field does everywhere at once.
+    const to = b.dock > .5 ? AT_CARD : SPREAD;
+    const top = cardZ + .00034;
+    stream(up, t, b.field * (said?.dir > 0 ? .12 + .88 * amp : 1), AT_READER, to, COIL_Z + .0004, top);
+    // Down: the answer, from the card's coil to the reader's. It swells each time the card
+    // closes its switch.
+    stream(down, t, b.reply * (said?.dir < 0 ? .35 + .65 * load : 1), AT_CARD, AT_READER, top, COIL_Z + .0004);
 
-    // The reader's chip beats while it checks.
+    // The reader's chip beats while it checks, and flashes as it reads each byte of the answer.
     const beat = .5 + .5 * Math.sin(t * Math.PI * 2 * 1.4);
-    think.material.opacity = Math.min(.85, b.thinking * (.45 + .4 * beat) + b.read * .15);
-    think.scale.setScalar(.014 + .008 * b.thinking * beat);
+    const readFlash = said && said.dir < 0 ? said.beat : 0;
+    think.material.opacity = Math.min(.9, b.thinking * (.45 + .4 * beat) + b.read * .15 + readFlash * .8);
+    think.scale.setScalar(.014 + .008 * b.thinking * beat + .01 * readFlash);
     think.visible = think.material.opacity > .004;
 
-    // Current in the card: warm and one way round while it takes power in, blue and the
-    // other way while it answers.
-    // Orange and blue would mix to purple, so the colour switches over quickly to
-    // whichever current is the stronger.
-    const { amp, load, steady } = talk;
-    const share = Math.max(load, b.reply / Math.max(.001, b.reply + Math.max(b.receive, b.power)));
+    // Current in the card: orange and one way round, into the chip, while it takes power in;
+    // blue and the other way, out of the chip, while it answers. Orange and blue would mix
+    // to purple, so the colour switches over quickly to whichever current is the stronger.
+    const share = b.reply / Math.max(.001, b.reply + .5 * Math.max(b.receive, b.power));
     const answering = share > .5, tint = smoothstep(.4, .6, share);
-    const into = steady ? amp : 1;   // in a gap no current flows from the coil to the chip
-    const flows = [[coilBand, Math.max(b.receive * amp, b.reply, load * .9), 1.1, .06],
-      [moduleBand, Math.max(b.power * into, b.receive * .6 * amp, b.reply, load * .9), 1.3, .08],
-      ...wires.map(wire => [wire, Math.max(b.power * into, b.reply, load * .9), 1.6, .3])];
+    const sent = b.reply * (.45 + .55 * load);
+    const flows = [[coilBand, Math.max(b.receive * amp, sent), 1.1, .06],
+      [moduleBand, Math.max(b.power * amp, b.receive * .6 * amp, sent), 1.3, .08],
+      ...wires.map(wire => [wire, Math.max(b.power * amp, sent), 1.6, .3])];
     for (const [{ mesh, uniforms }, amount, speed, base] of flows) {
-      // In the conversation: mostly comets still, over a little even glow.
-      uniforms.uAmount.value = amount * (1 - .2 * steady);
-      uniforms.uBase.value = base + (.35 - base) * steady;
+      uniforms.uAmount.value = amount;
+      uniforms.uBase.value = base;
       uniforms.uPhase.value = t * speed;
-      uniforms.uDir.value = answering && !steady ? -1 : 1;
+      uniforms.uDir.value = answering ? -1 : 1;
       uniforms.uColor.value.copy(WARM).lerp(COOL, tint);
       mesh.visible = amount > .003;
     }
 
-    // The chip glows while it has power and beats while it works out its answer.
+    // The chip glows while it has power, beats while it works out its answer, and flashes
+    // as it reads each byte of the question.
     const work = b.blink * (.5 + .5 * Math.sin(t * Math.PI * 2 * 1.8)) ** 2;
-    die.material.opacity = Math.min(.9, b.power * .5 + work * .7);
-    die.scale.setScalar(.0075 + .006 * work + .002 * b.power);
+    const flash = said && said.dir > 0 ? said.beat : 0;
+    die.material.opacity = Math.min(.95, b.power * .5 * amp + work * .7 + flash * .8);
+    die.scale.setScalar(.0075 + .006 * work + .002 * b.power + .006 * flash);
     die.visible = die.material.opacity > .004;
   }
 

@@ -618,9 +618,9 @@ function intro(experience) {
       const working = plan.talk === 'answer' && said && !said.started;
       look = view(working ? 'work' : plan.shot, goal.gap, rest, layout.compact);
       if (plan.talk && !reduce.matches) {
-        // While they talk the camera never quite stops: a slow drift round the coils.
-        look.spin += Math.sin(clock * .19) * .08;
-        look.tilt += Math.sin(clock * .14 + 1) * .03;
+        // While they talk the camera never quite stops: a slight, slow drift.
+        look.spin += Math.sin(clock * .19) * .035;
+        look.tilt += Math.sin(clock * .14 + 1) * .012;
       }
       look.spin += orbit.spin;
       look.tilt = clamp(look.tilt + orbit.tilt, .2, 1.48);
