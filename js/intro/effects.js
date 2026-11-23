@@ -51,7 +51,7 @@ const overlay = (map, color) => new THREE.SpriteMaterial({
 
 // A point `f` of the way round a rounded rectangle (half sizes `hx`, `hy`, corner radius
 // `r`), counter-clockwise from the middle of the right side.
-function rectPoint(hx, hy, r, f) {
+export function rectPoint(hx, hy, r, f) {
   const sx = 2 * (hx - r), sy = 2 * (hy - r), a = Math.PI * r / 2;
   let d = (((f % 1) + 1) % 1) * (2 * sx + 2 * sy + 4 * a);
   const cx = hx - r, cy = hy - r;
