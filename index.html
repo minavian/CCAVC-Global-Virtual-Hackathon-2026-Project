@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
-  <link rel="stylesheet" href="styles.css?v=15">
+  <link rel="stylesheet" href="styles.css?v=16">
   <script type="importmap">
     {"imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -42,7 +42,7 @@
   <script src="js/deep.js" defer></script>
   <script src="js/landing.js?v=6" defer></script>
   <script type="module" src="js/taps.js"></script>
-  <script type="module" src="js/intro/main.js?v=23"></script>
+  <script type="module" src="js/intro/main.js?v=24"></script>
 </head>
 <body>
   <main class="hero">
@@ -150,12 +150,23 @@
           </div>
           <div class="readout-nav" hidden>
             <button class="readout-back" type="button" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg></button>
-            <ol class="readout-dots" aria-hidden="true"><li></li><li></li><li></li><li></li><li></li><li></li><li></li><li></li></ol>
+            <ol class="readout-dots" aria-label="Steps"></ol>
             <span class="readout-count"></span>
             <button class="readout-next" type="button" aria-label="Next"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5.5 16 12l-6.5 6.5"/></svg></button>
           </div>
           <p class="cine-hint" aria-hidden="true">Drag to look around</p>
         </section>
+        <!-- The parts each step names, joined to them by thin lines (main.js paintLabels3D). -->
+        <div class="cine-labels" aria-hidden="true">
+          <svg class="cine-leaders"></svg>
+          <span class="cine-label" data-part="readerCoil">Reader’s coil</span>
+          <span class="cine-label" data-part="field">Magnetic field</span>
+          <span class="cine-label" data-part="cardCoil">Card’s coil</span>
+          <span class="cine-label" data-part="current">Electricity</span>
+          <span class="cine-label" data-part="cardChip">Chip</span>
+        </div>
+        <!-- It plays by itself until the visitor steps in; this pauses or plays it again. -->
+        <button class="cine-auto is-on" type="button" aria-pressed="true" hidden><i aria-hidden="true"></i><span class="cine-auto-text">Pause</span></button>
         <div class="talk-tag" aria-hidden="true">
           <small class="talk-note"></small>
           <b class="talk-words"></b>
@@ -176,9 +187,9 @@
         <div class="cine-explain">
           <p class="status" role="status"></p>
           <h3>That’s how it works.</h3>
-          <p>The reader’s signal powers the tag. The tag uses that power to answer. The reader reads the answer.</p>
+          <p>The reader’s field powers the card. The card uses that power to answer. The reader reads the answer.</p>
           <p>No battery. No contact. All in about five thousandths of a second.</p>
-          <p class="cine-fine">Strictly, the tag doesn’t broadcast. It answers by soaking up more or less of the reader’s field, and the reader feels the change.</p>
+          <p class="cine-fine">The card never broadcasts. It answers by taking more or less of the reader’s field, and the reader feels the change.</p>
           <div class="feedback">
             <button class="replay" type="button" hidden>Watch again</button>
             <button class="retry" type="button" hidden>Try again</button>

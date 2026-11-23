@@ -43,7 +43,10 @@ function intro(experience) {
     middleLabel: $('.readout-middle small'), middleValue: $('.readout-middle b'), middleBar: $('.readout-middle i'),
     powerValue: $('.readout-power b'), powerBar: $('.readout-power i'),
     nav: $('.readout-nav'), back: $('.readout-back'), next: $('.readout-next'), count: $('.readout-count'),
-    dots: [...experience.querySelectorAll('.readout-dots li')],
+    dotList: $('.readout-dots'), dots: [],
+    // The parts named on screen, each with a thin line to its part (paintLabels in paintFilm).
+    labels: Object.fromEntries([...experience.querySelectorAll('.cine-label')].map(label => [label.dataset.part, label])),
+    leaders: $('.cine-leaders'), auto: $('.cine-auto'), autoText: $('.cine-auto-text'),
     check: $('.cine-check'), explain: $('.cine-explain'), replay: $('.replay'),
     backdrop: $('.cine-backdrop'), hint: $('.cine-hint'), nextLabel: 'Next',
     // The message's label: which way, what it says, and its signal as the receiver feels it.
@@ -51,6 +54,16 @@ function intro(experience) {
     trace: $('.talk-trace'), traceTrack: $('.talk-track'), traceLine: $('.talk-line'), traceClip: $('.talk-clip rect'),
     traceDot: $('.talk-dot'), bytes: $('.talk-bytes'), traceFor: null,
   };
+  // A dot for each step, as a button that jumps to it.
+  film.dots = STEPS.slice(0, LAST).map((plan, i) => {
+    const dot = document.createElement('li'), button = document.createElement('button');
+    button.type = 'button';
+    button.setAttribute('aria-label', `Step ${i + 1}: ${plan.text}`);
+    button.addEventListener('click', () => { takeOver(); go(i); });
+    dot.append(button);
+    return dot;
+  });
+  film.dotList.replaceChildren(...film.dots);
   // The right arrow's drawing (index.html), put back after the ask step shows Ask instead.
   const NEXT_ARROW = film.next.innerHTML;
   // The letters' weight in flight: thinnest leaving the card, full (as in styles.css) once out.
@@ -80,6 +93,13 @@ function intro(experience) {
   // of the step's own shot. It eases back to the shot when the step changes.
   const orbit = { spin: 0, tilt: 0 };
   let orbitDrag = null, orbited = false;
+  // Autoplay. Until the visitor does anything, the close-up plays by itself: once the card is
+  // ready it is carried to the reader, every step holds for its `hold` (cinema.js), and Ask
+  // is pressed for them. The moment they touch, click, drag or press a key, it stops and
+  // waits for them; the Play button starts it again. `wait`: seconds the card has been ready;
+  // `held`: seconds on this step; `after`: seconds since the answer landed.
+  const auto = { on: true, wait: 0, held: 0, after: 0 };
+  const AUTO_WAIT = 2.2, AUTO_CARRY = 3.4;
   const shown = Object.fromEntries(Object.keys(IDLE).map(key => [key, spring(IDLE[key])]));
   let lens = null;
 
@@ -303,6 +323,100 @@ function intro(experience) {
     [...film.bytes.children].forEach((label, k) => label.classList.toggle('is-in', said.decoded >= 9 * (k + 1)));
   }
 
+  // The parts a step names (cinema.js `labels`): each label sits a little way out from its
+  // part, away from the middle of the picture, joined to it by a thin line, so it never
+  // covers what it names.
+  const LABEL_AT = { chip: 'cardChip' };
+  const leaderLines = new Map();
+  function paintLabels3D(names) {
+    const middle = names.length ? scene.anchor('middle') : null;
+    for (const [part, label] of Object.entries(film.labels)) {
+      const name = part === 'cardChip' ? 'chip' : part;
+      const shown = names.includes(name);
+      label.classList.toggle('is-shown', shown);
+      let line = leaderLines.get(part);
+      if (!line) {
+        line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        film.leaders.append(line);
+        leaderLines.set(part, line);
+      }
+      line.classList.toggle('is-shown', shown);
+      if (!shown) continue;
+      const at = scene.anchor(LABEL_AT[name] ?? name);
+      let dx = at.x - middle.x, dy = at.y - middle.y;
+      const length = Math.hypot(dx, dy) || 1;
+      dx /= length; dy /= length;
+      if (length < 20) { dx = 0; dy = -1; }
+      const reach = layout.compact ? 44 : 66;
+      const x = clamp(at.x + dx * reach, 70, layout.width - 70), y = clamp(at.y + dy * reach - 6, 60, layout.height - 200);
+      label.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
+      line.setAttribute('x1', at.x.toFixed(1));
+      line.setAttribute('y1', at.y.toFixed(1));
+      line.setAttribute('x2', (x - dx * 10).toFixed(1));
+      line.setAttribute('y2', (y - dy * 10).toFixed(1));
+    }
+  }
+
+  // The autoplay button: shown once the card can be dropped, until the close-up is over.
+  function paintAuto() {
+    const shown = (canDrop || detected) && step < LAST && !reduce.matches;
+    if (film.auto.hidden === shown) film.auto.hidden = !shown;
+    const label = auto.on ? 'Pause' : 'Play';
+    if (film.autoText.textContent !== label) {
+      film.autoText.textContent = label;
+      film.auto.setAttribute('aria-pressed', String(auto.on));
+      film.auto.setAttribute('aria-label', auto.on ? 'Pause: stop playing by itself' : 'Play: let it play by itself');
+      film.auto.classList.toggle('is-on', auto.on);
+    }
+  }
+
+  // How far the current step is toward moving on by itself (0 to 1).
+  function autoProgress() {
+    const plan = STEPS[step];
+    if (plan.talk === 'ask') return talk ? 1 : clamp(auto.held / plan.hold);
+    if (plan.talk === 'answer') return clamp(auto.after / plan.hold);
+    return clamp(auto.held / plan.hold);
+  }
+
+  // Autoplay, each frame, before the card is placed (`base`: where the scroll puts it).
+  function drive(dt, base) {
+    if (!auto.on || reduce.matches) return;
+    if (!detected) {
+      if (!canDrop || (pointer && !pointer.auto)) { auto.wait = 0; return; }
+      if (!pointer) {
+        auto.wait += dt;
+        if (auto.wait < AUTO_WAIT) return;
+        pointer = { id: -1, auto: true, moved: true, t: 0, from: { x: base.x, y: base.y }, x: base.x, y: base.y };
+      }
+      // Carry the card to the reader in a gentle arc, slowing as it comes close (so the
+      // distance and the power can be read on the way), then put it down.
+      pointer.t += dt;
+      const f = smoother(0, AUTO_CARRY, pointer.t);
+      pointer.x = mix(pointer.from.x, layout.reader.x, f);
+      pointer.y = mix(pointer.from.y, layout.reader.y, f) - Math.sin(Math.PI * f) * layout.height * .05;
+      if (pointer.t >= AUTO_CARRY + .4) { stopPointer(); confirmDrop(); }
+      return;
+    }
+    if (step < 0 || step >= LAST) return;
+    const plan = STEPS[step];
+    auto.held += dt;
+    if (plan.talk === 'ask') {
+      if (!talk && auto.held >= plan.hold) ask();
+    } else if (plan.talk === 'answer') {
+      const landed = talk ? message(talk.name, clock - talk.start).landed : 0;
+      if (landed >= 1) auto.after += dt;
+      if (auto.after >= plan.hold) go(step + 1);
+    } else if (auto.held >= plan.hold) go(step + 1);
+  }
+
+  // The visitor did something: stop playing by itself.
+  function takeOver() {
+    if (!auto.on) return;
+    auto.on = false;
+    if (pointer?.auto) stopPointer();
+    invalidate();
+  }
+
   // The close-up's words and marks, laid over the 3D. `b` is what is shown (cinema.js levels).
   function paintFilm(b) {
     const docked = detected && step >= 0;
@@ -370,11 +484,18 @@ function intro(experience) {
         dot.classList.toggle('is-now', i === step);
       });
     }
+    // While it plays by itself, a ring round the right arrow fills until the next step.
+    const timing = auto.on && navigable && !reduce.matches ? autoProgress() : -1;
+    film.next.classList.toggle('is-timing', timing >= 0);
+    if (timing >= 0) film.next.style.setProperty('--auto', timing.toFixed(3));
+    paintAuto();
+    paintLabels3D(docked && available ? STEPS[step].labels ?? [] : []);
 
     // The lights going down: the backdrop, and the readout turning dark with it.
     film.backdrop.style.opacity = b.dark;
     const dark = b.dark > .5;
     if (film.readout.classList.contains('is-dark') !== dark) film.readout.classList.toggle('is-dark', dark);
+    film.auto.classList.toggle('is-dark', dark);
     stage.classList.toggle('is-docked', navigable);
 
     // The message's label, holding still at the top in the middle while the message is on
@@ -458,6 +579,7 @@ function intro(experience) {
     }
 
     const base = cardPose(time, layout);
+    drive(dt, base);
     const held = Boolean(pointer?.moved);
     const x = detected ? layout.reader.x : held ? pointer.x : base.x;
     const y = detected ? layout.reader.y : held ? pointer.y : base.y;
@@ -573,11 +695,12 @@ function intro(experience) {
     const active = pointer;
     pointer = null;
     stage.classList.remove('dragging');
-    if (active && dropButton.hasPointerCapture(active.id)) dropButton.releasePointerCapture(active.id);
+    if (active && !active.auto && dropButton.hasPointerCapture(active.id)) dropButton.releasePointerCapture(active.id);
   }
 
   function resetDrop() {
     stopPointer();
+    auto.wait = 0;
     wasDragged = false;
     detected = false;
     step = -1;
@@ -613,6 +736,7 @@ function intro(experience) {
     if (!detected) return;
     const leaving = stage.contains(document.activeElement) && document.activeElement !== dropButton;
     step = clamp(index, 0, LAST);
+    auto.held = auto.after = 0;
     // The card answers by itself, a moment after the step starts; the question waits for Ask.
     talk = STEPS[step].talk === 'answer' ? { name: 'answer', start: Math.max(answerAt ?? 0, clock + .2) } : null;
     orbit.spin = orbit.tilt = 0;
@@ -635,18 +759,33 @@ function intro(experience) {
     else go(step + 1);
   }
 
-  film.next.addEventListener('click', forward);
-  film.back.addEventListener('click', () => go(step - 1));
+  film.next.addEventListener('click', event => { if (event.isTrusted) takeOver(); forward(); });
+  film.back.addEventListener('click', event => { if (event.isTrusted) takeOver(); go(step - 1); });
+  // Watch again plays it again by itself.
   film.replay.addEventListener('click', () => {
+    auto.on = true;
     go(0);
     film.next.focus({ preventScroll: true });
   });
+  film.auto.addEventListener('click', () => {
+    auto.on = !auto.on;
+    auto.held = auto.after = auto.wait = 0;
+    if (!auto.on && pointer?.auto) stopPointer();
+    invalidate();
+  });
   // The arrow keys step too, and Escape takes the card off the reader.
+  // The space bar (outside a button) plays or pauses it.
   stage.addEventListener('keydown', event => {
-    if (!detected || event.altKey || event.ctrlKey || event.metaKey) return;
-    if (event.key === 'ArrowRight' && step < LAST) { event.preventDefault(); forward(); }
-    else if (event.key === 'ArrowLeft' && step > 0) { event.preventDefault(); go(step - 1); }
-    else if (event.key === 'Escape') { event.preventDefault(); resetDrop(); dropButton.focus({ preventScroll: true }); }
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    if (event.key === ' ' && (canDrop || detected) && !event.target.closest('button')) {
+      event.preventDefault();
+      film.auto.click();
+      return;
+    }
+    if (!detected) return;
+    if (event.key === 'ArrowRight' && step < LAST) { event.preventDefault(); takeOver(); forward(); }
+    else if (event.key === 'ArrowLeft' && step > 0) { event.preventDefault(); takeOver(); go(step - 1); }
+    else if (event.key === 'Escape') { event.preventDefault(); takeOver(); resetDrop(); dropButton.focus({ preventScroll: true }); }
   });
 
   // With ?debug in the address: __intro.step(3) docks the card and shows step 4, and
@@ -674,6 +813,7 @@ function intro(experience) {
   stage.addEventListener('pointerdown', event => {
     if (!detected || step < 0 || step >= LAST || event.button !== 0) return;
     if (event.target.closest('button, a, .readout, .cine-explain')) return;
+    takeOver();
     orbitDrag = { id: event.pointerId, x: event.clientX, y: event.clientY, spin: orbit.spin, tilt: orbit.tilt };
     stage.setPointerCapture(event.pointerId);
     stage.classList.add('is-orbiting');
@@ -716,6 +856,7 @@ function intro(experience) {
   window.addEventListener('blur', clearMouseTilt);
 
   dropButton.addEventListener('pointerdown', event => {
+    if (event.button === 0) takeOver();
     if (!canDrop || pointer || event.button !== 0) return;
     const rect = stage.getBoundingClientRect();
     // Where on the card it was grabbed, so the card keeps that spot under the pointer.
@@ -740,7 +881,7 @@ function intro(experience) {
   });
 
   dropButton.addEventListener('pointerup', event => {
-    if (pointer?.id !== event.pointerId) return;
+    if (pointer?.auto || pointer?.id !== event.pointerId) return;
     wasDragged = Boolean(pointer.moved);
     // Dropped where it is heading: the card is still gliding there.
     const onReader = wasDragged && readerDistance(pointer.x, pointer.y) <= 1;
@@ -759,10 +900,12 @@ function intro(experience) {
 
   // A keyboard press or a plain tap on the card puts it on the reader too.
   dropButton.addEventListener('click', event => {
+    if (event.isTrusted) takeOver();
     if (!wasDragged || event.detail === 0) confirmDrop();
   });
 
   retry.addEventListener('click', () => {
+    takeOver();
     resetDrop();
     dropButton.focus({ preventScroll: true });
   });
