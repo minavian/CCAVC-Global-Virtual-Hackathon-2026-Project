@@ -141,7 +141,7 @@ function tubes(pieces, lines, { radius, segments }) {
     const curve = new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(...p)), closed, 'centripetal');
     const geometry = new THREE.TubeGeometry(curve, segments, radius, 5, closed);
     const rings = segments + 1, strength = new Float32Array(rings), hidden = new Float32Array(rings), from = new Float32Array(rings);
-    const total = points.length - 1, seedShare = seedAt / Math.max(1, total);
+    const total = points.length - 1, seedShare = seedAt / Math.max(1, total), length = curve.getLength();
     const p = new THREE.Vector3();
     for (let j = 0; j < rings; j++) {
       const u = j / segments;
@@ -154,42 +154,52 @@ function tubes(pieces, lines, { radius, segments }) {
       hidden[j] = 1 - THREE.MathUtils.smoothstep(p.z, TOP - .003, TOP);
       from[j] = closed ? Math.min(u, 1 - u) * 2 : Math.abs(u - seedShare) / Math.max(seedShare, 1 - seedShare);
     }
-    return { geometry, strength, hidden, from };
+    return { geometry, strength, hidden, from, length };
   });
   // The field's strength, from faint (the weakest 4%) to full (the strongest 2%).
   all.sort((a, b) => a - b);
   const lo = all[Math.floor(all.length * .04)], hi = all[Math.floor(all.length * .98)];
-  return built.map(({ geometry, strength, hidden, from }) => {
+  return built.map(({ geometry, strength, hidden, from, length }) => {
     const count = geometry.attributes.position.count, perRing = count / strength.length;
-    const s = new Float32Array(count), h = new Float32Array(count), r = new Float32Array(count);
+    const s = new Float32Array(count), h = new Float32Array(count), r = new Float32Array(count), d = new Float32Array(count);
     for (let v = 0; v < count; v++) {
       const j = Math.min(strength.length - 1, Math.floor(v / perRing));
       s[v] = clamp((strength[j] - lo) / (hi - lo), 0, 1);
       h[v] = hidden[j];
       r[v] = from[j];
+      d[v] = j / (strength.length - 1) * length;   // metres along the line, the way the field points
     }
     geometry.setAttribute('aStrength', new THREE.BufferAttribute(s, 1));
     geometry.setAttribute('aHidden', new THREE.BufferAttribute(h, 1));
     geometry.setAttribute('aFrom', new THREE.BufferAttribute(r, 1));
+    geometry.setAttribute('aDist', new THREE.BufferAttribute(d, 1));
     return geometry;
   });
 }
 
-function lineMaterial(color, floor) {
+// The field's direction: soft comets of light glide round each line the way the field
+// points (`uDir`), with a long tail behind each, one every `uSpacing` metres. `uFlow` moves
+// them; it only advances while the field is on, so they slow in each gap.
+function lineMaterial(color, floor, { dir = 1, glow = .65 } = {}) {
   return new THREE.ShaderMaterial({
-    uniforms: { uColor: { value: color.clone() }, uAmount: { value: 0 }, uReveal: { value: 0 }, uFloor: { value: floor } },
-    vertexShader: `attribute float aStrength; attribute float aHidden; attribute float aFrom;
+    uniforms: { uColor: { value: color.clone() }, uAmount: { value: 0 }, uReveal: { value: 0 }, uFloor: { value: floor },
+      uFlow: { value: 0 }, uDir: { value: dir }, uSpacing: { value: .011 }, uGlow: { value: glow } },
+    vertexShader: `attribute float aStrength; attribute float aHidden; attribute float aFrom; attribute float aDist;
       uniform float uAmount; uniform float uReveal; uniform float uFloor;
-      varying float vAlpha;
+      varying float vAlpha; varying float vDist;
       void main() {
         // Drawn in from the seed both ways as the field comes up, then held.
         float shown = 1. - smoothstep(uReveal - .12, uReveal, aFrom);
         vAlpha = uAmount * mix(uFloor, 1., pow(aStrength, .85)) * (1. - .86 * aHidden) * shown;
+        vDist = aDist;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.);
       }`,
-    fragmentShader: `uniform vec3 uColor; varying float vAlpha;
+    fragmentShader: `uniform vec3 uColor; uniform float uFlow; uniform float uDir; uniform float uSpacing; uniform float uGlow;
+      varying float vAlpha; varying float vDist;
       void main() {
-        gl_FragColor = vec4(uColor, vAlpha);
+        float k = fract(uDir * vDist / uSpacing - uFlow);
+        float comet = pow(k, 3.) * (1. - smoothstep(.9, 1., k));
+        gl_FragColor = vec4(uColor + vec3(.35) * comet, vAlpha * ((1. - uGlow) + uGlow * comet));
         #include <colorspace_fragment>
       }`,
     transparent: true, depthTest: false, depthWrite: false, toneMapped: false, ...ADD,
@@ -209,7 +219,12 @@ export function buildField() {
   const cardLines = seeds([cx, cy], [HOVER.spin, HOVER.spin + Math.PI / 2], [.0394, .0232], [.66], CARD_Z)
     .map(seed => traceLine(CARD_WIRE, seed));
 
-  const reader = lineMaterial(WARM, .1), halo = lineMaterial(WARM, .1), card = lineMaterial(COOL, .14);
+  // The reader's current is drawn running clockwise seen from above (river.js, the coil's
+  // copper), and READER_WIRE is wound the other way, so its lines run backwards (right-hand
+  // rule: down through the reader's coil, up round the outside). The card's current is drawn
+  // the other way round its coil, opposing the reader's (Lenz's law), as CARD_WIRE is wound.
+  const reader = lineMaterial(WARM, .1, { dir: -1 }), halo = lineMaterial(WARM, .1, { dir: -1, glow: .4 });
+  const card = lineMaterial(COOL, .14, { dir: 1 });
   const add = (geometry, material, order) => {
     const mesh = new THREE.Mesh(geometry, material);
     mesh.renderOrder = order;
@@ -224,7 +239,8 @@ export function buildField() {
   // Every frame. `lines`: how much the reader's field shows (a level, so it draws in and
   // fades out smoothly). `amp`: the reader's field right now (0 in a pause). `echo`: how
   // much the card's own field shows in the answer, and `load`: the card's switch right now.
-  function update({ lines = 0, amp = 1, echo = 0, load = 0 }) {
+  // `flow`: how far the field has run (it advances while the field is on, cinema.js).
+  function update({ lines = 0, amp = 1, echo = 0, load = 0, flow = 0 }) {
     group.visible = lines > .003 || echo > .003;
     if (!group.visible) return;
     const reveal = 1.15 * THREE.MathUtils.smoothstep(lines, .04, .96);
@@ -236,6 +252,7 @@ export function buildField() {
     reader.uniforms.uReveal.value = halo.uniforms.uReveal.value = reveal;
     card.uniforms.uAmount.value = echo * (.08 + .72 * load);
     card.uniforms.uReveal.value = 1.15 * THREE.MathUtils.smoothstep(echo, .04, .96);
+    reader.uniforms.uFlow.value = halo.uniforms.uFlow.value = card.uniforms.uFlow.value = flow * 5;
   }
 
   return { group, update };

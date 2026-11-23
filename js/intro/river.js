@@ -316,5 +316,6 @@ export function buildRiver() {
     focus.copy(process > .5 ? die : point.set(0, 0, (COIL_Z + CARD_Z) / 2));
   }
 
-  return { group, update, focus };
+  // How far the power has flowed (it stands still in a gap), for the field and the copper.
+  return { group, update, focus, phase: () => phase };
 }

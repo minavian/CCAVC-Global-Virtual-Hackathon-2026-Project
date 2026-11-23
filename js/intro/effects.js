@@ -198,11 +198,11 @@ export function buildEffects() {
       [moduleBand, Math.max(b.power * into, b.receive * .6 * amp, b.reply, load * .9), 1.3, .08],
       ...wires.map(wire => [wire, Math.max(b.power * into, b.reply, load * .9), 1.6, .3])];
     for (const [{ mesh, uniforms }, amount, speed, base] of flows) {
-      // Steady: an even glow, a little dimmer than a comet's head.
-      uniforms.uAmount.value = amount * (1 - .4 * steady);
-      uniforms.uBase.value = base + (1 - base) * steady;
+      // In the conversation: mostly comets still, over a little even glow.
+      uniforms.uAmount.value = amount * (1 - .2 * steady);
+      uniforms.uBase.value = base + (.35 - base) * steady;
       uniforms.uPhase.value = t * speed;
-      uniforms.uDir.value = answering ? -1 : 1;
+      uniforms.uDir.value = answering && !steady ? -1 : 1;
       uniforms.uColor.value.copy(WARM).lerp(COOL, tint);
       mesh.visible = amount > .003;
     }
