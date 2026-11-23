@@ -582,5 +582,5 @@ export async function createCardScene(canvas) {
     return project((lipX + sheet.hingeX - u) / 2, .002, (lipZ + sheet.pivotZ) / 2 + .0006);
   }
 
-  return { resize, draw, project, mouth, anchor, setReader, riverShowing: river.showing, riverHead: () => river.head.toArray(), parts: { copper, die, reader, renderer, table, card, rig, camera, world } };
+  return { resize, draw, project, mouth, anchor, setReader, riverShowing: river.showing, riverFocus: () => river.focus.toArray(), parts: { copper, die, reader, renderer, table, card, rig, camera, world } };
 }

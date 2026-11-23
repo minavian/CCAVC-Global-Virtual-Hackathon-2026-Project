@@ -420,10 +420,10 @@ function intro(experience) {
       // Aim where the card is going, so the camera and the card arrive together.
       look = view(plan.shot, goal.gap, rest, layout.compact);
       if (said && available && !reduce.matches) {
-        // The camera rides with the message: it leans toward its front and moves in closer,
+        // The camera rides with the message: it leans toward its bits and moves in closer,
         // then settles back once every bit has landed.
         const ride = smoother(0, .08, said.head) * (1 - said.landed) * .55;
-        const front = scene.riverHead();
+        const front = scene.riverFocus();
         look.focus = look.focus.map((value, i) => value + (front[i] - value) * ride);
         look.zoom *= 1 + ride * .55;
       }

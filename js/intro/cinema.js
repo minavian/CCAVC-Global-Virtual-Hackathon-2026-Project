@@ -4,8 +4,9 @@
 // - Once the card is dropped on the reader, the visitor steps through the exchange with
 //   Next and Back (`STEPS`). Each step is a live loop that runs for as long as it is shown.
 // - In the middle, the card and the reader talk (`TALK`): the lights go down, the camera
-//   dives in between them, the visitor presses Ask and the reader's question flows to the
-//   card's chip along a river of light (river.js); the card's ID flows back by itself.
+//   dives in between them, the visitor presses Ask and the reader's question flows from its
+//   chip, round its coil, across to the card's coil, round that and into the card's chip
+//   (river.js, `LEGS`); the card's ID flows back the same way by itself.
 // Both give a set of target levels (`IDLE` lists them) and a camera (`view`); main.js
 // glides what is shown toward them, card-scene.js draws the 3D and effects.js the waves,
 // the current and the bits.
@@ -133,37 +134,49 @@ const frame = bytes => iso ? iso.standardFrame(bytes)
 const check = iso ? iso.bcc(ID) : ID.reduce((a, b) => a ^ b, 0);
 const hex = bytes => bytes.map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
 export const TALK = {
-  ask: { dir: 1, words: 'Who are you?', bits: frame([iso?.SEL1 ?? 0x93, iso?.NVB_ALL ?? 0x20]) },
-  answer: { dir: -1, words: 'ID ' + hex(ID), bits: frame([...ID, check]) },
+  // `every`: seconds between one bit and the next, as shown.
+  ask: { dir: 1, words: 'Who are you?', bits: frame([iso?.SEL1 ?? 0x93, iso?.NVB_ALL ?? 0x20]), every: .06 },
+  answer: { dir: -1, words: 'ID ' + hex(ID), bits: frame([...ID, check]), every: .036 },
 };
 export const CARD_ID = hex(ID);
 
-// How a message moves along the river. `dir` is +1 from the reader's chip to the card's
-// chip, -1 back. Its front (`head`) runs along the river at SPEED river-lengths a second,
-// its bits follow in single file SPACING apart, and the river behind the last bit dims
-// again (`tail`). `done` once every bit has reached the far chip.
-const SPEED = .48, SPACING = .02;
+// The way a message travels, from the reader's chip (0) to the card's chip (1), in three
+// legs (river.js draws each): along the reader's wire from its chip into its coil and
+// round the coil; across the gap from the reader's coil to the card's coil; round the
+// card's coil and in through its small coil and wires to its chip. Chip, coil, coil, chip.
+// The answer takes the same legs back. Each leg takes this many seconds for the front.
+export const LEGS = [['reader', .8], ['gap', 1], ['card', 1.1]];
+const RUN = LEGS.reduce((sum, [, seconds]) => sum + seconds, 0);
+// Where each leg starts and ends along the way, from 0 at the reader's chip to 1 at the card's.
+export const LEG = {};
+LEGS.reduce((at, [name, seconds]) => { LEG[name] = [at / RUN, (at + seconds) / RUN]; return at + seconds; }, 0);
+
+// How a message moves. `dir` is +1 from the reader to the card, -1 back. `head` is how far
+// its front has gone from the sender (0 to 1); its bits follow in single file `spacing`
+// apart, and the way behind the last bit dims again (`tail`). `done` once every bit has
+// reached the far chip.
 export function message(name, seconds) {
   const talk = TALK[name];
-  const head = Math.max(0, seconds) * SPEED;
-  const last = head - .02 - (talk.bits.length - 1) * SPACING;
-  return { ...talk, head, tail: last - .22, spacing: SPACING, done: last > 1, landed: smoother(1, 1.25, last) };
+  const head = Math.max(0, seconds) / RUN, spacing = talk.every / RUN;
+  const last = head - .012 - (talk.bits.length - 1) * spacing;
+  return { ...talk, head, tail: last - .1, spacing, done: last > 1, landed: smoother(1, 1.12, last) };
 }
 
-// While a message flows, each part lights up as it passes through: the coil it leaves by,
-// the coil it arrives at, then the chip it is for. Along the river (river.js), the reader's
-// coil is about a third of the way from the reader's chip, and the card's coil three quarters.
-const during = (x, from, to) => smoother(from - .06, from, x) * (1 - smoother(to, to + .12, x));
+// While a message flows, each part lights up for as long as the message is on it: the
+// sender's coil, then the receiver's coil, then the chip it is for.
 export function talkLevels(levels, said) {
-  const front = said.head, out = { ...levels };
+  const along = x => (said.dir > 0 ? x : 1 - x);   // from the sender's side to the reader-to-card way
+  const a = along(said.head), b = along(said.tail), lo = Math.min(a, b), hi = Math.max(a, b);
+  const on = ([from, to]) => smoother(from, from + .04, hi) * (1 - smoother(to - .02, to + .03, lo));
+  const reader = on(LEG.reader), card = on(LEG.card), out = { ...levels };
   if (said.dir > 0) {
-    out.emit = Math.max(levels.emit, during(front, .12, .5));           // out through the reader's coil
-    out.receive = Math.max(levels.receive, during(front, .68, 1.3));    // into the card's coil
-    out.blink = Math.max(levels.blink, said.landed);                    // the chip works on it
+    out.emit = Math.max(levels.emit, reader);         // the reader's coil carries the question
+    out.receive = Math.max(levels.receive, card);     // then the card's coil
+    out.blink = Math.max(levels.blink, said.landed);  // and the chip works on it
   } else {
-    out.reply = during(front, .02, .4);                                 // out through the card's coil
-    out.read = during(front, .55, 1.4) * .9;                            // into the reader's coil
-    out.thinking = said.landed * .8;                                    // the reader's chip has it
+    out.reply = card;                                 // the card's coil carries the answer
+    out.read = reader * .9;                           // then the reader's coil
+    out.thinking = said.landed * .8;                  // and the reader's chip has it
   }
   return out;
 }
@@ -195,8 +208,8 @@ export const SHOTS = {
   power: { zoom: 7.5, focus: 'chip', at: [.64, .55], tilt: .82, spin: -.72, yaw: .03, fov: 18 },
   // The conversation: low between the card and the reader, the lens wide open.
   // `phone` is the framing on a narrow screen, where the readout takes the top.
-  ask: { zoom: 2.3, focus: 'river', at: [.6, .62], tilt: 1.3, spin: .35, yaw: -.02, fov: 50, phone: { at: [.4, .7], zoom: 1.55 } },
-  answer: { zoom: 2.5, focus: 'river', at: [.58, .6], tilt: 1.12, spin: 1.25, yaw: .05, fov: 58, phone: { at: [.5, .68], zoom: 1.7 } },
+  ask: { zoom: 2.3, focus: 'river', at: [.6, .62], tilt: 1.3, spin: .35, yaw: -.02, fov: 50, phone: { at: [.48, .7], zoom: 1.36 } },
+  answer: { zoom: 2.5, focus: 'river', at: [.58, .6], tilt: 1.12, spin: 1.25, yaw: .05, fov: 58, phone: { at: [.5, .68], zoom: 1.55 } },
   read: { zoom: 2.5, focus: 'readerChip', at: [.64, .5], tilt: .92, spin: -.75, yaw: .02, fov: 16 },
   done: { zoom: 2.1, focus: 'top', at: [.63, .58], tilt: .96, spin: -.92, yaw: .03, fov: 0 },
 };
