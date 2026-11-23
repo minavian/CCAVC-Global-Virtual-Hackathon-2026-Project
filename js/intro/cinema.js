@@ -42,10 +42,11 @@ export const WAKE = power(WAKE_CM);   // about 9%: the chip needs this much to s
 //   checking it. check: the check mark.
 // page: the rest of the page (instructions, scroll guide). panel: the readout. explain:
 //   the explanation at the end.
+// charge: the chip's power, as the readout shows it.
 export const IDLE = {
   dock: 0, gap: .034, card: 1, xray: 0, copper: 1, reader: 1, shell: 1,
   emit: 0, field: 0, receive: 0, power: 0, blink: 0, reply: 0, bits: 0, read: 0, thinking: 0,
-  check: 0, page: 1, panel: 0, explain: 0,
+  check: 0, page: 1, panel: 0, explain: 0, charge: 0,
 };
 const DIM = .12;   // what is not being shown fades to this
 
@@ -90,22 +91,20 @@ export function approachBand(cm, before = -1) {
 // (round numbers; the whole exchange takes about 5 ms). `shot` names the camera.
 export const REAL_MS = 5;
 export const STEPS = [
-  { text: 'The reader sends out a radio signal: 13.56 million waves a second.', ms: [0, .1], shot: 'field',
-    levels: { card: DIM, xray: 1, shell: .1, emit: 1, field: 1 } },
-  { text: 'The signal makes a current flow round the card’s coil.', ms: [.1, .3], shot: 'coil',
+  { text: 'The reader sends out a radio signal.', ms: [0, .1], shot: 'field',
+    levels: { card: .28, xray: 1, shell: .1, emit: 1, field: 1 } },
+  { text: 'The signal makes a current in the card’s coil.', ms: [.1, .3], shot: 'coil',
     levels: { xray: 1, reader: DIM, shell: .5, emit: .6, field: .5, receive: 1 } },
-  { text: 'The current flows into the chip and powers it. No battery needed.', ms: [.3, 1], shot: 'power',
-    levels: { xray: 1, reader: DIM, shell: .5, emit: .4, receive: .8, power: 1 } },
-  { text: 'The chip wakes up and works out its answer.', ms: [1, 1.2], shot: 'wake',
-    levels: { xray: 1, copper: .35, reader: DIM, shell: .5, receive: .25, power: .7, blink: 1 } },
+  { text: 'The current powers the chip. No battery needed.', ms: [.3, 1.2], shot: 'power',
+    levels: { xray: 1, reader: DIM, shell: .5, emit: .4, receive: .8, power: 1, blink: .5, charge: 1 } },
   { text: 'The chip answers through the same coil.', ms: [1.2, 3], shot: 'answer',
-    levels: { xray: 1, shell: .1, emit: .2, power: .5, reply: 1, bits: 1 } },
+    levels: { xray: 1, shell: .1, emit: .2, power: .5, reply: 1, bits: 1, charge: 1 } },
   { text: 'The reader reads the answer and checks it.', ms: [3, 5], shot: 'read',
-    levels: { card: DIM, xray: 1, shell: .1, emit: .15, read: 1, thinking: 1 } },
+    levels: { card: DIM, xray: 1, shell: .1, emit: .15, read: 1, thinking: 1, charge: 1 } },
   { text: 'Verified. Card detected.', ms: [5, 5], shot: 'done',
-    levels: { gap: .0016, check: 1 } },
+    levels: { gap: .0016, check: 1, charge: 1 } },
   { text: '', ms: [5, 5], shot: 'rest', explain: true,
-    levels: { gap: .0016, check: 1, page: 1, panel: 0, explain: 1 } },
+    levels: { gap: .0016, check: 1, page: 1, panel: 0, explain: 1, charge: 1 } },
 ].map(step => ({ ...step, levels: { ...IDLE, dock: 1, gap: .012, page: DIM, panel: 1, ...step.levels } }));
 // Every drop starts at step 1. The drag shows how distance changes the power; the steps
 // are the tap itself, slowed down, so they always begin with the reader's signal.
@@ -132,9 +131,8 @@ const SHOTS = {
   field: { zoom: 2, focus: 'gap', at: [.63, .58], tilt: 1.12, spin: -.34, yaw: .05 },
   coil: { zoom: 2.1, focus: 'card', at: [.63, .56], tilt: .62, spin: -.5, yaw: 0 },
   power: { zoom: 7, focus: 'chip', at: [.63, .55], tilt: .78, spin: -.7, yaw: .03 },
-  wake: { zoom: 10.5, focus: 'chip', at: [.63, .55], tilt: .7, spin: -.78, yaw: .03 },
   answer: { zoom: 3.3, focus: 'gap', at: [.63, .56], tilt: 1.04, spin: -.84, yaw: .02 },
-  read: { zoom: 3.1, focus: 'readerChip', at: [.63, .56], tilt: 1.1, spin: -.9, yaw: .02 },
+  read: { zoom: 2.5, focus: 'readerChip', at: [.64, .5], tilt: .92, spin: -.75, yaw: .02 },
   done: { zoom: 2.1, focus: 'top', at: [.63, .58], tilt: .96, spin: -.92, yaw: .03 },
 };
 

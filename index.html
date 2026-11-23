@@ -42,7 +42,7 @@
   <script src="js/deep.js" defer></script>
   <script src="js/landing.js?v=6" defer></script>
   <script type="module" src="js/taps.js"></script>
-  <script type="module" src="js/intro/main.js?v=14"></script>
+  <script type="module" src="js/intro/main.js?v=15"></script>
 </head>
 <body>
   <main class="hero">
@@ -129,19 +129,19 @@
       <button class="drag-card" type="button" aria-label="Tap the card on the reader" aria-describedby="drag-instruction" hidden></button>
       <!-- The close-up (js/intro/cinema.js), placed by js/intro/main.js (paintFilm). One
            readout, in the instructions' place, says one thing at a time: the radio
-           frequency, how far the card is (or when it happens in a real tap), the power at
-           the card, and one sentence. After the drop, Back and Next step through the tap. -->
+           frequency, how far the card is (or when it happens in a real tap), the chip's
+           power, and one sentence. After the drop, Back and Next step through the tap. -->
       <div class="cine">
         <section class="readout" aria-label="What is happening now">
           <div class="readout-meters" aria-hidden="true">
             <p class="readout-meter readout-frequency"><small>Radio frequency</small><b>13.56 MHz</b><i class="readout-wave"></i></p>
             <p class="readout-meter readout-middle"><small>Distance</small><b>10.0 cm</b><i></i></p>
-            <p class="readout-meter readout-power"><small>Card power</small><b>0%</b><i></i></p>
+            <p class="readout-meter readout-power"><small>Chip power</small><b>0%</b><i></i></p>
           </div>
           <p class="readout-text" aria-live="polite"></p>
           <div class="readout-nav" hidden>
             <button class="readout-back" type="button"><span aria-hidden="true">←</span> Back</button>
-            <ol class="readout-dots" aria-hidden="true"><li></li><li></li><li></li><li></li><li></li><li></li><li></li></ol>
+            <ol class="readout-dots" aria-hidden="true"><li></li><li></li><li></li><li></li><li></li><li></li></ol>
             <span class="readout-count"></span>
             <button class="readout-next" type="button">Next <span aria-hidden="true">→</span></button>
           </div>
