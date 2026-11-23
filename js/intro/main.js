@@ -6,7 +6,7 @@
 import { follow, settle, smoother, spring } from './easing.js';
 import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose, clamp, ease, mix, measureStage, restingFrame, scrollTime } from './timeline.js';
 import { renderSignals } from './signals.js';
-import { AFTER_DRAG, APPROACH_TEXT, IDLE, LAST, NEAREST, REAL_MS, STEPS, approach, approachBand, approachView, centimetres, power, view } from './cinema.js';
+import { APPROACH_TEXT, IDLE, LAST, NEAREST, REAL_MS, STEPS, approach, approachBand, approachView, centimetres, power, view } from './cinema.js';
 
 const root = document.querySelector('.intro');
 if (root) intro(root);
@@ -457,13 +457,13 @@ function intro(experience) {
     invalidate();
   }
 
-  // The card is on the reader: start stepping through the tap, from `start`.
-  function confirmDrop(start) {
+  // The card is on the reader: start stepping through the tap, from step 1.
+  function confirmDrop() {
     if (!canDrop || detected) return;
     detected = true;
     const refocus = document.activeElement === dropButton;
     dropButton.hidden = true;
-    go(start);
+    go(0);
     if (refocus) {
       film.nav.hidden = false;
       film.readout.style.visibility = 'visible';
@@ -558,7 +558,7 @@ function intro(experience) {
     // Dropped where it is heading: the card is still gliding there.
     const onReader = wasDragged && readerDistance(pointer.x, pointer.y) <= 1;
     stopPointer();
-    if (onReader) confirmDrop(AFTER_DRAG);
+    if (onReader) confirmDrop();
     invalidate();
   });
 
@@ -570,9 +570,9 @@ function intro(experience) {
     });
   }
 
-  // A keyboard press or a plain tap on the card puts it on the reader, from the first step.
+  // A keyboard press or a plain tap on the card puts it on the reader too.
   dropButton.addEventListener('click', event => {
-    if (!wasDragged || event.detail === 0) confirmDrop(0);
+    if (!wasDragged || event.detail === 0) confirmDrop();
   });
 
   retry.addEventListener('click', () => {
