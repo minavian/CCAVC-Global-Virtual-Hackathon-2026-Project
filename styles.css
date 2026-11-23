@@ -773,7 +773,7 @@ html[data-intro] .stage-light { opacity: 0; }
 .intro .readout-next { border: 1px solid var(--ink); color: var(--paper); background: var(--ink); }
 .intro .readout-next:hover { background: #2a2926; }
 
-/* ---- The conversation (cinema.js `talk` steps, js/intro/field.js) ----
+/* ---- The conversation (cinema.js `talk` steps, js/intro/river.js) ----
    The lights go down: a deep, warm dark behind the 3D, and the readout turns dark with it. */
 .intro .cine-backdrop {
   position: absolute;

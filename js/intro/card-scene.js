@@ -3,8 +3,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { buildReader, SIZE, TOP, CHIP as READER_CHIP } from './reader-model.js';
 import { buildEffects } from './effects.js';
-import { buildField } from './field.js';
-import { HOVER } from './cinema.js';
+import { buildRiver } from './river.js';
+import { HOVER, LEG, RUN } from './cinema.js';
 
 const cardURL = new URL('../../models/contactless-card.glb', import.meta.url);
 const brass = new THREE.Color('#624725');
@@ -341,8 +341,8 @@ export async function createCardScene(canvas) {
   const fx = buildEffects();
   table.add(fx.table);
   card.add(fx.onCard);
-  const field = buildField();
-  table.add(field.group);
+  const river = buildRiver();
+  table.add(river.group);
   const warm = fx.WARM, cool = fx.COOL;
   // The reader's light: cool white at rest, blue while it reads, green once it has checked.
   const idle = new THREE.Color(0xd8e6ff), reading = new THREE.Color(0x3f8cff), green = new THREE.Color(0x22c55e);
@@ -508,27 +508,32 @@ export async function createCardScene(canvas) {
     // answer going out (cool, the other way).
     const clock = b.clock;
     const [perimeter, module] = copper;
-    // In the conversation (cinema.js `message`): `amp` is the reader's field right now, and
-    // the card's coil current follows it at once (it stops in each gap); `load` is the card's
-    // switch, which changes that current while it answers (blue).
+    // In the conversation (cinema.js `message`), each coil follows the signal where it sits
+    // along the way: in the question, the reader's field (each gap dims its current); in the
+    // answer, the card's switch (the card's coil turns blue while its answer goes out, and
+    // swells with each burst; the reader's coil dips when a burst reaches it). The river
+    // draws the exact pattern; the coils show it gently, so nothing flashes.
     const said = b.message?.started ? b.message : null;
-    const amp = said ? said.amp : 1, load = said ? said.load * (b.echo || 0) : 0;
-    const steady = b.lines || 0;
+    const asking = said?.dir > 0, answering_ = said?.dir < 0;
+    const amp = asking ? .45 + .55 * said.levelAt(LEG.card[0]) : 1;
+    const load = answering_ ? said.levelAt(LEG.card[0]) : 0, sending_ = answering_ ? said.onAir(LEG.card[0]) : 0;
+    const readerAmp = asking ? .45 + .55 * said.levelAt(LEG.gap[0]) : 1, readerLoad = answering_ ? said.levelAt(LEG.gap[0]) : 0;
+    const steady = b.river || 0;
     // Orange and blue would mix to purple, so the colour switches over quickly.
-    const share = Math.max(load, b.reply / Math.max(.001, b.reply + Math.max(b.receive, b.power)));
+    const share = Math.max(sending_, b.reply / Math.max(.001, b.reply + Math.max(b.receive, b.power)));
     const answering = share > .5, tint = THREE.MathUtils.smoothstep(share, .4, .6);
-    perimeter.uniforms.uCurrent.value = Math.max(b.receive * amp, b.reply, load * .9);
+    perimeter.uniforms.uCurrent.value = Math.max(b.receive * amp, b.reply, sending_ * (.5 + .45 * load));
     perimeter.uniforms.uDir.value = answering ? -1 : 1;
     perimeter.uniforms.uPhase.value = clock * 1.1;
     perimeter.uniforms.uSteady.value = steady;
     perimeter.uniforms.uCurrentColor.value.copy(warm).lerp(cool, tint);
-    perimeter.uniforms.uNeutral.value = tint * Math.min(1, Math.max(b.reply, load) * 1.5);
-    module.uniforms.uCurrent.value = Math.max(b.power * (steady ? amp : 1), b.receive * .6 * amp, b.reply, load * .9);
+    perimeter.uniforms.uNeutral.value = tint * Math.min(1, Math.max(b.reply, sending_) * 1.5);
+    module.uniforms.uCurrent.value = Math.max(b.power * (steady ? amp : 1), b.receive * .6 * amp, b.reply, sending_ * (.5 + .45 * load));
     module.uniforms.uDir.value = answering ? -1 : 1;
     module.uniforms.uPhase.value = clock * 1.4;
     module.uniforms.uSteady.value = steady;
     module.uniforms.uCurrentColor.value.copy(warm).lerp(cool, tint);
-    module.uniforms.uNeutral.value = tint * Math.min(1, Math.max(b.reply, load) * 1.5);
+    module.uniforms.uNeutral.value = tint * Math.min(1, Math.max(b.reply, sending_) * 1.5);
     const work = b.blink * (.5 + .5 * Math.sin(clock * Math.PI * 2 * 1.8)) ** 2;
     die.emissive.copy(dieGlow);
     die.emissiveIntensity = b.power * .6 + work * 2.4;
@@ -537,7 +542,7 @@ export async function createCardScene(canvas) {
     // signal out (warm), then the answer in toward the reader's chip (cool). In the
     // conversation its coil carries the field's current all along: it goes out in each gap,
     // and dips a little each time the card's switch closes, as the reader feels the answer.
-    const sending = said ? b.emit * amp * (1 - .3 * load) : Math.max(b.emit, b.read);
+    const sending = said ? b.emit * readerAmp * (1 - .25 * readerLoad) : Math.max(b.emit, b.read);
     const reading = said ? 0 : THREE.MathUtils.smoothstep(b.read / Math.max(.001, b.read + b.emit), .4, .6);
     let led = [idle, 1.1];
     if (b.check > .01) led = [ledMix.copy(idle).lerp(green, b.check), 1.1 + b.check * 1.6];
@@ -555,8 +560,8 @@ export async function createCardScene(canvas) {
       thinking: b.thinking * (.6 + .4 * Math.sin(clock * Math.PI * 2 * 1.4)),
     });
 
-    fx.update(b, TOP + b.gap + .0004, HOVER.spin, { amp, load, steady });
-    field.update({ lines: b.lines || 0, amp, echo: b.echo || 0, load: said ? said.load : 0 });
+    fx.update(b, TOP + b.gap + .0004, HOVER.spin, { amp, load: sending_ * (.55 + .45 * load), steady });
+    river.update({ amount: b.river || 0, message: b.message, clock, pixels: renderer.domElement.height, run: RUN });
 
     // The lights go down for the conversation: less room light, more rim.
     const dark = b.dark || 0;
@@ -580,6 +585,7 @@ export async function createCardScene(canvas) {
   // Points the close-up's marks are placed by, on screen.
   function anchor(name) {
     if (name === 'chip') return project(-.0277, .0031, .0004);
+    if (name === 'river') return toScreen(table.localToWorld(point.copy(river.head)));   // the message's front
     if (name === 'readerChip') return toScreen(table.localToWorld(point.set(READER_CHIP.x, READER_CHIP.y, READER_CHIP.z + .002)));
     return toScreen(table.localToWorld(point.set(0, .006, TOP)));   // the reader's top
   }
@@ -593,5 +599,5 @@ export async function createCardScene(canvas) {
     return project((lipX + sheet.hingeX - u) / 2, .002, (lipZ + sheet.pivotZ) / 2 + .0006);
   }
 
-  return { resize, draw, project, mouth, anchor, setReader, parts: { copper, die, reader, renderer, table, card, rig, camera, world } };
+  return { resize, draw, project, mouth, anchor, setReader, riverShowing: river.showing, riverFocus: () => river.focus.toArray(), parts: { copper, die, reader, renderer, table, card, rig, camera, world } };
 }

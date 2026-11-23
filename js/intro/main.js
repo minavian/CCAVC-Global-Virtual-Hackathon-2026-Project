@@ -266,11 +266,11 @@ function intro(experience) {
     }
   }
 
-  // The message's signal under its label (cinema.js `message`). The question: the reader's
-  // field as the card feels it, full on, with a gap for each pause. The answer: the field as
-  // the reader feels it, with a dip each time the card's switch closes (drawn far deeper than
-  // the few percent it really is, and flickering with the 847.5 kHz subcarrier). The line is
-  // laid out once per message and shown up to now.
+  // The message's signal under its label (cinema.js `message`), as its sender makes it. The
+  // question: the reader's field, full on, with a gap for each pause. The answer: the card's
+  // switch, closed in bursts that flicker with the 847.5 kHz subcarrier. The line is laid
+  // out once per message and drawn up to now; its bytes appear once they reach the far chip.
+  const traceY = (dir, level) => (dir > 0 ? 3 + (1 - level) * 18 : 21 - level * 18);
   function paintTrace(said) {
     const { length, dir } = said;
     if (film.traceFor !== said.name) {
@@ -278,11 +278,10 @@ function intro(experience) {
       film.trace.setAttribute('viewBox', `0 0 ${length} 24`);
       let d = '';
       for (let n = 0; n < length; n++) {
-        const level = dir > 0 ? said.signal[n] : 1 - .6 * said.raw[n];
-        d += `${n ? 'L' : 'M'}${n} ${(3 + (1 - level) * 18).toFixed(2)}`;
+        d += `${n ? 'L' : 'M'}${n} ${traceY(dir, dir > 0 ? said.signal[n] : said.raw[n]).toFixed(2)}`;
       }
       film.traceLine.setAttribute('d', d);
-      film.traceTrack.setAttribute('d', `M0 3H${length}`);
+      film.traceTrack.setAttribute('d', `M0 ${traceY(dir, dir > 0 ? 1 : 0)}H${length}`);
       // Each byte sits under its 8 bits (bit k is the frame's bit time k + 1; a byte's ninth
       // bit is its check bit).
       film.bytes.replaceChildren(...said.bytes.map((byte, k) => {
@@ -293,12 +292,12 @@ function intro(experience) {
         return label;
       }));
     }
-    const now = Math.min(length, Math.max(0, said.samples));
+    const now = Math.min(length, Math.max(0, said.n));
     film.traceClip.setAttribute('width', now);
-    const level = dir > 0 ? said.amp : 1 - .6 * said.load;
+    const level = said.levelAt(dir > 0 ? 0 : 1);   // at the sender's chip
     film.traceDot.style.left = `${now / length * 100}%`;
-    film.traceDot.style.top = `${(3 + (1 - level) * 18) / 24 * 100}%`;
-    film.traceDot.style.opacity = said.done ? 0 : 1;
+    film.traceDot.style.top = `${traceY(dir, level) / 24 * 100}%`;
+    film.traceDot.style.opacity = said.n >= length ? 0 : 1;
     [...film.bytes.children].forEach((label, k) => label.classList.toggle('is-in', said.decoded >= 9 * (k + 1)));
   }
 
@@ -489,15 +488,23 @@ function intro(experience) {
       goal = said ? talkLevels(plan.levels, said) : plan.levels;
       // Aim where the card is going, so the camera and the card arrive together.
       look = view(plan.shot, goal.gap, rest, layout.compact);
+      if (said?.started && available && !reduce.matches) {
+        // The camera rides with the message: it leans toward its bits and moves in a little,
+        // then settles back once every bit has landed.
+        const ride = smoother(0, .1, said.n / said.run) * (1 - said.landed) * .5;
+        const bits = scene.riverFocus();
+        look.focus = look.focus.map((value, i) => value + (bits[i] - value) * ride);
+        look.zoom *= 1 + ride * .45;
+      }
       if (plan.talk && !reduce.matches) {
-        // While they talk the camera never quite stops: a slow drift round the card.
-        look.spin += Math.sin(clock * .17) * .09;
-        look.tilt += Math.sin(clock * .13 + 1) * .03;
+        // While they talk the camera never quite stops: a slow drift round the river.
+        look.spin += Math.sin(clock * .19) * .08;
+        look.tilt += Math.sin(clock * .14 + 1) * .03;
       }
       look.spin += orbit.spin;
       look.tilt = clamp(look.tilt + orbit.tilt, .2, 1.48);
-      // The question is over: the camera turns to the card, and the card answers exactly
-      // the standard's wait after the reader's last gap (cinema.js ANSWER_AFTER).
+      // The question has reached the card's chip: the camera turns to the card, and the card
+      // answers the standard's wait after the reader's last gap reached it (ANSWER_AFTER).
       if (said?.done && talk.name === 'ask') {
         talk.doneAt ??= clock;
         if (clock - talk.doneAt > .3) go(step + 1, talk.start + ANSWER_AFTER);
