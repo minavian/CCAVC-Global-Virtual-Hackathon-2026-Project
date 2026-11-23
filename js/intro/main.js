@@ -7,7 +7,7 @@
 import { follow, settle, smoother, spring } from './easing.js';
 import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose, clamp, ease, mix, measureStage, restingFrame, scrollTime } from './timeline.js';
 import { renderSignals } from './signals.js';
-import { APPROACH_DETAIL, APPROACH_TEXT, ASK, CARD_ID, IDLE, LAST, NEAREST, REAL_MS, SHOTS, STEPS, approach, approachBand, approachView, centimetres,
+import { ANSWER_AFTER, APPROACH_DETAIL, APPROACH_TEXT, ASK, SAMPLES_PER_BIT, CARD_ID, IDLE, LAST, NEAREST, REAL_MS, SHOTS, STEPS, approach, approachBand, approachView, centimetres,
   message, power, talkLevels, view } from './cinema.js';
 
 const root = document.querySelector('.intro');
@@ -45,8 +45,11 @@ function intro(experience) {
     nav: $('.readout-nav'), back: $('.readout-back'), next: $('.readout-next'), count: $('.readout-count'),
     dots: [...experience.querySelectorAll('.readout-dots li')],
     check: $('.cine-check'), explain: $('.cine-explain'), replay: $('.replay'),
-    backdrop: $('.cine-backdrop'), tag: $('.river-tag'), tagNote: $('.river-tag small'), tagWords: $('.river-tag b'),
-    hint: $('.cine-hint'), nextLabel: 'Next',
+    backdrop: $('.cine-backdrop'), hint: $('.cine-hint'), nextLabel: 'Next',
+    // The message's label: which way, what it says, and its signal as the receiver feels it.
+    tag: $('.talk-tag'), tagNote: $('.talk-note'), tagWords: $('.talk-words'),
+    trace: $('.talk-trace'), traceTrack: $('.talk-track'), traceLine: $('.talk-line'), traceClip: $('.talk-clip rect'),
+    traceDot: $('.talk-dot'), bytes: $('.talk-bytes'), traceFor: null,
   };
   // The right arrow's drawing (index.html), put back after the ask step shows Ask instead.
   const NEXT_ARROW = film.next.innerHTML;
@@ -263,6 +266,42 @@ function intro(experience) {
     }
   }
 
+  // The message's signal under its label (cinema.js `message`). The question: the reader's
+  // field as the card feels it, full on, with a gap for each pause. The answer: the field as
+  // the reader feels it, with a dip each time the card's switch closes (drawn far deeper than
+  // the few percent it really is, and flickering with the 847.5 kHz subcarrier). The line is
+  // laid out once per message and shown up to now.
+  function paintTrace(said) {
+    const { length, dir } = said;
+    if (film.traceFor !== said.name) {
+      film.traceFor = said.name;
+      film.trace.setAttribute('viewBox', `0 0 ${length} 24`);
+      let d = '';
+      for (let n = 0; n < length; n++) {
+        const level = dir > 0 ? said.signal[n] : 1 - .6 * said.raw[n];
+        d += `${n ? 'L' : 'M'}${n} ${(3 + (1 - level) * 18).toFixed(2)}`;
+      }
+      film.traceLine.setAttribute('d', d);
+      film.traceTrack.setAttribute('d', `M0 3H${length}`);
+      // Each byte sits under its 8 bits (bit k is the frame's bit time k + 1; a byte's ninth
+      // bit is its check bit).
+      film.bytes.replaceChildren(...said.bytes.map((byte, k) => {
+        const label = document.createElement('span');
+        label.textContent = byte.toString(16).toUpperCase().padStart(2, '0');
+        label.style.left = `${(1 + 9 * k + 4) * SAMPLES_PER_BIT / length * 100}%`;
+        label.classList.toggle('is-check', dir < 0 && k === said.bytes.length - 1);
+        return label;
+      }));
+    }
+    const now = Math.min(length, Math.max(0, said.samples));
+    film.traceClip.setAttribute('width', now);
+    const level = dir > 0 ? said.amp : 1 - .6 * said.load;
+    film.traceDot.style.left = `${now / length * 100}%`;
+    film.traceDot.style.top = `${(3 + (1 - level) * 18) / 24 * 100}%`;
+    film.traceDot.style.opacity = said.done ? 0 : 1;
+    [...film.bytes.children].forEach((label, k) => label.classList.toggle('is-in', said.decoded >= 9 * (k + 1)));
+  }
+
   // The close-up's words and marks, laid over the 3D. `b` is what is shown (cinema.js levels).
   function paintFilm(b) {
     const docked = detected && step >= 0;
@@ -285,9 +324,14 @@ function intro(experience) {
       const text = asking ? plan.asking : plan.text;
       if (text) say(text, asking ? plan.askingDetail : plan.detail);
       film.middleLabel.textContent = 'Real time';
-      film.middleValue.textContent = from === to ? `${to.toFixed(1)} ms` : `${from.toFixed(1)}–${to.toFixed(1)} ms`;
+      const said = b.message?.started && !b.message.done ? b.message : null;
+      // While a message is on the air, the real time it has taken so far (in µs steps), so
+      // you can see how slowed down it is.
+      const places = to - from < 1 ? 2 : 1;
+      film.middleValue.textContent = said ? `${(from + said.realMs).toFixed(3)} ms`
+        : from === to ? `${to.toFixed(1)} ms` : `${from.toFixed(places)}–${to.toFixed(places)} ms`;
       film.middleBar.style.setProperty('--from', from / REAL_MS);
-      film.middleBar.style.setProperty('--to', Math.max(to, from + .06) / REAL_MS);
+      film.middleBar.style.setProperty('--to', Math.max(said ? from + said.realMs : to, from + .06) / REAL_MS);
       // The chip's own power: none at the start of the tap, full once the current reaches it.
       film.powerValue.textContent = Math.round(b.charge * 100) + '%';
       film.powerBar.style.setProperty('--to', b.charge);
@@ -329,15 +373,17 @@ function intro(experience) {
     if (film.readout.classList.contains('is-dark') !== dark) film.readout.classList.toggle('is-dark', dark);
     stage.classList.toggle('is-docked', navigable);
 
-    // The message's label, holding still at the top in the middle for as long as the message
-    // flows (it used to ride on the front, which moved too fast to read); and the ID by the
-    // reader's chip while it checks.
+    // The message's label, holding still at the top in the middle while the message is on
+    // the air: which way it goes, what it says, and its signal drawn as it comes in, with each
+    // byte under its bits once they have all arrived. Then the ID by the reader's chip while
+    // it checks.
     let tag = null;
-    if (docked && available && b.message && scene.riverShowing()) {
-      const asking = b.message.dir > 0;
+    const said = b.message;
+    if (docked && said?.started && (said.landed < 1 || reduce.matches)) {
+      const asking = said.dir > 0;
       tag = {
-        kind: asking ? 'ask' : 'answer', text: b.message.words,
-        note: `${asking ? 'Reader → card' : 'Card → reader'} · ${b.message.bits.length} bits`,
+        kind: asking ? 'ask' : 'answer', text: said.words,
+        note: `${asking ? 'Reader → card' : 'Card → reader'} · ${said.bits.length} bits · ${said.frameMs.toFixed(2)} ms`,
       };
     } else if (docked && available && STEPS[step].shot === 'read') {
       tag = { kind: 'check', text: CARD_ID, note: '', at: scene.anchor('readerChip') };
@@ -350,6 +396,7 @@ function intro(experience) {
       }
       film.tag.dataset.kind = tag.kind;
       film.tag.style.transform = tag.at ? `translate3d(${tag.at.x}px, ${tag.at.y}px, 0)` : '';
+      if (tag.kind !== 'check') paintTrace(said);
     }
     film.hint.classList.toggle('is-shown', docked && b.dark > .6 && !orbited);
 
@@ -437,29 +484,23 @@ function intro(experience) {
     let goal, look, said = null;
     if (docked) {
       const plan = STEPS[step];
-      said = plan.talk && talk?.name === plan.talk ? message(talk.name, reduce.matches ? 1.4 : clock - talk.start) : null;
+      // With reduced motion, a message shows finished, on one still frame.
+      said = plan.talk && talk?.name === plan.talk ? message(talk.name, reduce.matches ? 99 : clock - talk.start) : null;
       goal = said ? talkLevels(plan.levels, said) : plan.levels;
       // Aim where the card is going, so the camera and the card arrive together.
       look = view(plan.shot, goal.gap, rest, layout.compact);
-      if (said && available && !reduce.matches) {
-        // The camera rides with the message: it leans toward its bits and moves in closer,
-        // then settles back once every bit has landed.
-        const ride = smoother(0, .08, said.head) * (1 - said.landed) * .55;
-        const front = scene.riverFocus();
-        look.focus = look.focus.map((value, i) => value + (front[i] - value) * ride);
-        look.zoom *= 1 + ride * .55;
-      }
       if (plan.talk && !reduce.matches) {
-        // While they talk the camera never quite stops: a slow drift round the river.
-        look.spin += Math.sin(clock * .21) * .08;
-        look.tilt += Math.sin(clock * .16 + 1) * .035;
+        // While they talk the camera never quite stops: a slow drift round the card.
+        look.spin += Math.sin(clock * .17) * .09;
+        look.tilt += Math.sin(clock * .13 + 1) * .03;
       }
       look.spin += orbit.spin;
       look.tilt = clamp(look.tilt + orbit.tilt, .2, 1.48);
-      // The question has reached the chip: a moment later, the chip answers.
+      // The question is over: the camera turns to the card, and the card answers exactly
+      // the standard's wait after the reader's last gap (cinema.js ANSWER_AFTER).
       if (said?.done && talk.name === 'ask') {
         talk.doneAt ??= clock;
-        if (clock - talk.doneAt > .45) go(step + 1);
+        if (clock - talk.doneAt > .3) go(step + 1, talk.start + ANSWER_AFTER);
       }
     } else if (canDrop) {
       goal = approach(cm);
@@ -560,13 +601,14 @@ function intro(experience) {
     invalidate();
   }
 
-  // Moves to step `index` (the last one is the explanation).
-  function go(index) {
+  // Moves to step `index` (the last one is the explanation). `answerAt`: when the card's
+  // answer starts, on the clock, if it follows straight on from the question.
+  function go(index, answerAt) {
     if (!detected) return;
     const leaving = stage.contains(document.activeElement) && document.activeElement !== dropButton;
     step = clamp(index, 0, LAST);
     // The card answers by itself, a moment after the step starts; the question waits for Ask.
-    talk = STEPS[step].talk === 'answer' ? { name: 'answer', start: clock + .35 } : null;
+    talk = STEPS[step].talk === 'answer' ? { name: 'answer', start: Math.max(answerAt ?? 0, clock + .2) } : null;
     orbit.spin = orbit.tilt = 0;
     focusWhenDone = step === LAST && leaving;
     film.nav.hidden = step >= LAST;
@@ -574,7 +616,7 @@ function intro(experience) {
     invalidate();
   }
 
-  // The visitor plays the reader: Ask sends its question down the river.
+  // The visitor plays the reader: Ask makes the reader send its question.
   function ask() {
     if (!detected || step !== ASK || talk) return;
     if (reduce.matches) { go(ASK + 1); return; }

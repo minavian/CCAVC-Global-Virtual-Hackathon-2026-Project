@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
-  <link rel="stylesheet" href="styles.css?v=13">
+  <link rel="stylesheet" href="styles.css?v=14">
   <script type="importmap">
     {"imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -42,7 +42,7 @@
   <script src="js/deep.js" defer></script>
   <script src="js/landing.js?v=6" defer></script>
   <script type="module" src="js/taps.js"></script>
-  <script type="module" src="js/intro/main.js?v=18"></script>
+  <script type="module" src="js/intro/main.js?v=19"></script>
 </head>
 <body>
   <main class="hero">
@@ -134,8 +134,9 @@
            sentence, a line of small print under it, then the radio frequency, how far the
            card is (or when it happens in a real tap) and the chip's power. After the drop,
            the arrows on its sides step through the tap; in the conversation the right one
-           becomes Ask. While a message flows, its label holds still at the top in the
-           middle: which way it goes, how many bits, and what it says (js/intro/river.js). -->
+           becomes Ask. While a message is on the air, its label holds still at the top in
+           the middle: which way it goes, what it says, and its signal (js/intro/field.js
+           draws the field itself). -->
       <div class="cine">
         <section class="readout" aria-label="What is happening now">
           <div class="readout-words" aria-live="polite">
@@ -155,7 +156,19 @@
           </div>
           <p class="cine-hint" aria-hidden="true">Drag to look around</p>
         </section>
-        <p class="river-tag" aria-hidden="true"><small></small><b></b></p>
+        <div class="talk-tag" aria-hidden="true">
+          <small class="talk-note"></small>
+          <b class="talk-words"></b>
+          <div class="talk-signal">
+            <svg class="talk-trace" viewBox="0 0 672 24" preserveAspectRatio="none">
+              <defs><clipPath class="talk-clip" id="talk-clip"><rect x="0" y="0" width="0" height="24"/></clipPath></defs>
+              <path class="talk-track" d="M0 3H672"/>
+              <path class="talk-line" clip-path="url(#talk-clip)"/>
+            </svg>
+            <i class="talk-dot"></i>
+          </div>
+          <span class="talk-bytes"></span>
+        </div>
         <svg class="cine-check" viewBox="0 0 64 64" aria-hidden="true">
           <circle cx="32" cy="32" r="27" pathLength="1"/>
           <path d="M20 33.5l8.5 8.5L45 24.5" pathLength="1"/>
