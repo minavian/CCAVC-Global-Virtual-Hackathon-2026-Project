@@ -50,7 +50,7 @@ function digitTexture(digit) {
 // A thin band in the shape of the reader's coil: one wave front.
 function ringGeometry() {
   const outer = new THREE.Shape(), inner = new THREE.Path();
-  const steps = 160, half = COIL_HALF - .002, radius = COIL_RADIUS - .002, band = .0008;
+  const steps = 160, half = COIL_HALF - .002, radius = COIL_RADIUS - .002, band = .0013;
   for (let i = 0; i <= steps; i++) {
     const [x, y] = squarePoint(half, radius, i / steps);
     if (i) outer.lineTo(x, y); else outer.moveTo(x, y);
@@ -136,7 +136,7 @@ export function buildEffects() {
 
   // Wave fronts: four going up (the signal) and four coming down (the answer).
   const ring = ringGeometry();
-  const makeRings = color => Array.from({ length: 4 }, () => {
+  const makeRings = color => Array.from({ length: 5 }, () => {
     const mesh = new THREE.Mesh(ring, new THREE.MeshBasicMaterial({
       color, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, toneMapped: false,
     }));
@@ -198,7 +198,7 @@ export function buildEffects() {
       const p = ((t * .5 + i / up.length) % 1 + 1) % 1;
       mesh.position.set(0, 0, COIL_Z + (cardZ - COIL_Z - .0012) * p);
       mesh.scale.setScalar(.92 + .22 * p);
-      mesh.material.opacity = b.field * Math.sin(Math.PI * p) ** 2 * .5;
+      mesh.material.opacity = b.field * Math.sin(Math.PI * p) ** 1.5 * .92;
       mesh.visible = mesh.material.opacity > .004;
     });
     // The answer leaves in the card's shape and lands in the reader's.

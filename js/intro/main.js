@@ -265,8 +265,9 @@ function intro(experience) {
       film.middleValue.textContent = from === to ? `${to.toFixed(1)} ms` : `${from.toFixed(1)}–${to.toFixed(1)} ms`;
       film.middleBar.style.setProperty('--from', from / REAL_MS);
       film.middleBar.style.setProperty('--to', Math.max(to, from + .06) / REAL_MS);
-      film.powerValue.textContent = Math.round(power(NEAREST) * 100) + '%';
-      film.powerBar.style.setProperty('--to', 1);
+      // The chip's own power: none at the start of the tap, full once the current reaches it.
+      film.powerValue.textContent = Math.round(b.charge * 100) + '%';
+      film.powerBar.style.setProperty('--to', b.charge);
     } else if (on) {
       band = approachBand(cm, band);
       say(APPROACH_TEXT[band]);
@@ -497,13 +498,22 @@ function intro(experience) {
     else if (event.key === 'Escape') { event.preventDefault(); resetDrop(); dropButton.focus({ preventScroll: true }); }
   });
 
-  // With ?debug in the address: __intro.step(3) docks the card and shows step 4.
+  // With ?debug in the address: __intro.step(3) docks the card and shows step 4, and
+  // __intro.advance(2) runs two seconds of animation at once (for checking a settled frame
+  // when the browser paints slowly).
   if (new URLSearchParams(location.search).has('debug')) {
     window.__intro = {
       step(index) {
         if (!detected) { detected = true; dropButton.hidden = true; }
         go(index);
       },
+      advance(seconds = 1) {
+        let now = performance.now();
+        nowBefore = now;
+        for (let i = 0; i < seconds * 60; i++) frame(now += 1000 / 60);
+        nowBefore = undefined;
+      },
+      state: () => ({ onScreen, canDrop, detected, step, needsMeasure }),
       scene: () => scene,
     };
   }
