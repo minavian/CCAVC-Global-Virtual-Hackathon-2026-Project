@@ -275,8 +275,8 @@ export const SHOTS = {
   power: { zoom: 7.5, focus: 'chip', at: [.5, .4], tilt: .82, spin: -.72, yaw: .03, fov: 18 },
   // The conversation: from the side, low, so the field's arches over the card show.
   // `phone` is the framing on a narrow screen.
-  ask: { zoom: 1.45, focus: 'field', at: [.5, .46], tilt: 1.36, spin: .32, yaw: 0, fov: 30, phone: { at: [.5, .4], zoom: 1.05 } },
-  answer: { zoom: 1.6, focus: 'field', at: [.5, .46], tilt: 1.3, spin: .7, yaw: 0, fov: 30, phone: { at: [.5, .4], zoom: 1.15 } },
+  ask: { zoom: 1.75, focus: 'field', at: [.5, .44], tilt: 1.36, spin: .32, yaw: 0, fov: 30, phone: { at: [.5, .42], zoom: 1.5 } },
+  answer: { zoom: 1.85, focus: 'field', at: [.5, .44], tilt: 1.3, spin: .7, yaw: 0, fov: 30, phone: { at: [.5, .42], zoom: 1.6 } },
   read: { zoom: 2.2, focus: 'readerChip', at: [.5, .4], tilt: .92, spin: -.75, yaw: .02, fov: 16 },
   done: { zoom: 2.1, focus: 'top', at: [.5, .42], tilt: .96, spin: -.92, yaw: .03, fov: 0 },
 };
