@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { buildReader, SIZE, TOP } from './reader-model.js';
+import { buildReader, SIZE, TOP, CHIP as READER_CHIP } from './reader-model.js';
 import { buildEffects } from './effects.js';
+import { buildRiver } from './river.js';
 import { HOVER } from './cinema.js';
 
 const cardURL = new URL('../../models/contactless-card.glb', import.meta.url);
@@ -226,8 +227,13 @@ export async function createCardScene(canvas) {
   renderer.toneMappingExposure = .98;
 
   const world = new THREE.Scene();
+  // Two lenses. A flat one (no perspective, like a plan drawing) for the drag and most of the
+  // close-up, and a real one for the shots with a `fov` (cinema.js), whose depth opens up
+  // as the camera moves in. `lens` is the one drawing this frame.
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, .1, 3500);
   camera.position.z = 1700;
+  const deep = new THREE.PerspectiveCamera(30, 1, 1, 10000);
+  let lens = camera, depth = 0;
   let asset;
   try {
     asset = await new GLTFLoader().loadAsync(cardURL.href);
@@ -242,14 +248,18 @@ export async function createCardScene(canvas) {
   world.environmentIntensity = .82;
   room.dispose();
   studio.dispose();
-  world.add(new THREE.HemisphereLight(0xfffcf5, 0x93938e, 1.2));
-  for (const [x, y, z, color, intensity] of [
-    [-5, 8, 6, 0xfffbf3, 2.25], [6, 2, -6, 0xe4e4e0, 2.8],
-  ]) {
+  const sky = new THREE.HemisphereLight(0xfffcf5, 0x93938e, 1.2);
+  world.add(sky);
+  const keys = [[-5, 8, 6, 0xfffbf3, 2.25], [6, 2, -6, 0xe4e4e0, 2.8]].map(([x, y, z, color, intensity]) => {
     const light = new THREE.DirectionalLight(color, intensity);
     light.position.set(x, y, z);
     world.add(light);
-  }
+    return { light, intensity };
+  });
+  // With the lights down (the conversation), a cool light from behind picks out the edges.
+  const rim = new THREE.DirectionalLight(0x9dbdff, 0);
+  rim.position.set(-6, 5, -9);
+  world.add(rim);
   const card = asset.scene.getObjectByName('contactless-card');
   const box = new THREE.Box3().setFromObject(card);
   const widthInMeters = box.max.x - box.min.x;
@@ -329,6 +339,8 @@ export async function createCardScene(canvas) {
   const fx = buildEffects();
   table.add(fx.table);
   card.add(fx.onCard);
+  const river = buildRiver();
+  table.add(river.group);
   const warm = fx.WARM, cool = fx.COOL;
   // The reader's light: cool white at rest, blue while it reads, green once it has checked.
   const idle = new THREE.Color(0xd8e6ff), reading = new THREE.Color(0x3f8cff), green = new THREE.Color(0x22c55e);
@@ -456,9 +468,32 @@ export async function createCardScene(canvas) {
     camera.zoom = view.zoom;
     camera.position.set(camera2D.x, camera2D.y, 1700);
     camera.updateProjectionMatrix();
+    // With a field of view, the real lens: as far back as keeps the focus point the same
+    // size on screen, so widening the view while moving in keeps the framing (a dolly zoom).
+    const fov = view.fov || 0;
+    if (fov > .35) {
+      depth = height / view.zoom / 2 / Math.tan(fov * Math.PI / 360);
+      deep.fov = fov;
+      deep.aspect = width / height;
+      deep.position.set(camera2D.x, camera2D.y, point.z + depth);
+      deep.near = Math.max(.5, depth * .02);
+      deep.far = depth + 6000;
+      deep.updateProjectionMatrix();
+      lens = deep;
+    } else {
+      lens = camera;
+      depth = 0;
+    }
 
     // The card: free, lying on the reader, or on its way between the two.
     freePose(pose, free);
+    if (depth) {
+      // The free card is placed as on the flat lens. With depth it stands a little in front
+      // of the focus, scaled back so it still looks the same size and in the same place.
+      const ahead = Math.min(400, depth * .5), k = (depth - ahead) / depth;
+      free.position.set(camera2D.x + (free.position.x - camera2D.x) * k, camera2D.y + (free.position.y - camera2D.y) * k, point.z + ahead);
+      free.scale *= k;
+    }
     dockPose(b.gap, docked);
     blend(free, docked, b.dock, shown);
     rig.position.copy(shown.position);
@@ -508,11 +543,20 @@ export async function createCardScene(canvas) {
     });
 
     fx.update(b, TOP + b.gap + .0004, HOVER.spin);
-    renderer.render(world, camera);
+    river.update({ amount: b.river, message: b.message, clock, cardZ: TOP + b.gap + .0004,
+      pixels: renderer.domElement.height });
+
+    // The lights go down for the conversation: less room light, more rim.
+    const dark = b.dark || 0;
+    world.environmentIntensity = .82 * (1 - .58 * dark);
+    sky.intensity = 1.2 * (1 - .62 * dark);
+    for (const { light, intensity } of keys) light.intensity = intensity * (1 - .45 * dark);
+    rim.intensity = 3.4 * dark;
+    renderer.render(world, lens);
   }
 
   function toScreen(v) {
-    v.project(camera);
+    v.project(lens);
     return { x: (v.x + 1) * width / 2, y: (1 - v.y) * height / 2 };
   }
 
@@ -524,6 +568,8 @@ export async function createCardScene(canvas) {
   // Points the close-up's marks are placed by, on screen.
   function anchor(name) {
     if (name === 'chip') return project(-.0277, .0031, .0004);
+    if (name === 'river') return toScreen(table.localToWorld(point.copy(river.head)));   // the message's front
+    if (name === 'readerChip') return toScreen(table.localToWorld(point.set(READER_CHIP.x, READER_CHIP.y, READER_CHIP.z + .002)));
     return toScreen(table.localToWorld(point.set(0, .006, TOP)));   // the reader's top
   }
 
@@ -536,5 +582,5 @@ export async function createCardScene(canvas) {
     return project((lipX + sheet.hingeX - u) / 2, .002, (lipZ + sheet.pivotZ) / 2 + .0006);
   }
 
-  return { resize, draw, project, mouth, anchor, setReader, parts: { copper, die, reader, renderer, table, card, rig, camera, world } };
+  return { resize, draw, project, mouth, anchor, setReader, riverShowing: river.showing, riverHead: () => river.head.toArray(), parts: { copper, die, reader, renderer, table, card, rig, camera, world } };
 }

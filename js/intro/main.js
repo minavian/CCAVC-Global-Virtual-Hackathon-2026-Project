@@ -2,11 +2,13 @@
 // A sticky stage that scrolling plays: the card opens and lets out the letters R, F, I, D,
 // the letters spell the name, an X-ray shows the antenna and chip, and the visitor drags
 // the card onto a reader. Bringing it near opens a close-up that follows the card's
-// distance; dropping it lets the visitor step through the tap. See EXPLAINED.md.
+// distance; dropping it lets the visitor step through the tap, ask the card for its ID and
+// watch the answer flow back, and drag to turn the camera. See EXPLAINED.md.
 import { follow, settle, smoother, spring } from './easing.js';
 import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose, clamp, ease, mix, measureStage, restingFrame, scrollTime } from './timeline.js';
 import { renderSignals } from './signals.js';
-import { APPROACH_TEXT, IDLE, LAST, NEAREST, REAL_MS, STEPS, approach, approachBand, approachView, centimetres, power, view } from './cinema.js';
+import { APPROACH_TEXT, ASK, CARD_ID, IDLE, LAST, NEAREST, REAL_MS, SHOTS, STEPS, approach, approachBand, approachView, centimetres,
+  message, power, talkLevels, view } from './cinema.js';
 
 const root = document.querySelector('.intro');
 if (root) intro(root);
@@ -43,6 +45,7 @@ function intro(experience) {
     nav: $('.readout-nav'), back: $('.readout-back'), next: $('.readout-next'), count: $('.readout-count'),
     dots: [...experience.querySelectorAll('.readout-dots li')],
     check: $('.cine-check'), explain: $('.cine-explain'), replay: $('.replay'),
+    backdrop: $('.cine-backdrop'), tag: $('.river-tag'), hint: $('.cine-hint'), nextLabel: 'Next',
   };
   // The letters' weight in flight: thinnest leaving the card, full (as in styles.css) once out.
   const THIN = 100, FULL = 800;
@@ -64,6 +67,13 @@ function intro(experience) {
   // `band` the sentence shown while dragging. Every level and the camera glide toward their
   // targets on springs too, so moving the card, or pressing Next or Back, never jumps.
   let step = -1, band = -1, clock = 0, cm = 10, shownText = null;
+  // The conversation (cinema.js TALK): which message is flowing and since when (on `clock`),
+  // or null. In the ask step it stays null until the visitor presses Ask.
+  let talk = null;
+  // Dragging on the stage after the drop turns the camera by this much (radians), on top
+  // of the step's own shot. It eases back to the shot when the step changes.
+  const orbit = { spin: 0, tilt: 0 };
+  let orbitDrag = null, orbited = false;
   const shown = Object.fromEntries(Object.keys(IDLE).map(key => [key, spring(IDLE[key])]));
   let lens = null;
 
@@ -259,7 +269,8 @@ function intro(experience) {
     film.readout.classList.toggle('is-docked', docked);
 
     if (docked) {
-      const { text, ms: [from, to] } = STEPS[step];
+      const plan = STEPS[step], { ms: [from, to] } = plan;
+      const text = plan.talk === 'ask' && talk ? plan.asking : plan.text;
       if (text) say(text);
       film.middleLabel.textContent = 'Real time';
       film.middleValue.textContent = from === to ? `${to.toFixed(1)} ms` : `${from.toFixed(1)}–${to.toFixed(1)} ms`;
@@ -280,17 +291,45 @@ function intro(experience) {
       film.powerBar.style.setProperty('--to', share);
     }
 
-    // Back, Next and where you are, after the drop.
+    // Back, Next and where you are, after the drop. In the ask step Next is Ask.
     const navigable = docked && step < LAST;
     if (film.nav.hidden === navigable) film.nav.hidden = !navigable;
     if (navigable) {
       film.back.disabled = step === 0;
+      const label = step === ASK ? (talk ? 'Asking…' : 'Ask') : 'Next';
+      if (film.nextLabel !== label) {
+        film.nextLabel = label;
+        film.next.innerHTML = label === 'Next' ? 'Next <span aria-hidden="true">→</span>' : label;
+        film.next.setAttribute('aria-disabled', String(label !== 'Next' && label !== 'Ask'));
+        film.next.classList.toggle('is-ask', label === 'Ask');
+      }
       film.count.textContent = `${step + 1} of ${LAST}`;
       film.dots.forEach((dot, i) => {
         dot.classList.toggle('is-done', i < step);
         dot.classList.toggle('is-now', i === step);
       });
     }
+
+    // The lights going down: the backdrop, and the readout turning dark with it.
+    film.backdrop.style.opacity = b.dark;
+    const dark = b.dark > .5;
+    if (film.readout.classList.contains('is-dark') !== dark) film.readout.classList.toggle('is-dark', dark);
+    stage.classList.toggle('is-docked', navigable);
+
+    // The label riding on the message's front, and the ID by the reader's chip while it checks.
+    let tag = null;
+    if (docked && available && b.message && scene.riverShowing()) {
+      tag = { text: b.message.words, at: scene.anchor('river'), kind: b.message.dir > 0 ? 'ask' : 'answer' };
+    } else if (docked && available && STEPS[step].shot === 'read') {
+      tag = { text: CARD_ID, at: scene.anchor('readerChip'), kind: 'check' };
+    }
+    film.tag.classList.toggle('is-shown', Boolean(tag));
+    if (tag) {
+      if (film.tag.textContent !== tag.text) film.tag.textContent = tag.text;
+      film.tag.dataset.kind = tag.kind;
+      film.tag.style.transform = `translate3d(${tag.at.x}px, ${tag.at.y}px, 0)`;
+    }
+    film.hint.classList.toggle('is-shown', docked && b.dark > .6 && !orbited);
 
     // The check mark, drawn over the reader, and the explanation at the end.
     const top = available ? scene.anchor('readerTop') : { x: layout.reader.x, y: layout.reader.y - layout.reader.height * .3 };
@@ -373,11 +412,33 @@ function intro(experience) {
     const rest = { x: layout.reader.x / layout.width, y: layout.reader.y / layout.height };
     cm = centimetres(readerDistance(pose.x, pose.y));
     const docked = detected && step >= 0;
-    let goal, look;
+    let goal, look, said = null;
     if (docked) {
-      goal = STEPS[step].levels;
+      const plan = STEPS[step];
+      said = plan.talk && talk?.name === plan.talk ? message(talk.name, reduce.matches ? 1.4 : clock - talk.start) : null;
+      goal = said ? talkLevels(plan.levels, said) : plan.levels;
       // Aim where the card is going, so the camera and the card arrive together.
-      look = view(STEPS[step].shot, goal.gap, rest, layout.compact);
+      look = view(plan.shot, goal.gap, rest, layout.compact);
+      if (said && available && !reduce.matches) {
+        // The camera rides with the message: it leans toward its front and moves in closer,
+        // then settles back once every bit has landed.
+        const ride = smoother(0, .08, said.head) * (1 - said.landed) * .55;
+        const front = scene.riverHead();
+        look.focus = look.focus.map((value, i) => value + (front[i] - value) * ride);
+        look.zoom *= 1 + ride * .55;
+      }
+      if (plan.talk && !reduce.matches) {
+        // While they talk the camera never quite stops: a slow drift round the river.
+        look.spin += Math.sin(clock * .21) * .08;
+        look.tilt += Math.sin(clock * .16 + 1) * .035;
+      }
+      look.spin += orbit.spin;
+      look.tilt = clamp(look.tilt + orbit.tilt, .2, 1.48);
+      // The question has reached the chip: a moment later, the chip answers.
+      if (said?.done && talk.name === 'ask') {
+        talk.doneAt ??= clock;
+        if (clock - talk.doneAt > .45) go(step + 1);
+      }
     } else if (canDrop) {
       goal = approach(cm);
       look = approachView(cm, rest, layout.compact);
@@ -392,21 +453,23 @@ function intro(experience) {
       settled &&= resting(shown[key], goal[key]);
     }
     // The camera glides from shot to shot: its zoom in even steps (log), its aim and angle.
-    const aim = [Math.log(look.zoom), ...look.focus, ...look.at, look.tilt, look.spin, look.yaw];
+    const aim = [Math.log(look.zoom), ...look.focus, ...look.at, look.tilt, look.spin, look.yaw, look.fov ?? 0];
     lens ??= aim.map(value => spring(value));
-    const lensPace = docked ? 3.4 : 12;
+    // Turning the view by hand follows the pointer closely; between shots the camera glides.
+    const lensPace = orbitDrag ? 9 : docked ? 3 : 12;
     lens.forEach((state, i) => {
-      chase(state, aim[i], lensPace, dt, i >= 1 && i <= 3 ? 1e-6 : 2e-4);
+      chase(state, aim[i], lensPace, dt, i >= 1 && i <= 3 ? 1e-6 : i === 9 ? .005 : 2e-4);
       settled &&= resting(state, aim[i]);
     });
     const levels = Object.fromEntries(Object.entries(shown).map(([key, state]) => [key, state.value]));
-    const [z, fx, fy, fz, ax, ay, tiltAngle, spin, yaw] = lens.map(state => state.value);
+    const [z, fx, fy, fz, ax, ay, tiltAngle, spin, yaw, fov] = lens.map(state => state.value);
     const live = levels.panel > .001 || levels.dock > .001 || docked;
     // The loops (the current, the waves, the bits) run on their own clock while the close-up
     // shows. With reduced motion they hold still on one frame.
     if (live && !reduce.matches && !document.hidden) clock += dt;
     if (reduce.matches) clock = .4;
-    const b = { ...levels, clock, view: { zoom: Math.exp(z), focus: [fx, fy, fz], at: [ax, ay], tilt: tiltAngle, spin, yaw } };
+    const b = { ...levels, clock, message: said,
+      view: { zoom: Math.exp(z), focus: [fx, fy, fz], at: [ax, ay], tilt: tiltAngle, spin, yaw, fov } };
 
     // Where the letters and the spray leave from: the gap of the open mouth.
     const mouthPoint = () => available ? scene.mouth() : fromCard(pose, -.039, .002, .003 + pose.mouth * .010);
@@ -450,6 +513,8 @@ function intro(experience) {
     detected = false;
     step = -1;
     band = -1;
+    talk = null;
+    orbit.spin = orbit.tilt = 0;
     status.textContent = '';
     focusWhenDone = false;
     retry.hidden = film.replay.hidden = true;
@@ -478,13 +543,29 @@ function intro(experience) {
     if (!detected) return;
     const leaving = stage.contains(document.activeElement) && document.activeElement !== dropButton;
     step = clamp(index, 0, LAST);
+    // The card answers by itself, a moment after the step starts; the question waits for Ask.
+    talk = STEPS[step].talk === 'answer' ? { name: 'answer', start: clock + .35 } : null;
+    orbit.spin = orbit.tilt = 0;
     focusWhenDone = step === LAST && leaving;
     film.nav.hidden = step >= LAST;
     if (step < LAST - 1) status.textContent = '';
     invalidate();
   }
 
-  film.next.addEventListener('click', () => go(step + 1));
+  // The visitor plays the reader: Ask sends its question down the river.
+  function ask() {
+    if (!detected || step !== ASK || talk) return;
+    if (reduce.matches) { go(ASK + 1); return; }
+    talk = { name: 'ask', start: clock };
+    invalidate();
+  }
+
+  function forward() {
+    if (step === ASK) ask();
+    else go(step + 1);
+  }
+
+  film.next.addEventListener('click', forward);
   film.back.addEventListener('click', () => go(step - 1));
   film.replay.addEventListener('click', () => {
     go(0);
@@ -493,7 +574,7 @@ function intro(experience) {
   // The arrow keys step too, and Escape takes the card off the reader.
   stage.addEventListener('keydown', event => {
     if (!detected || event.altKey || event.ctrlKey || event.metaKey) return;
-    if (event.key === 'ArrowRight' && step < LAST) { event.preventDefault(); go(step + 1); }
+    if (event.key === 'ArrowRight' && step < LAST) { event.preventDefault(); forward(); }
     else if (event.key === 'ArrowLeft' && step > 0) { event.preventDefault(); go(step - 1); }
     else if (event.key === 'Escape') { event.preventDefault(); resetDrop(); dropButton.focus({ preventScroll: true }); }
   });
@@ -514,8 +595,34 @@ function intro(experience) {
         nowBefore = undefined;
       },
       state: () => ({ onScreen, canDrop, detected, step, needsMeasure }),
+      shots: SHOTS,
       scene: () => scene,
     };
+  }
+
+  // After the drop, dragging anywhere on the stage (not on a button) turns the camera.
+  stage.addEventListener('pointerdown', event => {
+    if (!detected || step < 0 || step >= LAST || event.button !== 0) return;
+    if (event.target.closest('button, a, .readout, .cine-explain')) return;
+    orbitDrag = { id: event.pointerId, x: event.clientX, y: event.clientY, spin: orbit.spin, tilt: orbit.tilt };
+    stage.setPointerCapture(event.pointerId);
+    stage.classList.add('is-orbiting');
+  });
+  stage.addEventListener('pointermove', event => {
+    if (orbitDrag?.id !== event.pointerId) return;
+    const dx = event.clientX - orbitDrag.x, dy = event.clientY - orbitDrag.y;
+    orbit.spin = clamp(orbitDrag.spin + dx * .0055, -1.4, 1.4);
+    orbit.tilt = clamp(orbitDrag.tilt - dy * .0035, -.6, .35);
+    if (Math.hypot(dx, dy) > 6) orbited = true;
+    wake();
+  });
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+    stage.addEventListener(type, event => {
+      if (orbitDrag?.id !== event.pointerId) return;
+      orbitDrag = null;
+      stage.classList.remove('is-orbiting');
+      wake();
+    });
   }
 
   stage.addEventListener('pointermove', event => {

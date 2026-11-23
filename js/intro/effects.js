@@ -1,10 +1,10 @@
 // What the close-up shows moving between the reader and the card (see cinema.js):
 // - wave fronts rising from the reader's coil to the card (the reader's signal),
-// - wave fronts and bits going back down from the card's coil to the reader (the answer),
+// - wave fronts going back down from the card's coil to the reader (the answer),
 // - current running round the card's coils and along the chip's two wires into the chip,
 //   and the chip's glow,
 // - a glow on the reader's chip while it checks the answer.
-// The waves and bits live in the reader's frame; the wires and the chip's glow live in
+// The waves live in the reader's frame; the wires and the chip's glow live in
 // the card's frame, so they move with it. Units are metres.
 // The page behind is light, so nothing here adds light: every mark is a saturated colour
 // laid over the scene with ordinary blending, which reads on paper as well as on the dark reader.
@@ -27,24 +27,6 @@ function glowTexture() {
   g.fillStyle = gradient;
   g.fillRect(0, 0, 128, 128);
   return new THREE.CanvasTexture(canvas);
-}
-
-function digitTexture(digit) {
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = 128;
-  const g = canvas.getContext('2d');
-  g.font = '700 92px "JetBrains Mono", ui-monospace, monospace';
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  g.lineJoin = 'round';
-  g.lineWidth = 14;
-  g.strokeStyle = 'rgba(255,255,255,.92)';
-  g.strokeText(digit, 64, 70);
-  g.fillStyle = '#1d6ee8';
-  g.fillText(digit, 64, 70);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
 }
 
 // A thin band in the shape of the reader's coil: one wave front.
@@ -146,19 +128,6 @@ export function buildEffects() {
   });
   const up = makeRings(WARM), down = makeRings(COOL);
 
-  // The answer's bits: the start of the card's reply to the reader's first question
-  // (ATQA 0x0044), in the order they are sent, lowest bit of each byte first.
-  const pattern = '0010001000'.split('');
-  const digits = { 0: digitTexture('0'), 1: digitTexture('1') };
-  const bits = pattern.map(d => {
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: digits[d], transparent: true, depthWrite: false, depthTest: false, toneMapped: false, opacity: 0,
-    }));
-    sprite.renderOrder = 7;
-    table.add(sprite);
-    return sprite;
-  });
-
   // The reader's chip, glowing while it checks the answer.
   const think = new THREE.Sprite(overlay(glow, COOL));
   think.position.copy(READER_CHIP).setZ(READER_CHIP.z + .002);
@@ -183,12 +152,10 @@ export function buildEffects() {
   die.renderOrder = 11;
   onCard.add(die);
 
-  const point = new THREE.Vector3(), axis = new THREE.Vector3(0, 0, 1);
-
   // Called every frame with the shown levels (cinema.js), the live clock `b.clock` in
   // seconds, how high the card floats over the reader and how it is turned.
   function update(b, cardZ, spin) {
-    const any = b.field + b.reply + b.bits + b.thinking + b.power + b.blink + b.read + b.receive;
+    const any = b.field + b.reply + b.thinking + b.power + b.blink + b.read + b.receive;
     table.visible = onCard.visible = any > .003;
     if (!table.visible) return;
     const t = b.clock;
@@ -209,19 +176,6 @@ export function buildEffects() {
       mesh.scale.set(1.13 - .13 * p, .7 + .3 * p, 1);
       mesh.material.opacity = b.reply * Math.sin(Math.PI * p) ** 2 * .55;
       mesh.visible = mesh.material.opacity > .004;
-    });
-
-    // Bits fall one after another, through the gap, onto the reader, over and over.
-    bits.forEach((sprite, j) => {
-      const p = (((t - j * .22) / 2.2) % 1 + 1) % 1;
-      const across = (j / (bits.length - 1) - .5) * .066;
-      const s = p * p * (3 - 2 * p);
-      point.set(across, .004 * Math.sin(j * 2.3), cardZ - .002 - (cardZ - COIL_Z - .003) * s);
-      point.applyAxisAngle(axis, spin * (1 - s));
-      sprite.position.copy(point);
-      sprite.scale.setScalar(.0046);
-      sprite.material.opacity = Math.sin(Math.PI * p) * b.bits;
-      sprite.visible = sprite.material.opacity > .004;
     });
 
     // The reader's chip beats while it checks.

@@ -3,6 +3,9 @@
 //   (`approach`): the reader's field, the current in the card's coil, the chip's power.
 // - Once the card is dropped on the reader, the visitor steps through the exchange with
 //   Next and Back (`STEPS`). Each step is a live loop that runs for as long as it is shown.
+// - In the middle, the card and the reader talk (`TALK`): the lights go down, the camera
+//   dives in between them, the visitor presses Ask and the reader's question flows to the
+//   card's chip along a river of light (river.js); the card's ID flows back by itself.
 // Both give a set of target levels (`IDLE` lists them) and a camera (`view`); main.js
 // glides what is shown toward them, card-scene.js draws the 3D and effects.js the waves,
 // the current and the bits.
@@ -38,15 +41,16 @@ export const WAKE = power(WAKE_CM);   // about 9%: the chip needs this much to s
 //   body (low shows its coil, board and chip).
 // emit, field: current in the reader's coil and the field rising from it. receive: current
 //   in the card's coils. power: current into the chip. blink: the chip working.
-// reply, bits: the card's answer. read, thinking: the reader taking the answer in and
+// reply: the card's answer leaving through its coil. read, thinking: the reader taking the answer in and
 //   checking it. check: the check mark.
 // page: the rest of the page (instructions, scroll guide). panel: the readout. explain:
 //   the explanation at the end.
-// charge: the chip's power, as the readout shows it.
+// charge: the chip's power, as the readout shows it. dark: the lights going down for the
+//   conversation. river: the channel the conversation flows along (river.js).
 export const IDLE = {
   dock: 0, gap: .034, card: 1, xray: 0, copper: 1, reader: 1, shell: 1,
-  emit: 0, field: 0, receive: 0, power: 0, blink: 0, reply: 0, bits: 0, read: 0, thinking: 0,
-  check: 0, page: 1, panel: 0, explain: 0, charge: 0,
+  emit: 0, field: 0, receive: 0, power: 0, blink: 0, reply: 0, read: 0, thinking: 0,
+  check: 0, page: 1, panel: 0, explain: 0, charge: 0, dark: 0, river: 0,
 };
 const DIM = .12;   // what is not being shown fades to this
 
@@ -87,19 +91,25 @@ export function approachBand(cm, before = -1) {
   return band;
 }
 
-// After the drop: the exchange, one step at a time. `ms` is when it happens in a real tap
-// (round numbers; the whole exchange takes about 5 ms). `shot` names the camera.
+// After the drop: the tap, one step at a time. `ms` is when it happens in a real tap
+// (round numbers; the whole exchange takes about 5 ms). `shot` names the camera. A step
+// with `talk` is part of the conversation: the lights go down, the camera dives in between
+// the card and the reader, and the message flows along the river (river.js). In the `ask`
+// step the visitor plays the reader: nothing is sent until they press Ask.
 export const REAL_MS = 5;
 export const STEPS = [
   { text: 'The reader sends out a radio signal.', ms: [0, .1], shot: 'field',
     levels: { card: .28, xray: 1, shell: .1, emit: 1, field: 1 } },
   { text: 'The signal makes a current in the card’s coil.', ms: [.1, .3], shot: 'coil',
     levels: { xray: 1, reader: DIM, shell: .5, emit: .6, field: .5, receive: 1 } },
-  { text: 'The current powers the chip. No battery needed.', ms: [.3, 1.2], shot: 'power',
+  { text: 'The current powers the chip. No battery needed.', ms: [.3, 1], shot: 'power',
     levels: { xray: 1, reader: DIM, shell: .5, emit: .4, receive: .8, power: 1, blink: .5, charge: 1 } },
-  { text: 'The chip answers through the same coil.', ms: [1.2, 3], shot: 'answer',
-    levels: { xray: 1, shell: .1, emit: .2, power: .5, reply: 1, bits: 1, charge: 1 } },
-  { text: 'The reader reads the answer and checks it.', ms: [3, 5], shot: 'read',
+  { text: 'Your turn. Ask the card who it is.', asking: 'The reader asks: who are you?', ms: [1, 1.5],
+    shot: 'ask', talk: 'ask',
+    levels: { xray: 1, shell: .14, emit: .3, receive: .35, power: .7, charge: 1, dark: 1, river: 1 } },
+  { text: 'The chip answers with its ID.', ms: [1.5, 2.5], shot: 'answer', talk: 'answer',
+    levels: { xray: 1, shell: .14, emit: .2, power: .6, blink: .4, charge: 1, dark: 1, river: 1 } },
+  { text: 'The reader checks the ID.', ms: [2.5, 5], shot: 'read',
     levels: { card: DIM, xray: 1, shell: .1, emit: .15, read: 1, thinking: 1, charge: 1 } },
   { text: 'Verified. Card detected.', ms: [5, 5], shot: 'done',
     levels: { gap: .0016, check: 1, charge: 1 } },
@@ -109,6 +119,54 @@ export const STEPS = [
 // Every drop starts at step 1. The drag shows how distance changes the power; the steps
 // are the tap itself, slowed down, so they always begin with the reader's signal.
 export const LAST = STEPS.length - 1;
+export const ASK = STEPS.findIndex(step => step.talk === 'ask');
+
+// The conversation: the reader asks for the card's ID, the card sends it. These are the
+// real frames of ISO/IEC 14443-3 anticollision, built by js/rfid/iso14443a.js: the reader
+// sends SEL 0x93 with NVB 0x20 ("everyone, send your whole ID"); the card answers with its
+// four ID bytes and their check byte (BCC). On the air each byte is 8 bits, lowest first,
+// then an odd check bit.
+const iso = globalThis.RFID?.iso;
+const ID = [0x04, 0x7b, 0x21, 0x9e];
+const frame = bytes => iso ? iso.standardFrame(bytes)
+  : bytes.flatMap(b => [...Array.from({ length: 8 }, (_, i) => (b >> i) & 1), 1 - [0, 1, 2, 3, 4, 5, 6, 7].reduce((n, i) => n ^ (b >> i) & 1, 0)]);
+const check = iso ? iso.bcc(ID) : ID.reduce((a, b) => a ^ b, 0);
+const hex = bytes => bytes.map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
+export const TALK = {
+  ask: { dir: 1, words: 'Who are you?', bits: frame([iso?.SEL1 ?? 0x93, iso?.NVB_ALL ?? 0x20]) },
+  answer: { dir: -1, words: 'ID ' + hex(ID), bits: frame([...ID, check]) },
+};
+export const CARD_ID = hex(ID);
+
+// How a message moves along the river. `dir` is +1 from the reader's chip to the card's
+// chip, -1 back. Its front (`head`) runs along the river at SPEED river-lengths a second,
+// its bits follow in single file SPACING apart, and the river behind the last bit dims
+// again (`tail`). `done` once every bit has reached the far chip.
+const SPEED = .48, SPACING = .02;
+export function message(name, seconds) {
+  const talk = TALK[name];
+  const head = Math.max(0, seconds) * SPEED;
+  const last = head - .02 - (talk.bits.length - 1) * SPACING;
+  return { ...talk, head, tail: last - .22, spacing: SPACING, done: last > 1, landed: smoother(1, 1.25, last) };
+}
+
+// While a message flows, each part lights up as it passes through: the coil it leaves by,
+// the coil it arrives at, then the chip it is for. Along the river (river.js), the reader's
+// coil is about a third of the way from the reader's chip, and the card's coil three quarters.
+const during = (x, from, to) => smoother(from - .06, from, x) * (1 - smoother(to, to + .12, x));
+export function talkLevels(levels, said) {
+  const front = said.head, out = { ...levels };
+  if (said.dir > 0) {
+    out.emit = Math.max(levels.emit, during(front, .12, .5));           // out through the reader's coil
+    out.receive = Math.max(levels.receive, during(front, .68, 1.3));    // into the card's coil
+    out.blink = Math.max(levels.blink, said.landed);                    // the chip works on it
+  } else {
+    out.reply = during(front, .02, .4);                                 // out through the card's coil
+    out.read = during(front, .55, 1.4) * .9;                            // into the reader's coil
+    out.thinking = said.landed * .8;                                    // the reader's chip has it
+  }
+  return out;
+}
 
 // Points the camera looks at, in the reader's frame (metres). `gap` is the card's height.
 const cardZ = gap => TOP + gap;
@@ -122,32 +180,39 @@ const FOCUS = {
     return [HOVER.x + x * k - y * s, HOVER.y + x * s + y * k, cardZ(gap)];
   },
   readerChip: () => [READER_CHIP.x, READER_CHIP.y, (READER_CHIP.z + COIL_Z) / 2],
+  // The middle of the river's whole run, from the reader's chip to the card's (river.js).
+  river: gap => [-.022, -.006, COIL_Z + (cardZ(gap) - COIL_Z) * .5],
 };
 
 // The camera for each step: zoom, what it looks at, where that sits on screen (shares of
-// the stage; the readout takes the left on a wide screen and the top on a phone), and the
-// viewing angle.
-const SHOTS = {
-  field: { zoom: 2, focus: 'gap', at: [.63, .58], tilt: 1.12, spin: -.34, yaw: .05 },
-  coil: { zoom: 2.1, focus: 'card', at: [.63, .56], tilt: .62, spin: -.5, yaw: 0 },
-  power: { zoom: 7, focus: 'chip', at: [.63, .55], tilt: .78, spin: -.7, yaw: .03 },
-  answer: { zoom: 3.3, focus: 'gap', at: [.63, .56], tilt: 1.04, spin: -.84, yaw: .02 },
-  read: { zoom: 2.5, focus: 'readerChip', at: [.64, .5], tilt: .92, spin: -.75, yaw: .02 },
-  done: { zoom: 2.1, focus: 'top', at: [.63, .58], tilt: .96, spin: -.92, yaw: .03 },
+// the stage; the readout takes the left on a wide screen and the top on a phone), the
+// viewing angle, and the lens: `fov` is its field of view in degrees, 0 for none (flat,
+// like a plan drawing). Between shots the lens widens as the camera moves in, so the
+// framing holds while the depth opens up (a dolly zoom).
+export const SHOTS = {
+  field: { zoom: 2.15, focus: 'gap', at: [.64, .6], tilt: 1.3, spin: -.3, yaw: .04, fov: 26 },
+  coil: { zoom: 2, focus: 'card', at: [.64, .56], tilt: .66, spin: -.5, yaw: 0, fov: 14 },
+  power: { zoom: 7.5, focus: 'chip', at: [.64, .55], tilt: .82, spin: -.72, yaw: .03, fov: 18 },
+  // The conversation: low between the card and the reader, the lens wide open.
+  // `phone` is the framing on a narrow screen, where the readout takes the top.
+  ask: { zoom: 2.3, focus: 'river', at: [.6, .62], tilt: 1.3, spin: .35, yaw: -.02, fov: 50, phone: { at: [.4, .7], zoom: 1.55 } },
+  answer: { zoom: 2.5, focus: 'river', at: [.58, .6], tilt: 1.12, spin: 1.25, yaw: .05, fov: 58, phone: { at: [.5, .68], zoom: 1.7 } },
+  read: { zoom: 2.5, focus: 'readerChip', at: [.64, .5], tilt: .92, spin: -.75, yaw: .02, fov: 16 },
+  done: { zoom: 2.1, focus: 'top', at: [.63, .58], tilt: .96, spin: -.92, yaw: .03, fov: 0 },
 };
 
-// A camera: { zoom, focus: [x, y, z], at: [x, y], tilt, spin, yaw }. `rest` is where the
-// reader's centre sits on the stage at rest, as shares of its width and height.
+// A camera: { zoom, focus: [x, y, z], at: [x, y], tilt, spin, yaw, fov }. `rest` is where
+// the reader's centre sits on the stage at rest, as shares of its width and height.
 export function view(name, gap, rest, compact) {
   const shot = SHOTS[name];
-  if (!shot) return { zoom: 1, focus: FOCUS.reader(), at: [rest.x, rest.y], ...REST };
-  const at = compact ? [.5, shot.at[1] + .06] : shot.at;
-  const zoom = compact && shot.zoom > 1 ? shot.zoom * .9 : shot.zoom;
-  return { zoom, focus: FOCUS[shot.focus](gap), at, tilt: shot.tilt, spin: shot.spin, yaw: shot.yaw };
+  if (!shot) return { zoom: 1, focus: FOCUS.reader(), at: [rest.x, rest.y], ...REST, fov: 0 };
+  const at = compact ? shot.phone?.at ?? [.5, shot.at[1] + .1] : shot.at;
+  const zoom = compact ? shot.phone?.zoom ?? (shot.zoom > 1 ? shot.zoom * .82 : shot.zoom) : shot.zoom;
+  return { zoom, focus: FOCUS[shot.focus](gap), at, tilt: shot.tilt, spin: shot.spin, yaw: shot.yaw, fov: shot.fov };
 }
 
 // While the card is dragged, the camera pushes in on the reader as the card comes near,
 // keeping the reader where it stands, so the place to drop it never moves.
 export function approachView(cm, rest, compact) {
-  return { zoom: 1 + (compact ? .18 : .28) * smoother(9, 1, cm), focus: FOCUS.reader(), at: [rest.x, rest.y], ...REST };
+  return { zoom: 1 + (compact ? .18 : .28) * smoother(9, 1, cm), focus: FOCUS.reader(), at: [rest.x, rest.y], ...REST, fov: 0 };
 }
