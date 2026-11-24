@@ -540,8 +540,8 @@ function watchFlipping(previous, plate, settlePrevious) {
     ctx.clearRect(0, 0, width, height);
     if (alpha === 0) return;
 
-    const center = flow({ x: source.x + source.w * .52, y: source.y + source.h * .49 },
-      { x: target.x + target.w * .53, y: Math.min(target.y + target.h * .51, height * .84) }, travel, Math.min(48, height * .07));
+    const centerX = mix(source.x + source.w * .52, target.x + target.w * .53, travel);
+    const centerY = mix(source.y + source.h * .49, Math.min(target.y + target.h * .51, height * .84), travel);
     const length = Math.min(width * .60, 284);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -557,8 +557,8 @@ function watchFlipping(previous, plate, settlePrevious) {
         const [ax, ay] = points[j], [bx, by] = points[Math.min(j + 1, points.length - 1)];
         const x = source.x + box.x + mix(ax, bx, sample - j) * box.w;
         const y = source.y + box.y + mix(ay, by, sample - j) * box.h;
-        const mergeX = mix(x, center.x + (u - .5) * length, gather);
-        const mergeY = mix(y, center.y, gather);
+        const mergeX = mix(x, centerX + (u - .5) * length, gather);
+        const mergeY = mix(y, centerY, gather);
         // Open onto the two baselines first, then give the live waves their height.
         const px = wave ? mix(mergeX, target.x + wave.box.x + wave.box.w * u, split) : mergeX;
         const py = wave ? mix(mergeY, target.y + wave.box.y + wave.box.h * mix(.5, wave.yAt(u), bend), split) : mergeY;
