@@ -712,6 +712,65 @@ input.s7-track-copy {
   #s13 .s13-clock-face::after { background: ButtonText; forced-color-adjust: none; }
 }
 
+#s13-chart { opacity: var(--s14-timing-opacity, 1); }
+.s14-timing-copy {
+  position: fixed;
+  inset: 0 auto auto 0;
+  z-index: 2;
+  pointer-events: none;
+}
+#s14 .s14-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 18px; }
+.s14-controls label, #s14-tap { min-block-size: 44px; }
+.s14-controls input { accent-color: var(--ink); }
+#s14 .plate-readout { min-block-size: 4.5em; }
+.s14-signal-label {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-block-end: 7px;
+  font-size: 13px;
+  font-weight: 600;
+}
+#s14-disturbance { color: var(--muted); font-weight: 500; }
+#s14-disturbance[data-active] { color: var(--red); }
+#s14-signal {
+  position: relative;
+  display: block;
+  inline-size: 100%;
+  padding: 0;
+  border: 0;
+  border-block: 1px solid rgba(13, 13, 12, .22);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--copper) 5%, var(--paper));
+  cursor: crosshair;
+  touch-action: pan-y pinch-zoom;
+  user-select: none;
+}
+#s14-signal:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+#s14-chart { block-size: 76px; opacity: var(--s14-signal-opacity, 1); }
+#s14-signal-help { margin: 8px 0 16px; color: var(--muted); font-size: 13px; line-height: 1.4; }
+.s14-replies { min-block-size: 180px; margin: 0; padding: 0; list-style: none; }
+.s14-replies li { padding-block: 6px; border-block-start: 1px solid rgba(13, 13, 12, .12); }
+.s14-prompt {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 3px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.s14-prompt span { color: var(--ink); font-weight: 500; }
+.s14-bits { display: flex; font: 600 clamp(10px, 2.65vw, 12px)/1.5 "JetBrains Mono", ui-monospace, monospace; }
+.s14-bit { flex: 0 1 12px; min-inline-size: 0; }
+.s14-bit[data-wrong] { color: var(--red); text-decoration: underline; text-underline-offset: 2px; }
+@media (forced-colors: active) {
+  #s14-signal { forced-color-adjust: none; border-color: var(--muted); }
+  #s14-signal:focus-visible { outline-color: Highlight; }
+}
+
 .plate-river { display: grid; gap: 14px; }
 .plate-river .plate-canvas { height: clamp(150px, 22vh, 220px); }
 .chat { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; max-height: 300px; overflow: auto; }

@@ -604,41 +604,167 @@
   }
 
   // ---------- 14. Catching mistakes ----------
-  let s14seed = 1;
-  plate('s14', p => {
-    const noise = +p.input('noise').value / 100 * .02, checks = p.input('checks').checked;
-    p.out('noise', (noise * 100).toFixed(1) + '%');
+  const firstSignalBit = 9, signalBitCount = 9;
+  let s14seed = 1, noiseBit = null, checkedSignal, revealReplies = false, replyMotion;
+
+  function checkSignal(checks) {
     const s = physics.solve({ tag: 'card', reader: 'pad', distance: .042 });
     const chip = tags.cardChip({ randomUid: true, seed: s14seed });
-    const link = channel.cardChannel([{ chip, depth: s.dip, awake: s.awake }], { noise, seed: s14seed * 31 });
-    const run = reader.activate(link, { checks });
+    const link = channel.cardChannel([{ chip, depth: s.dip, awake: s.awake }], { noise: .007, seed: s14seed * 31 });
+    let idReply;
+    const run = reader.activate({
+      send(bits) {
+        const heard = link.send(bits), exchange = link.recording.at(-1);
+        if (idReply || exchange.answers[0]?.name !== 'UID') return heard;
+        idReply = exchange;
+        if (noiseBit !== null) {
+          const noise = air.gaussian(tags.random((s14seed + noiseBit + 1) * 31));
+          const start = exchange.begin + (noiseBit + 1) * iso.BIT;
+          // A brief disturbance drowns one bit of the first answer. The phone can still retry.
+          for (let n = start; n < start + iso.BIT; n++) heard.samples[n] = 1 + (heard.samples[n] - 1) * .25 + noise() * .035;
+        }
+        return heard;
+      },
+    }, { checks });
+    return { run, recording: link.recording, idReply, uid: chip.uid };
+  }
+
+  function showErrorReplies(replies, { run, recording }) {
+    const prompts = { REQA: 'Anyone there?', ANTICOLLISION: 'Tell me your ID.', SELECT: 'OK, I’ll talk to you.' };
+    replies.replaceChildren(...run.steps.map((step, i) => {
+      const row = document.createElement('li'), label = document.createElement('div');
+      row.dataset.exchange = step.label;
+      label.className = 's14-prompt';
+      label.textContent = prompts[step.label];
+      const retry = run.steps[i - 1]?.label === step.label;
+      if (step.failed || retry) {
+        const note = document.createElement('span');
+        note.textContent = step.failed ? 'Check failed' : 'Phone retry';
+        label.append(note);
+      }
+      const bits = document.createElement('div'), errors = [];
+      bits.className = 's14-bits';
+      if (!step.answer.found) bits.textContent = 'No answer';
+      else {
+        const sent = recording[i]?.answers[0]?.bits ?? [], heard = step.answer.bits;
+        bits.append(...heard.map((bit, k) => {
+          const digit = document.createElement('span');
+          digit.className = 's14-bit';
+          digit.textContent = bit;
+          if (sent.length && bit !== sent[k]) {
+            digit.dataset.wrong = '';
+            errors.push(k + 1);
+          }
+          return digit;
+        }));
+        bits.setAttribute('role', 'img');
+        bits.setAttribute('aria-label', `Heard ${heard.join(' ')}.${errors.length ? ` Misread at ${errors.join(', ')}.` : ''}`);
+      }
+      row.append(label, bits);
+      return row;
+    }));
+  }
+
+  function drawErrorSignal(p, reply) {
     const ctx = fit(p);
-    let y = 22;
-    ctx.textBaseline = 'top';
-    run.steps.forEach((step, i) => {
-      if (y > p.h - 30) return;
-      const truth = link.recording[i]?.answers[0]?.bits || [];
-      const got = step.answer.bits || [];
-      ctx.fillStyle = MUTED; ctx.font = `600 11px ${SANS}`; ctx.textAlign = 'left';
-      ctx.fillText(step.label === 'REQA' ? 'Anyone there?' : step.label === 'SELECT' ? 'OK, I’ll talk to you.' : 'Tell me your ID.', 16, y);
-      y += 16;
-      ctx.font = `600 11px ${MONO}`;
-      const cw = Math.min(11, (p.w - 32) / Math.max(1, truth.length));
-      got.forEach((b, k) => {
-        const wrong = truth.length && b !== truth[k];
-        ctx.fillStyle = wrong ? RED : INK;
-        ctx.fillText(String(b), 16 + k * cw, y);
-      });
-      if (!step.answer.found) { ctx.fillStyle = RED; ctx.fillText('(no answer)', 16, y); }
-      y += 22;
+    p.canvas.errorTrace = null;
+    if (!reply) return;
+    const { w, h } = p;
+    const start = reply.begin + (firstSignalBit + 1) * iso.BIT, length = signalBitCount * iso.BIT;
+    const samples = reply.samples.subarray(start, start + length);
+    const bits = reply.answers[0].bits.slice(firstSignalBit, firstSignalBit + signalBitCount);
+    const X = n => n / length * w, Y = v => clamp(h * .53 + (1 - v) * h * 7, 26, h - 7);
+    const points = [];
+    // Average one subcarrier cycle at a time so the dips remain legible at this scale.
+    for (let n = 0; n < length; n += iso.SUB) {
+      let total = 0;
+      for (let k = 0; k < iso.SUB; k++) total += samples[n + k];
+      const average = total / iso.SUB;
+      points.push([n, average], [n + iso.SUB, average]);
+    }
+    const offset = noiseBit === null ? null : (noiseBit - firstSignalBit) * iso.BIT;
+    ctx.fillStyle = 'rgba(179, 38, 30, .09)';
+    if (offset !== null) ctx.fillRect(X(offset), 0, X(iso.BIT), h);
+    ctx.font = `500 12px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    bits.forEach((bit, i) => {
+      if (i) vline(ctx, X(i * iso.BIT), 0, h, GRID, '', []);
+      ctx.fillStyle = i + firstSignalBit === noiseBit ? RED : MUTED;
+      ctx.fillText(String(bit), X((i + .5) * iso.BIT), 8);
     });
-    const right = run.uid && hex(run.uid[0]) === hex(chip.uid[0]) && run.uid.every((b, i) => b === chip.uid[i]);
-    const tries = run.steps.filter(st => st.label === 'ANTICOLLISION').length;
-    p.say(run.ok ? `ID read: ${run.uid.map(hex).join(' ')} ✓ ${tries > 1 ? `(a check failed, so the phone asked again ${tries - 1}×)` : ''}`
-      : run.uid && !right ? `Checks off: the phone accepted a wrong ID, ${run.uid.map(hex).join(' ')}. The card refused to confirm it: it knows its own ID.`
-      : `${run.reason} ${checks ? 'The checks stopped a bad read.' : ''}`);
+    curve(ctx, points, X, Y, COPPER, 1.4);
+    const burst = offset === null ? [] : Array.from({ length: iso.BIT }, (_, i) => [offset + i, samples[offset + i]]);
+    if (burst.length) curve(ctx, burst, X, Y, RED, 1.6);
+    p.canvas.errorTrace = { box: { x: 0, y: 0, w, h }, X, Y, points, bits, burst, noiseBit, color: COPPER };
+  }
+
+  const mistakes = plate('s14', p => {
+    const checks = p.input('checks').checked, key = `${s14seed}/${checks}/${noiseBit}`;
+    if (key !== checkedSignal?.key) {
+      checkedSignal = { key, ...checkSignal(checks) };
+      const { run, idReply, uid } = checkedSignal;
+      const replies = p.input('replies'), disturbance = p.input('disturbance');
+      disturbance.textContent = !idReply ? 'No ID signal' : noiseBit === null ? 'No added noise' : `Your noise at bit ${noiseBit + 1}`;
+      disturbance.toggleAttribute('data-active', !!idReply && noiseBit !== null);
+      const retried = run.steps.find((step, i) => step.label === run.steps[i + 1]?.label);
+      const retry = retried?.failed ? ' The phone retried after a failed check.' : retried ? ' The phone asked again.' : '';
+      const badId = run.uid?.some((b, i) => b !== uid[i]);
+      p.say((run.ok ? `ID read: ${run.uid.map(hex).join(' ')} ✓`
+        : badId ? `Checks off. The phone accepted a wrong ID, ${run.uid.map(hex).join(' ')}. The card refused it.`
+        : run.reason) + retry);
+      replyMotion?.cancel();
+      showErrorReplies(replies, checkedSignal);
+      if (revealReplies && !reduced.matches && !document.hidden) replyMotion = replies.animate?.([
+        { clipPath: 'inset(0 0 100% 0)', filter: 'blur(2px)', transform: 'translateY(-4px)' },
+        { clipPath: 'inset(0 0 50% 0)', filter: 'blur(0)', transform: 'none', offset: .48 },
+        { clipPath: 'inset(0)', filter: 'blur(0)', transform: 'none' },
+      ], { duration: 350, easing: 'cubic-bezier(.19, .68, .32, 1)' });
+      revealReplies = false;
+    }
+    drawErrorSignal(p, checkedSignal.idReply);
   });
-  document.getElementById('s14-tap')?.addEventListener('click', () => { s14seed++; plates.find(q => q.el.id === 's14').dirty = true; });
+
+  if (mistakes) {
+    const signal = mistakes.input('signal'), middle = firstSignalBit + Math.floor(signalBitCount / 2);
+    let pointer;
+    function disrupt(bit) {
+      const next = clamp(bit, firstSignalBit, firstSignalBit + signalBitCount - 1);
+      if (next === noiseBit) return;
+      noiseBit = next;
+      revealReplies = false;
+      mistakes.dirty = true;
+    }
+    function disturbAt(x) {
+      const { left, width } = signal.getBoundingClientRect();
+      if (width) disrupt(firstSignalBit + Math.floor((x - left) / width * signalBitCount));
+    }
+    signal.addEventListener('pointerdown', event => {
+      if (event.isPrimary && event.button === 0) pointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    });
+    signal.addEventListener('pointermove', event => {
+      if (event.pointerId !== pointer?.id || !(event.buttons & 1)) return;
+      const dx = Math.abs(event.clientX - pointer.x), dy = Math.abs(event.clientY - pointer.y);
+      if (dx >= 6 && dx > dy) disturbAt(event.clientX);
+    });
+    for (const name of ['pointerup', 'pointercancel', 'pointerleave']) signal.addEventListener(name, event => {
+      if (event.pointerId === pointer?.id) pointer = null;
+    });
+    signal.addEventListener('click', event => {
+      if (event.detail === 0) disrupt(noiseBit ?? middle);
+      else disturbAt(event.clientX);
+    });
+    signal.addEventListener('keydown', event => {
+      if (event.altKey || event.ctrlKey || event.metaKey || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+      event.preventDefault();
+      disrupt((noiseBit ?? middle) + (event.key === 'ArrowLeft' ? -1 : 1));
+    });
+    mistakes.input('tap').addEventListener('click', () => {
+      s14seed++;
+      noiseBit = null;
+      revealReplies = true;
+      mistakes.dirty = true;
+    });
+    reduced.addEventListener('change', () => replyMotion?.cancel());
+  }
 
   // ---------- 15. The whole conversation (the Bit River) ----------
   const river = { messages: [], started: 0, steal: false, seed: 1 };

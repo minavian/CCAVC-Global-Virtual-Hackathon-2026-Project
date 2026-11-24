@@ -1490,6 +1490,95 @@ function watchCounting(previous, scene) {
   }
 }
 
+function watchMistakes(previous, scene) {
+  const chapter = scene.closest('.deep');
+  const source = previous.querySelector('#s13-chart'), chart = scene.querySelector('#s14-chart');
+  const copy = document.createElement('canvas'), ctx = copy.getContext('2d');
+  copy.className = 's14-timing-copy';
+  copy.setAttribute('aria-hidden', 'true');
+  let layout, armed = false, lastTop = scrollY;
+
+  function settle() {
+    if (!copy.isConnected) return;
+    copy.remove();
+    source.style.removeProperty('--s14-timing-opacity');
+    chart.style.removeProperty('--s14-signal-opacity');
+  }
+
+  watchScrollMotion((top, height, needsMeasure) => {
+    if (reducedMotion.matches || document.hidden) return settle();
+    if (needsMeasure || !layout) {
+      const from = bounds(source, top), to = bounds(chart, top);
+      const start = Math.max(from.y + from.h * .34 - height * .36, to.y - height * 1.24);
+      const end = Math.max(start + height * .28, to.y + to.h * .5 - height * .62);
+      layout = { from, to, start, end, stacked: matchMedia('(max-width: 860px)').matches };
+      armed = false;
+    }
+    if (Math.abs(top - lastTop) > height * .42) armed = false;
+    lastTop = top;
+    const { from, to, start, end, stacked } = layout;
+    if (top <= start) armed = true;
+    if (!armed || top <= start || top >= end || chapter.querySelector('.s13-spectrum-copy')) return settle();
+
+    const timing = source.timingTrace, signal = chart.errorTrace;
+    if (!timing || !signal) return settle();
+    const progress = stage(start, end, top);
+    const carry = ease(0, stacked ? .58 : .92, progress);
+    const fold = ease(.14, stacked ? .57 : .84, progress);
+    const waveTop = timing.Y(1) - 5, waveBottom = timing.Y(0) - waveTop;
+    const width = mix(timing.box.w, signal.box.w, carry);
+    const x = mix(from.x + timing.box.x, to.x, carry);
+    // On a narrow screen, let the line contract in place so it never moves across the copy.
+    const y = mix(from.y + waveTop, stacked ? from.y + timing.Y(0) - signal.box.h : to.y, carry);
+    const copyWidth = Math.ceil(Math.max(timing.box.w, signal.box.w));
+    const copyHeight = Math.ceil(Math.max(waveBottom + 38, signal.box.h));
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    if (copy.width !== Math.round(copyWidth * dpr) || copy.height !== Math.round(copyHeight * dpr)) {
+      copy.width = Math.round(copyWidth * dpr);
+      copy.height = Math.round(copyHeight * dpr);
+      Object.assign(copy.style, { width: `${copyWidth}px`, height: `${copyHeight}px` });
+    }
+    if (!copy.isConnected) chapter.append(copy);
+    copy.style.transform = `translate(${x}px, ${y - top}px)`;
+    copy.style.opacity = ease(0, .18, progress) * (1 - ease(stacked ? .50 : .79, stacked ? .72 : .99, progress));
+    source.style.setProperty('--s14-timing-opacity', 1 - .86 * ease(.02, .24, progress));
+    chart.style.setProperty('--s14-signal-opacity', .22 + .78 * ease(stacked ? .57 : .74, .99, progress));
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, copyWidth, copyHeight);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = signal.color;
+    ctx.lineWidth = mix(2, 1.4, fold);
+    ctx.beginPath();
+    const divisions = 10 * timing.sent.length;
+    for (let i = 0; i <= divisions; i++) {
+      const t = i / divisions;
+      const sample = timing.level[Math.min(timing.level.length - 1, Math.floor(t * timing.level.length))];
+      const [, current] = signal.points[Math.round(t * (signal.points.length - 1))];
+      const level = mix(timing.Y(sample) - waveTop, signal.Y(current), fold);
+      if (i) ctx.lineTo(t * width, level);
+      else ctx.moveTo(0, level);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1 - ease(.24, .67, progress);
+    ctx.font = '600 12px "JetBrains Mono", ui-monospace, monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    timing.ticks.forEach((sample, i) => {
+      ctx.fillStyle = timing.read[i] === timing.sent[i] ? '#1f7a4a' : '#b3261e';
+      ctx.fillText(String(timing.read[i]), sample / timing.level.length * width, mix(waveBottom + 22, 8, fold));
+    });
+  });
+
+  const contentSize = new ResizeObserver(() => { layout = undefined; scheduleMotion(); });
+  for (const node of [chapter, previous, scene, source, chart]) contentSize.observe(node);
+  for (const node of [previous.querySelector('.plate-controls'), scene]) {
+    for (const event of ['focusin', 'pointerdown', 'input', 'click']) node.addEventListener(event, () => {
+      if (copy.isConnected) armed = false;
+      settle();
+    });
+  }
+}
+
 const opener = document.getElementById('deep-title');
 const partOne = document.getElementById('part-one');
 if (opener && partOne) watchPartOne(opener, partOne);
@@ -1517,3 +1606,5 @@ const whispering = document.getElementById('s12');
 if (soaking && whispering) watchWhispering(soaking, whispering);
 const counting = document.getElementById('s13');
 if (whispering && counting) watchCounting(whispering, counting);
+const mistakes = document.getElementById('s14');
+if (counting && mistakes) watchMistakes(counting, mistakes);

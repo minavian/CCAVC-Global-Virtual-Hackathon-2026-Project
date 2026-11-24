@@ -248,15 +248,24 @@
         <p class="plate-num">14</p>
         <h3 id="s14-title">Catching mistakes</h3>
         <p>A dip drowns and a 1 becomes a 0. A check bit on every byte and a check number on every message catch it, and the phone asks again.</p>
-        <div class="plate-controls">
-          <label>Noise <output data-for="s14-noise"></output><input id="s14-noise" type="range" min="0" max="100" value="35"></label>
+        <div class="plate-controls s14-controls">
           <label class="plate-check"><input id="s14-checks" type="checkbox" checked> Checks</label>
           <button type="button" id="s14-tap">Tap again</button>
         </div>
         <p class="plate-readout" aria-live="polite"></p>
         <p class="plate-real">Real name: odd parity bits and CRC_A (ISO/IEC 14443-3). The card also checks its own ID when the phone selects it.</p>
       </div>
-      <canvas class="plate-canvas" role="img" aria-label="The bits the phone heard, with errors marked"></canvas>
+      <div class="s14-instrument">
+        <div class="s14-signal-label">
+          <span>Card’s ID signal</span>
+          <output id="s14-disturbance" for="s14-signal">No added noise</output>
+        </div>
+        <button type="button" id="s14-signal" aria-label="Disrupt the simulated signal" aria-describedby="s14-signal-help">
+          <canvas class="plate-canvas" id="s14-chart" aria-hidden="true"></canvas>
+        </button>
+        <p id="s14-signal-help">Tap or drag to add noise. Use Enter or the left and right arrow keys.</p>
+        <ol class="s14-replies" id="s14-replies" aria-label="Decoded replies"></ol>
+      </div>
     </section>
 
     <section class="plate" id="s15" aria-labelledby="s15-title">
