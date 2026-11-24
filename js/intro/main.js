@@ -5,9 +5,9 @@
 // distance; dropping it lets the visitor step through the tap, ask the card for its ID and
 // watch the answer flow back, and drag to turn the camera. See EXPLAINED.md.
 import { follow, settle, smoother, spring } from './easing.js';
-import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose, clamp, ease, mix, measureStage, restingFrame, scrollTime } from './timeline.js';
-import { renderSignals } from './signals.js';
-import { autoplay } from './autoplay.js';
+import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose, clamp, ease, mix, measureStage, restingFrame, scrollTime } from './timeline.js?v=2';
+import { renderSignals } from './signals.js?v=2';
+import { autoplay } from './autoplay.js?v=2';
 import { ANSWER_AFTER, APPROACH_DETAIL, APPROACH_TEXT, ASK, SAMPLES_PER_BIT, CARD_ID, IDLE, LAB, LAST, NEAREST, REAL_MS, SHOTS, STEPS, TALK, approach, approachBand, approachView, centimetres,
   checkByte, hex, message, power, setCardId, talkLevels, view } from './cinema.js';
 import { LAB_START, PRESETS, clampSetting, curve, labLevels, measure as measureLab, parseId, status as labStatus } from './lab-model.js';
@@ -1230,13 +1230,9 @@ function intro(experience) {
   experience.style.setProperty('--scroll-screens', SCROLL_SCREENS);
   experience.classList.add('enhanced');
   window.addEventListener('scroll', wake, { passive: true });
-  // Once the visitor scrolls the section in, its opening plays by itself up to the full name
-  // (autoplay.js). Positions are in screens of this section's scroll, as in timeline.js.
-  autoplay({
-    screensAt: y => (y - startY) / scrollDistance * SCROLL_SCREENS,
-    yAt: screens => startY + screens / SCROLL_SCREENS * scrollDistance,
-    reduce,
-  });
+  // One small scroll down and the page plays itself to the card's drop (autoplay.js); from
+  // there `auto` above carries the card to the reader and plays the close-up.
+  autoplay({ experience, stage, reduce });
   window.addEventListener('resize', remeasure, { passive: true });
   // The sections above can change height (fonts, a phone's toolbar), which moves this one.
   new ResizeObserver(remeasure).observe(stage);

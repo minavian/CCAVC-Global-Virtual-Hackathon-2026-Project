@@ -209,12 +209,19 @@ Original section written by OpenAI Codex for the project team · 2026-11-22 (the
 - **Coming in from the taps.** While the stage is still sliding up, before it pins, the playhead runs from `ARRIVE` (-1) to 0, one screen of scroll. The first row of `cardFrames` places the card higher in the stage and turned away. So the card rises more slowly than the page and turns to face you as the stage settles. The taps and the intro use the same paper colour, so there is no seam between them.
 - **Leaving for the story.** The section has the same soft paper edge as the taps (a wide `box-shadow`). As it slides away, the landing page fades in under that edge, and the story starts from `.track`.
 - **One playhead.** `js/intro/timeline.js` turns the scroll into one number, the playhead (`scrollTime`). Repeated values in `scrollFrames` hold the picture still for a stretch of scroll, so there is time to read. Everything else is a function of the playhead: the card's pose (`cardPose`), when each line fades in and out (`beats`), and when the X-ray shows.
-- **It plays its opening by itself** (`autoplay.js`, Owner: Mina Vian · 2026-11-24). Once the stage has pinned and the visitor scrolls a little further down (0.15 screens), the page glides on without them:
-  1. onto the card, with a short rest;
-  2. through the opening as R, F, I, D fly out, with a rest on "RFID";
-  3. on to "Radio-Frequency Identification", where the scroll is handed back.
+- **One small scroll plays it all** (`autoplay.js`, Owner: Mina Vian · 2026-11-24). Any scroll down, however small, from the landing to the end of this section starts a tour. The page glides on without the visitor, resting at each stop:
+  1. the three everyday taps, for one round of all three (14.2 s, `LOOP_ALL` in `js/taps.js`);
+  2. the card;
+  3. "RFID", as the card opens and the letters fly out;
+  4. "Radio-Frequency Identification";
+  5. the one-line definition;
+  6. the X-ray: antenna, chip, "So how does it talk?";
+  7. "Here's how: drag the card to the reader", where the tour ends.
 
-  It moves the real page scroll (`scrollTo`, eased with smootherstep), so the playhead, the card and the letters follow exactly as if the visitor had scrolled. It first waits for the visitor's own scroll to stop, such as a fling on a phone, and skips any stop already passed. While it plays, scrolling down (wheel, swipe, arrow keys, space, Page Down) is absorbed, so nothing jolts. Scrolling up, a click, another key, or the page moving some other way (the scroll bar) hands the page back at once. Those listeners exist only while it plays, so the rest of the page keeps the browser's fastest scrolling. It is off with reduced motion, and while presenter mode runs (`window.__presenting`).
+  From there the section's own autoplay (`auto` in `main.js`) carries the card to the reader after 2.2 s and plays the close-up. So one small scroll plays the whole story through the lab.
+  - **How it moves.** It moves the real page scroll (`scrollTo`, eased with smootherstep), so everything follows exactly as if the visitor had scrolled. The stops are read from the page each time (`stops`): the taps' top, and the intro's screens through the same scale as `scrollFrames`. It first waits for the visitor's own scroll to stop, such as a fling on a phone, then goes to the next stop below. A shorter way takes a shorter time, at the same pace.
+  - **The visitor stays in charge.** While it glides, scrolling down (wheel, swipe, arrow keys, space, Page Down) is absorbed, so nothing jolts. While it rests, a fresh push down skips to the next stop. A trackpad sends many events for one swipe, so only a push after a 250 ms gap counts. Scrolling up, a click, another key, or the page moving some other way (the scroll bar) hands the page back at once; the next scroll down picks the tour up again from there.
+  - **Cheap when idle.** The listeners that absorb input exist only while it plays, so the rest of the page keeps the browser's fastest scrolling. Below the tour's end, a scroll is not even measured. It is off with reduced motion, and while presenter mode runs (`window.__presenting`).
 - **Counting from the section.** The original was a page of its own. Here, `main.js` measures where the section starts (`startY`) and counts the scroll from there.
 - **The card** (`card-scene.js`). It loads the team's `models/contactless-card.glb`. The X-ray fades the outer layers and turns the copper antenna brass.
 - **The mouth bends like a sheet** (`bendSheet`). The two front layers stay glued along the right edge and lift as one sheet: a soft crease near the edge (`HINGE`, 0.17 radians) and a curl that grows toward the free edge (`CURL`, 0.40 more). The model's flat layers only have vertices round their outline, so `sliceAlongX` first cuts them into 72 strips across the card. A vertex shader then walks along the sheet from the glued edge, adding up its direction with Simpson's rule. So every point keeps its distance along the card: the sheet bends but never stretches. Each normal turns by the same angle, so the light slides along the curve. `sheetPoint` does the same sum in JavaScript, and `mouth()` uses it to find the middle of the gap.
@@ -237,11 +244,11 @@ The first version eased each keyframe in and out separately (smoothstep), and fo
 
 **What is simplified.** "Card detected" is a check that the card was dropped close to the reader, not a radio link.
 
-**How to check it.** Serve the folder and scroll past the three taps. Once the card's section fills the screen, scroll a little more and let go. The page plays on by itself: the card opens, the letters fly out, rest on "RFID", and stop on the full name. Scroll up during it, and it stops. Keep scrolling to the X-ray, then drag the card onto the reader. Press Tab first on the section to find **Skip to the card and reader**.
+**How to check it.** Serve the folder, open it, and scroll down once, a little. The page plays on by itself: the taps play once, the card opens, the letters fly out and spell the name, the definition, the X-ray, then "Here's how". A couple of seconds later the card is carried to the reader and the close-up plays. Scroll down while it rests to skip ahead; scroll up and it stops. To try it by hand, drag the card onto the reader yourself. Press Tab first on the section to find **Skip to the card and reader**.
 
 **Likely questions.**
 - Q: Why is the playhead not just the scroll position? A: Some parts need more scroll than others. The table in `scrollFrames` gives each beat its own length, and holds.
-- Q: Isn't taking over the scroll annoying? A: It only plays the opening, about eight seconds, and only on the way down. Scrolling down meanwhile is ignored because the page is already going there; scrolling up or a click stops it at once.
+- Q: Isn't taking over the scroll annoying? A: It only goes down, and only as far as the card's drop. Scrolling down while it rests moves on at once; scrolling up or a click stops it at once. Without it, a visitor had to scroll about twelve screens to reach the card's drop.
 - Q: What if WebGL is off? A: Two pictures of the same card (`images/intro/credit-card-*.webp`) stand in for the 3D card.
 - Q: Why does the card trail the scroll a little? A: That is the spring. It is what makes a sudden scroll look smooth. It catches up within about a third of a second.
 - Q: Is the bend physically right? A: It is a sheet that bends without stretching, with the bend we chose. Real card layers are glued all over and don't open at all. The mouth is a picture, not a teardown.

@@ -1,4 +1,4 @@
-import { HERO, MOUTH_CLOSED, ease, mix } from './timeline.js';
+import { HERO, MOUTH_CLOSED, ease, mix } from './timeline.js?v=2';
 
 const TAU = 2 * Math.PI;
 const BRASS = '#80623d';
