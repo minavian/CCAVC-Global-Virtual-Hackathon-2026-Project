@@ -140,6 +140,10 @@ const AT_CARD = {
 // While the card is still in the hand, the rings just spread as they rise.
 const SPREAD = { x: 0, y: 0, sx: 1.22, sy: 1.22, spin: 0 };
 const lerp = (a, b, k) => a + (b - a) * k;
+// The reader's field at height z (m) over its coil, as a share of its strength at the coil:
+// on the axis of a loop of radius R it falls as (R² / (R² + z²))^1.5.
+const R2 = .035 ** 2;
+const fieldAt = z => (R2 / (R2 + z * z)) ** 1.5;
 const blendShape = (a, b, k, out) => {
   for (const key of ['x', 'y', 'sx', 'sy', 'spin']) out[key] = lerp(a[key], b[key], k);
   return out;
@@ -165,7 +169,7 @@ export function buildEffects() {
     return mesh;
   });
   const up = makeRings(UP_COLOR), down = makeRings(COOL);
-  const landing = { ...AT_CARD };
+  const landing = { ...AT_CARD }, cardShape = { ...AT_CARD };
   // How far the beads on each wire have run. It adds up frame by frame, so a change of
   // speed or of direction never makes them jump: they slow, stop and turn round.
   let lastClock = null;
@@ -174,12 +178,13 @@ export function buildEffects() {
   // `level` bright, from `from` (at height `fromZ`) to `to` (at `toZ`), taking the shape
   // of the coil it is reaching as it goes. Each is brightest halfway across. `halo`: how
   // much of the glow round each ring shows (only in the dark; on paper it looks heavy).
-  function stream(rings, t, level, from, to, fromZ, toZ, halo) {
+  // `fade(p, z)`: how much of a ring shows that far across and at that height (the lab's).
+  function stream(rings, t, level, from, to, fromZ, toZ, halo, fade = () => 1) {
     const newest = Math.floor(t / EVERY);
     rings.forEach((mesh, i) => {
       const p = (t - (newest - i) * EVERY) / CROSS;
       const shape = p * p * (3 - 2 * p);
-      const opacity = p < 0 || p > 1 ? 0 : level * Math.sin(Math.PI * p) ** 1.2 * .85;
+      const opacity = p < 0 || p > 1 ? 0 : level * Math.sin(Math.PI * p) ** 1.2 * .85 * fade(p, lerp(fromZ, toZ, p));
       mesh.visible = opacity > .004;
       if (!mesh.visible) return;
       mesh.material.opacity = opacity;
@@ -239,16 +244,24 @@ export function buildEffects() {
     // stream dims in each of the reader's gaps, as the field does everywhere at once.
     // Where the rings land: spread while the card is in the hand, on the card's coil once it
     // is down, blending between the two as it docks so nothing jumps.
-    const to = blendShape(SPREAD, AT_CARD, smoothstep(0, 1, b.dock), landing);
+    // The card's coil as the rings meet it: narrower when the card is turned away (the lab).
+    cardShape.sy = AT_CARD.sy * Math.max(.05, Math.cos(b.tilt || 0));
+    const to = blendShape(SPREAD, cardShape, smoothstep(0, 1, b.dock), landing);
     const top = cardZ + .00034;
+    // In the lab the rings fade as they rise, as the field does with height, and a metal
+    // plate behind the card soaks up what would reach it.
+    const falloff = b.falloff || 0, soak = (b.metal || 0) * (b.shield || 0);
+    const upFade = (p, z) => lerp(1, fieldAt(z - COIL_Z), falloff) * (1 - soak * smoothstep(.35, 1, p));
+    // The card's answer is a change in the field near its coil, weaker by the reader.
+    const downFade = (p, z) => lerp(1, fieldAt(top - z), falloff * .7);
     // On the light page, while the card is still in the hand, the rings are lighter.
     const paper = 1 - (b.dark || 0), halo = b.dark || 0;
-    stream(up, t, b.field * (said?.dir > 0 ? .12 + .88 * amp : 1) * (1 - .5 * paper), AT_READER, to, COIL_Z + .0004, top, halo);
+    stream(up, t, b.field * (said?.dir > 0 ? .12 + .88 * amp : 1) * (1 - .5 * paper), AT_READER, to, COIL_Z + .0004, top, halo, upFade);
     // Down: the answer, from the card's coil to the reader's. It swells each time the card
     // closes its switch.
     // (Once the answer has landed, full strength: then only a still frame, with reduced
     // motion, still shows it; blended over the landing, so nothing jumps.)
-    stream(down, t, b.reply * (said?.dir < 0 ? lerp(.35 + .65 * load, 1, said.landed) : 1), AT_CARD, AT_READER, top, COIL_Z + .0004, halo);
+    stream(down, t, b.reply * (b.answerScale ?? 1) * (said?.dir < 0 ? lerp(.35 + .65 * load, 1, said.landed) : 1), cardShape, AT_READER, top, COIL_Z + .0004, halo, downFade);
 
     // The reader's chip beats while it checks, and flashes as it reads each byte of the answer.
     const beat = .5 + .5 * Math.sin(t * Math.PI * 2 * 1.4);
