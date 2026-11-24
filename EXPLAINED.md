@@ -209,19 +209,21 @@ Original section written by OpenAI Codex for the project team · 2026-11-22 (the
 - **Coming in from the taps.** While the stage is still sliding up, before it pins, the playhead runs from `ARRIVE` (-1) to 0, one screen of scroll. The first row of `cardFrames` places the card higher in the stage and turned away. So the card rises more slowly than the page and turns to face you as the stage settles. The taps and the intro use the same paper colour, so there is no seam between them.
 - **Leaving for the story.** The section has the same soft paper edge as the taps (a wide `box-shadow`). As it slides away, the landing page fades in under that edge, and the story starts from `.track`.
 - **One playhead.** `js/intro/timeline.js` turns the scroll into one number, the playhead (`scrollTime`). Repeated values in `scrollFrames` hold the picture still for a stretch of scroll, so there is time to read. Everything else is a function of the playhead: the card's pose (`cardPose`), when each line fades in and out (`beats`), and when the X-ray shows.
-- **One small scroll plays it all** (`autoplay.js`, Owner: Mina Vian · 2026-11-24). Any scroll down, however small, from the landing to the end of this section starts a tour. The page glides on without the visitor, resting at each stop:
-  1. the three everyday taps, for one round of all three (14.2 s, `LOOP_ALL` in `js/taps.js`);
-  2. the card;
-  3. "RFID", as the card opens and the letters fly out;
-  4. "Radio-Frequency Identification";
-  5. the one-line definition;
-  6. the X-ray: antenna, chip, "So how does it talk?";
-  7. "Here's how: drag the card to the reader", where the tour ends.
+- **One scroll, one animation** (`autoplay.js`, Owner: Mina Vian · 2026-11-24). From the landing to the card's drop, the page moves one stop at a time, and the visitor's scroll is in charge. The stops are:
+  1. the landing;
+  2. the three everyday taps;
+  3. the card;
+  4. "RFID", as the card opens and the letters fly out;
+  5. "Radio-Frequency Identification";
+  6. the one-line definition;
+  7. the X-ray: antenna, chip, "So how does it talk?";
+  8. "Here's how: drag the card to the reader", the last stop.
 
-  From there the section's own autoplay (`auto` in `main.js`) carries the card to the reader after 2.2 s and plays the close-up. So one small scroll plays the whole story through the lab.
-  - **It never holds the visitor back.** While they scroll (wheel, trackpad, swipe, keys, scroll bar), the page moves with the browser's own scrolling, as fast as they scroll, and the tour waits (`follow`). The tour only listens; its listeners are all passive and never cancel a scroll. Once nothing has come from the visitor for 160 ms (`IDLE`), and no finger is on the screen, it carries on from wherever they stopped. A trackpad's fling keeps sending events until it is over, so the tour waits for that too. An earlier version caught the scroll and glided at its own pace instead, which made a hard scroll take one to two seconds per screen.
-  - **How it moves.** It moves the real page scroll (`scrollTo`, eased in and out with smootherstep), so everything follows exactly as if the visitor had scrolled. The stops are read from the page each time (`stops`): the taps' top, and the intro's screens through the same scale as `scrollFrames`. It goes to the next stop below where the page is, and a shorter way takes a shorter time, at the same pace.
-  - **Telling its own scrolling from the visitor's.** Its glide lands within a pixel or two of where it put the page. Any other movement is the visitor's: down means they are scrolling on (`follow`); up, a click, or a key meant for a control hands the page back (`stop`) until their next scroll down.
+  The one rule: one small scroll goes to the next animation at once (scrolling up goes back one), whatever is playing. A glide under way is dropped, and the page heads straight for the next stop from where it is (`step`). Nothing waits and nothing is locked. One wheel tick moves the page about 400 px in the first tenth of a second.
+  - **Left alone, it plays on.** After a scroll down, it rests on each screen and then moves on by itself (the taps for one round of all three, 14.2 s, `LOOP_ALL` in `js/taps.js`). So one small scroll plays the whole story. At the last stop, the section's own autoplay (`auto` in `main.js`) carries the card to the reader after 2.2 s and plays the close-up. A scroll up, or a click, stops it moving on by itself.
+  - **How a scroll is counted.** Wheel events closer together than 200 ms are one scroll (`BURST`), so one flick of a trackpad is one step, not dozens. A long, hard scroll moves one more stop for every 500 px of wheel, at most every 400 ms (`MORE`, `MORE_AFTER`). A swipe counts once its finger has moved 12 px up or down. Arrow keys, Page Up and Down, and space count too.
+  - **How it moves.** It moves the real page scroll (`scrollTo`), so everything on the page follows exactly as if the visitor had scrolled. A step the visitor asked for leaves at full speed and slows into the stop (`flick`, an ease-out), in 0.35 s plus 0.2 s per screen, at most 1 s. A step it takes by itself eases in and out (`calm`, smootherstep) at a slower pace. The stops are read from the page each time (`stops`).
+  - **Catching the scroll.** To go to the next animation instead of scrolling, a scroll has to be caught before the page moves. That needs listeners that may cancel it, which take the browser's fastest scrolling path away. So they are on only down to the last stop (`arm`). Below it, the page scrolls as usual, and a scroll down at the last stop leaves for the rest of the page. If the page moves some other way (the scroll bar, a link), the tour lets it.
   - It is off with reduced motion, and while presenter mode runs (`window.__presenting`).
 - **Counting from the section.** The original was a page of its own. Here, `main.js` measures where the section starts (`startY`) and counts the scroll from there.
 - **The card** (`card-scene.js`). It loads the team's `models/contactless-card.glb`. The X-ray fades the outer layers and turns the copper antenna brass.
@@ -245,11 +247,11 @@ The first version eased each keyframe in and out separately (smoothstep), and fo
 
 **What is simplified.** "Card detected" is a check that the card was dropped close to the reader, not a radio link.
 
-**How to check it.** Serve the folder, open it, and scroll down once, a little. The page plays on by itself: the taps play once, the card opens, the letters fly out and spell the name, the definition, the X-ray, then "Here's how". A couple of seconds later the card is carried to the reader and the close-up plays. Keep scrolling to go faster; scroll up and it stops. To try it by hand, drag the card onto the reader yourself. Press Tab first on the section to find **Skip to the card and reader**.
+**How to check it.** Serve the folder, open it, and scroll down once, a little. The page goes to the taps at once, then plays on by itself: the card opens, the letters fly out and spell the name, the definition, the X-ray, then "Here's how". A couple of seconds later the card is carried to the reader and the close-up plays. Each scroll down jumps to the next animation at once, even mid-glide; each scroll up goes back one. To try it by hand, drag the card onto the reader yourself. Press Tab first on the section to find **Skip to the card and reader**.
 
 **Likely questions.**
 - Q: Why is the playhead not just the scroll position? A: Some parts need more scroll than others. The table in `scrollFrames` gives each beat its own length, and holds.
-- Q: Isn't taking over the scroll annoying? A: It only goes down, and only as far as the card's drop. Scrolling down while it rests moves on at once; scrolling up or a click stops it at once. Without it, a visitor had to scroll about twelve screens to reach the card's drop.
+- Q: Isn't taking over the scroll annoying? A: It never makes the visitor wait: every scroll moves the page at once, one animation per scroll, and it only covers the way to the card's drop. Two earlier versions felt locked. The first waited for the scroll to settle and glided at its own pace. The second let the browser scroll freely, so a hard scroll still had to cover twelve screens. Without it, a visitor had to scroll about twelve screens to reach the card's drop.
 - Q: What if WebGL is off? A: Two pictures of the same card (`images/intro/credit-card-*.webp`) stand in for the 3D card.
 - Q: Why does the card trail the scroll a little? A: That is the spring. It is what makes a sudden scroll look smooth. It catches up within about a third of a second.
 - Q: Is the bend physically right? A: It is a sheet that bends without stretching, with the bend we chose. Real card layers are glued all over and don't open at all. The mouth is a picture, not a teardown.
