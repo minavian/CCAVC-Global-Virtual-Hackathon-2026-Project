@@ -16,7 +16,8 @@ import { SCROLL_SCREENS } from './timeline.js?v=2';
 const LANDING = { glide: 1.2, rest: 0 };
 const TAPS = { glide: 1.6, rest: 14.2 };
 // The card intro's screens, in screens of its scroll (`scrollFrames` in timeline.js):
-// where (screens), glide there when moving on by itself (seconds), then rest (seconds).
+// where (screens), the glide there (seconds: the pace its animation is made for, whether the
+// visitor scrolled or it moves on by itself), then rest (seconds).
 const INTRO = [
   [.64, 2.0, .6],           // the card
   [1.68, 2.2, 1.3],         // "RFID": the card opens and the four letters fly out
@@ -25,15 +26,14 @@ const INTRO = [
   [7.63, 2.8, 2.8],         // the X-ray: antenna, chip, "So how does it talk?"
   [9.10, 2.2, 0],           // "Here's how: drag the card to the reader": the last stop
 ];
-// Wheel events closer together than this are one scroll (ms).
+// Wheel events closer together than this are one scroll (ms): one scroll is one animation,
+// however hard, so a trackpad's long fling does not race through everything.
 const BURST = 200;
-// One long, hard scroll moves one more stop for every this much wheel (px), at most every
-// MORE_AFTER ms, so a trackpad's long fling does not race through everything.
-const MORE = 500, MORE_AFTER = 400;
 const DOWN_KEYS = new Set(['ArrowDown', 'PageDown']);    // and space
 const UP_KEYS = new Set(['ArrowUp', 'PageUp']);          // and shift + space
-// A step the visitor asked for leaves at full speed and slows into the stop (ease-out).
-const flick = k => 1 - (1 - k) ** 3;
+// A step the visitor asked for moves off at once and slows into the stop (sine ease-out), so the
+// page answers the scroll straight away yet its animation still plays at its own pace.
+const prompt = k => Math.sin(k * Math.PI / 2);
 const calm = k => smoother(0, 1, k);
 
 export function autoplay({ experience, stage, reduce }) {
@@ -45,7 +45,7 @@ export function autoplay({ experience, stage, reduce }) {
   let ticking = false, then = 0;
   let endY = Infinity;      // the last stop: below it, the page is the browser's own
   let armed = false;
-  let burst = { at: 0, dir: 0, sum: 0, stepAt: 0, handled: false };
+  let burst = { at: 0, dir: 0, handled: false };
   let touch = null;
 
   const on = () => !reduce.matches && !window.__presenting;
@@ -98,11 +98,9 @@ export function autoplay({ experience, stage, reduce }) {
     if (i < 0 || i >= list.length) return Boolean(glide);       // mid-glide: still going there
     const from = list[i - dir]?.y ?? y;
     cur = i;
-    const to = list[i].y, screens = Math.abs(to - y) / innerHeight;
+    const to = list[i].y;
     const share = Math.min(1, Math.abs(to - y) / Math.max(Math.abs(to - from), 1));
-    glide = { from: y, to, y, t: 0,
-      length: byHand ? Math.min(1, .35 + .2 * screens) : Math.max(.6, list[i].glide * share),
-      ease: byHand ? flick : calm };
+    glide = { from: y, to, y, t: 0, length: Math.max(.6, list[i].glide * share), ease: byHand ? prompt : calm };
     restLeft = null;
     onward = dir > 0;
     run();
@@ -158,19 +156,9 @@ export function autoplay({ experience, stage, reduce }) {
   function onWheel(event) {
     if (event.ctrlKey || !event.deltaY || !on()) return;      // pinch zoom, or sideways
     const dir = Math.sign(event.deltaY), now = performance.now();
-    const px = Math.abs(event.deltaY) * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1);
-    if (now - burst.at > BURST || dir !== burst.dir) {
-      // A new scroll: the next animation, now.
-      burst = { at: now, dir, sum: 0, stepAt: now, handled: step(dir, true) };
-    } else {
-      burst.at = now;
-      burst.sum += px;
-      if (burst.handled && burst.sum >= MORE && now - burst.stepAt >= MORE_AFTER) {
-        burst.sum = 0;
-        burst.stepAt = now;
-        step(dir, true);
-      }
-    }
+    // A new scroll: the next animation, now. The rest of the same scroll only rides along.
+    if (now - burst.at > BURST || dir !== burst.dir) burst = { dir, handled: step(dir, true) };
+    burst.at = now;
     if (burst.handled && event.cancelable) event.preventDefault();
   }
 
