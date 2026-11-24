@@ -972,6 +972,7 @@ html[data-intro] .stage-light { opacity: 0; }
 .intro .try-title { margin: 0; font-size: .82rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: rgba(244, 241, 234, .7); }
 .intro .try-readings { display: grid; grid-template-columns: 1fr 1fr; gap: .55rem .8rem; margin: 0; }
 .intro .try-reading { min-width: 0; }
+.intro .try-reading dt[title] { cursor: help; text-decoration: underline dotted rgba(244, 241, 234, .3); text-underline-offset: 2px; }
 .intro .try-reading dt { font-size: .64rem; letter-spacing: .05em; text-transform: uppercase; color: rgba(244, 241, 234, .55); }
 .intro .try-reading dd { margin: .12rem 0 0; }
 .intro .try-reading b { font: 700 1.12rem/1.2 "Inter Tight", system-ui, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: -.005em; }

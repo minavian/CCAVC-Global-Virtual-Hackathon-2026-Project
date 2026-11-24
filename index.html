@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
-  <link rel="stylesheet" href="styles.css?v=28">
+  <link rel="stylesheet" href="styles.css?v=29">
   <script type="importmap">
     {"imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -172,13 +172,13 @@
           <h3 class="try-title" id="try-title">Try it yourself</h3>
           <dl class="try-readings">
             <div class="try-reading" data-reading="field">
-              <dt>Field at the card</dt><dd><b>0 A/m</b><i class="try-bar"><span></span><em title="The standard’s minimum: 1.5 A/m"></em><em class="try-max" title="The standard’s maximum: 7.5 A/m"></em></i></dd>
+              <dt title="How strong the reader’s magnetic field is where the card is (amperes per metre).">Field at the card</dt><dd><b>0 A/m</b><i class="try-bar"><span></span><em title="The standard’s minimum: 1.5 A/m"></em><em class="try-max" title="The standard’s maximum: 7.5 A/m"></em></i></dd>
             </div>
             <div class="try-reading" data-reading="volts">
-              <dt>Voltage at the chip</dt><dd><b>0 V</b><i class="try-bar"><span></span><em title="What the chip needs to wake"></em></i><small class="try-watts">0 mW</small></dd>
+              <dt title="What the field makes in the card’s coil. The chip wakes at 2 volts.">Voltage at the chip</dt><dd><b>0 V</b><i class="try-bar"><span></span><em title="What the chip needs to wake"></em></i><small class="try-watts">0 mW</small></dd>
             </div>
-            <div class="try-reading" data-reading="reach"><dt>Works up to</dt><dd><b>0 cm</b></dd></div>
-            <div class="try-reading" data-reading="answer"><dt>Answer strength</dt><dd><b>None</b></dd></div>
+            <div class="try-reading" data-reading="reach"><dt title="The farthest the chip still wakes, with everything else as set.">Works up to</dt><dd><b>0 cm</b></dd></div>
+            <div class="try-reading" data-reading="answer"><dt title="How much the card’s answer changes the reader’s own current. That change is all the reader hears.">Answer strength</dt><dd><b>None</b></dd></div>
           </dl>
           <div class="try-chart">
             <div class="try-tabs" role="group" aria-label="Chart">
