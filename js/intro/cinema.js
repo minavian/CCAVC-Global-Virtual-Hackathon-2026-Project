@@ -339,7 +339,7 @@ export const STEPS = [
   // card's tuning, its ID) and watches it respond, worked out live (lab-model.js). Its
   // levels come from there; these are only where it starts.
   { text: 'Now you try. Change anything.', detail: 'Everything here is worked out live.',
-    ms: [0, 5], shot: 'lab', lab: true, labels: ['chip'], hold: 31,
+    ms: [0, 5], shot: 'lab', lab: true, labels: ['chip'], hold: 41,
     levels: { falloff: 1, emit: 1, field: 1, receive: 1, power: 1, charge: 1 } },
   { text: '', ms: [5, 5], shot: 'rest', explain: true,
     levels: { gap: .0016, xray: 0, shell: 1, check: 1, page: 1, panel: 0, explain: 1, charge: 1, dark: 0 } },

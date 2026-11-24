@@ -164,6 +164,9 @@ function intro(experience) {
   ];
   // Which reader the demo uses, from when.
   const DEMO_READER = [[0, 'pad'], [18.8, 'phone'], [29.4, 'pad']];
+  // Last, from when to when: the card becomes a copy and is asked to prove itself, and the reader
+  // turns it down (about 9 s), so a demo shows why copying the ID isn't enough.
+  const DEMO_COPY = [31, 41];
   const shown = Object.fromEntries(Object.keys(IDLE).map(key => [key, spring(IDLE[key])]));
   let lens = null;
   let lastLevels = null;   // what the close-up drew last (the debug hook reads it)
@@ -492,6 +495,9 @@ function intro(experience) {
         next[key] = key === 'metal' ? Math.round(value) : Math.round(value * 10) / 10;
       }
       next.reader = DEMO_READER.filter(([t]) => auto.held >= t).at(-1)[1];
+      const copying = auto.held >= DEMO_COPY[0] && auto.held < DEMO_COPY[1];
+      next.clone = copying;
+      if (auto.held < DEMO_COPY[0]) lab.demoProved = false;
       // What the demo doesn't move stays normal, whatever the visitor set before pressing Play
       // (a card left tuned to 6 MHz made the whole demo say it was tuned wrong).
       next.drive = LAB_START.drive;
@@ -501,6 +507,7 @@ function intro(experience) {
       if (next.reader === 'phone' && !(available && scene.phoneLoaded())) next.reader = 'pad';
       const want = clampSetting({ ...lab.set, ...next });
       if (Object.keys(next).some(key => want[key] !== lab.set[key])) setLab(next);
+      if (copying && !lab.talk && !lab.demoProved && auto.held > DEMO_COPY[0] + .6) { lab.demoProved = true; labAsk(true); }
       if (auto.held >= plan.hold) go(step + 1);
     } else if (auto.held >= plan.hold) go(step + 1);
   }
