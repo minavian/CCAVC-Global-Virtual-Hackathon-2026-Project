@@ -10,7 +10,7 @@ import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose
 import { renderSignals } from './signals.js?v=2';
 import { ANSWER_AFTER, APPROACH_DETAIL, APPROACH_TEXT, ASK, SAMPLES_PER_BIT, CARD_ID, IDLE, LAB, LAST, NEAREST, REAL_MS, SHOTS, STEPS, TALK, approach, approachBand, approachView, centimetres,
   checkByte, hex, message, power, setCardId, talkLevels, view } from './cinema.js';
-import { LAB_START, PRESETS, READERS, clampSetting, curve, labLevels, measure as measureLab, parseId, startFor, status as labStatus } from './lab-model.js';
+import { LAB_START, PRESETS, READERS, clampSetting, curve, labLevels, measure as measureLab, parseId, startFor, status as labStatus, wakes } from './lab-model.js';
 
 // Resolves once the landing's opening is over (js/landing.js), the visitor scrolls, or
 // `fallback` ms pass, whichever is first: the moment to load 3D without stuttering it.
@@ -78,6 +78,15 @@ function intro(experience) {
     id: $('.try-id input'), check: $('.try-check b'), ask: $('.try-ask'), reset: $('.try-reset'), presets: $('.try-presets'),
     readers: [...experience.querySelectorAll('.try-reader button')], driveLabel: $('.try-control-drive span'),
   };
+  // Under each slider, a thin line: amber where along it the chip would wake, with everything
+  // else as set (`paintZones`).
+  labUi.zones = Object.fromEntries(Object.entries(labUi.inputs).map(([name, input]) => {
+    const bar = document.createElement('i');
+    bar.className = 'try-zone';
+    bar.setAttribute('aria-hidden', 'true');
+    input.after(bar);
+    return [name, bar];
+  }));
   // A dot for each step, as a button that jumps to it.
   film.dots = STEPS.slice(0, LAST).map((plan, i) => {
     const dot = document.createElement('li'), button = document.createElement('button');
@@ -488,15 +497,61 @@ function intro(experience) {
 
   // A new setting: work it out, and show it on the controls (when it did not come from them).
   function setLab(next, fromControl) {
+    // What the chart shows now, before anything changes: it glides from there to the new curve.
+    const shownBefore = plotNow();
     const before = lab.set.reader;
     lab.set = clampSetting({ ...lab.set, ...next });
     if (lab.set.reader !== before || !labUi.presets.childElementCount) paintReader();
     lab.m = measureLab(lab.set);
+    // (Only within one chart: the x of its points stay put.)
+    lab.morph = shownBefore && shownBefore.chart === lab.chart ? { ...shownBefore, start: performance.now() } : null;
     lab.points = curve(lab.set, lab.chart);
+    lab.pointsChart = lab.chart;
+    paintZones();
     if (!fromControl) syncControls();
     paintLabOutputs();
     paintLabPanel();
     invalidate();
+  }
+
+  // Where along each slider the chip would wake, everything else as set: about 250 solves of
+  // the physics (well under a millisecond), drawn as amber stretches on a thin line under it.
+  function paintZones() {
+    if (!labUi.zones) return;
+    const s = lab.set;
+    for (const [name, input] of Object.entries(labUi.inputs)) {
+      const min = +input.min, max = +input.max, n = name === 'metal' ? max - min : 60;
+      const on = [];
+      for (let i = 0; i <= n; i++) {
+        const at = min + (max - min) * i / n;
+        on.push(wakes({ ...s, [name]: name === 'tune' ? sliderToTune(at) : at }));
+      }
+      // Each sample stands for the stretch of the track around it.
+      const stops = [];
+      const edge = i => (i <= 0 ? 0 : i > n ? 100 : (i - .5) / n * 100);
+      let from = 0;
+      for (let i = 1; i <= n + 1; i++) {
+        if (i <= n && on[i] === on[from]) continue;
+        const color = on[from] ? 'rgba(255, 181, 46, .9)' : 'rgba(255, 255, 255, .09)';
+        stops.push(`${color} ${edge(from).toFixed(2)}%`, `${color} ${edge(i).toFixed(2)}%`);
+        from = i;
+      }
+      labUi.zones[name].style.background = `linear-gradient(90deg, ${stops.join(', ')})`;
+    }
+  }
+
+  // The chart as it shows right now: its curve and dot, partway through a glide.
+  function plotNow() {
+    if (!lab.points.length || !lab.m) return null;
+    const k = lab.morph ? smoother(0, 1, (performance.now() - lab.morph.start) / 380) : 1;
+    const dot = { x: lab.pointsChart === 'tuning' ? 13.56 : lab.set.distance, v: lab.m.raw };
+    if (!lab.morph || k >= 1) return { chart: lab.pointsChart, points: lab.points, dot, k: 1 };
+    const { points: before, dot: was } = lab.morph;
+    return {
+      chart: lab.pointsChart, k,
+      points: lab.points.map(([x, v], i) => [x, mix(before[i]?.[1] ?? v, v, k)]),
+      dot: { x: mix(was.x, dot.x, k), v: mix(was.v, dot.v, k) },
+    };
   }
 
   // The reader's switch, and what depends on the reader: the nearest the card can come (the
@@ -510,9 +565,11 @@ function intro(experience) {
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = preset.label;
+      const { label, ...set } = preset;
+      button.preset = set;
+      button.setAttribute('aria-pressed', 'false');
       button.addEventListener('click', event => {
         if (event.isTrusted) takeOver();
-        const { label, ...set } = preset;
         setLab(set);
       });
       return button;
@@ -563,7 +620,7 @@ function intro(experience) {
     const { readings } = labUi;
     const reading = (name, text, good, bar, need) => {
       const node = readings[name];
-      node.querySelector('b').textContent = text;
+      if (!lab.tweens) node.querySelector('b').textContent = text;
       node.classList.toggle('is-good', good === true);
       node.classList.toggle('is-low', good === false);
       const barNode = node.querySelector('.try-bar');
@@ -573,9 +630,51 @@ function intro(experience) {
     reading('volts', m.volts.toFixed(2) + ' V', m.awake, m.volts / m.clamp, m.wake / m.clamp);
     reading('reach', m.reach < .05 ? 'Nowhere' : m.reach.toFixed(1) + ' cm', m.reach >= lab.set.distance);
     reading('answer', m.awake ? (m.dip * 100).toFixed(1) + '%' : 'None', m.awake ? m.dip > .01 : false);
+    // The numbers glide to their new values (paintLabNumbers, every frame), so a change reads as
+    // a change, not a flicker.
+    lab.targets = { field: m.field, volts: m.volts, reach: m.reach, answer: m.awake ? m.dip * 100 : null };
+    // The situation that is set now, if it is one of the list.
+    const s = lab.set;
+    for (const button of labUi.presets.children) {
+      const p = button.preset;
+      const same = p && p.reader === s.reader && Math.abs(p.distance - s.distance) < .05 && Math.abs(p.angle - s.angle) < .5
+        && Math.round(p.metal) === Math.round(s.metal) && Math.abs(p.drive - s.drive) < .5 && Math.abs(p.tune - s.tune) < .01;
+      button.setAttribute('aria-pressed', String(Boolean(same)));
+    }
     paintPlot();
     labUi.ask.disabled = Boolean(lab.talk) || !m.on;
     labUi.ask.title = m.on ? '' : 'The reader is off: no field to ask with.';
+  }
+
+  // The readings' numbers, gliding to their targets (each frame while the lab shows).
+  function paintLabNumbers(dt) {
+    const t = lab.targets;
+    if (!t) return;
+    lab.tweens ??= { ...t };
+    const k = reduce.matches ? 1 : 1 - Math.exp(-dt * 14);
+    let moving = false;
+    for (const key of ['field', 'volts', 'reach', 'answer']) {
+      const to = t[key];
+      if (to === null) { lab.tweens[key] = null; continue; }
+      const from = lab.tweens[key] ?? 0;
+      const next = Math.abs(to - from) < 1e-3 ? to : from + (to - from) * k;
+      lab.tweens[key] = next;
+      moving ||= next !== to;
+    }
+    const v = lab.tweens, set = (name, text) => {
+      const node = labUi.readings[name].querySelector('b');
+      if (node.textContent !== text) node.textContent = text;
+    };
+    set('field', v.field.toFixed(2) + ' A/m');
+    set('volts', v.volts.toFixed(2) + ' V');
+    set('reach', t.reach < .05 ? 'Nowhere' : v.reach.toFixed(1) + ' cm');
+    set('answer', v.answer === null ? 'None' : v.answer.toFixed(1) + '%');
+    // The chart's glide, at the same time.
+    if (lab.morph) {
+      paintPlot();
+      if (performance.now() - lab.morph.start > 400) { lab.morph = null; paintPlot(); }
+    }
+    return moving || Boolean(lab.morph);
   }
 
   // The chart: the voltage at the chip across distance or across tuning, everything else as
@@ -590,7 +689,9 @@ function intro(experience) {
     g.setTransform(ratio, 0, 0, ratio, 0, 0);
     const W = box.width, H = box.height, left = 30, right = 8, top = 8, bottom = 18;
     g.clearRect(0, 0, W, H);
-    const points = lab.points, tuning = lab.chart === 'tuning';
+    const now = plotNow();
+    if (!now) return;
+    const points = now.points, tuning = lab.chart === 'tuning';
     if (!points.length) return;
     const xs = points.map(p => p[0]);
     const x0 = xs[0], x1 = xs[xs.length - 1];
@@ -635,7 +736,7 @@ function intro(experience) {
       g.beginPath(); g.moveTo(X(a), Y(va)); g.lineTo(X(b), Y(vb)); g.stroke();
     }
     // Where the setting is now.
-    const nowX = tuning ? 13.56 : lab.set.distance, nowV = lab.m.raw;
+    const nowX = now.dot.x, nowV = now.dot.v;
     g.fillStyle = lab.m.awake ? '#ffffff' : '#ff8f7a';
     g.beginPath(); g.arc(X(nowX), Y(nowV), 4, 0, Math.PI * 2); g.fill();
     // Above the scale (very close, or a strong reader): a small peak over the dot, and the value.
@@ -807,6 +908,8 @@ function intro(experience) {
       else labUi.panel.classList.remove('is-shown');
     }
     stage.classList.toggle('is-lab', inLab);
+    if (labShown) paintLabNumbers(Math.min(.05, (performance.now() - (lab.paintedAt ?? performance.now())) / 1000));
+    lab.paintedAt = performance.now();
 
     // The lights going down: the backdrop, and the readout turning dark with it.
     film.backdrop.style.opacity = b.dark;

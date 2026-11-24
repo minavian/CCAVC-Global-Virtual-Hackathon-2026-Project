@@ -173,8 +173,9 @@ export function labLevels(s, m) {
   };
 }
 
-// Whether the chip wakes with a setting (no range, so it is quick).
-function wakes(s) {
+// Whether the chip wakes with a setting (no range, so it is quick). The lab's sliders use it to
+// show where along each one the chip wakes (main.js `paintZones`).
+export function wakes(s) {
   const P = physics();
   return Boolean(P && P.solve(options(s)).awake);
 }
