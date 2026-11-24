@@ -2,50 +2,37 @@
 // visitor's scroll is in charge. The stops are each screen of the intro, down to the card's
 // drop. The landing, the everyday taps and the way from the taps into the intro scroll as
 // usual: no assist there. Started by main.js.
-// One rule: one small scroll goes to the next animation at once (or back one, scrolling up),
-// whatever is playing. A glide under way is dropped and the page heads straight for the next
-// stop. Nothing waits and nothing is locked.
-// Left alone after a scroll down, it moves on by itself, resting on each screen, so one small
-// scroll plays the whole story. At the card's drop the intro's own autoplay carries the card
-// to the reader and plays the close-up (main.js `auto`). Below that, the page scrolls as
-// usual. It is off with reduced motion, and in presenter mode (js/present.js), which plays the
-// page its own way. See EXPLAINED.md.
+// One rule: one scroll goes to the next animation at once (or back one, scrolling up), and the
+// page stops there. No momentum: it never moves on by itself, a new glide always starts from
+// standstill, and a trackpad's momentum after a swipe never counts as another scroll. At the
+// card's drop the intro's own autoplay carries the card to the reader and plays the close-up
+// (main.js `auto`). Below that, the page scrolls as usual. It is off with reduced motion, and in
+// presenter mode (js/present.js), which plays the page its own way. See EXPLAINED.md.
 import { SCROLL_SCREENS } from './timeline.js?v=2';
 
 // The card intro's screens, in screens of its scroll (`scrollFrames` in timeline.js):
-// where (screens), the glide there (seconds: the pace its animation is made for, whether the
-// visitor scrolled or it moves on by itself), then rest (seconds).
+// where (screens), and the glide there (seconds: the pace its animation is made for).
 const INTRO = [
-  [.64, 2.0, .6],           // the card
-  [1.68, 2.2, 1.3],         // "RFID": the card opens and the four letters fly out
-  [3.43, 2.6, 2.2],         // "Radio-Frequency Identification"
-  [5.10, 2.4, 2.8],         // "This technology works by exchanging data using radio waves."
-  [7.63, 2.8, 2.8],         // the X-ray: antenna, chip, "So how does it talk?"
-  [9.10, 2.2, 0],           // "Here's how: drag the card to the reader": the last stop
+  [.64, 2.0],               // the card
+  [1.68, 2.2],              // "RFID": the card opens and the four letters fly out
+  [3.43, 2.6],              // "Radio-Frequency Identification"
+  [5.10, 2.4],              // "This technology works by exchanging data using radio waves."
+  [7.63, 2.8],              // the X-ray: antenna, chip, "So how does it talk?"
+  [9.10, 2.2],              // "Here's how: drag the card to the reader": the last stop
 ];
-// Wheel events closer together than this are one scroll (ms): one scroll is one animation,
-// however hard, so a trackpad's long fling does not race through everything.
-const BURST = 200;
+// A new scroll only once the wheel has been still this long (ms). A trackpad keeps sending
+// small wheel events for a second or so after a swipe (its momentum); they arrive every few
+// milliseconds, so they all belong to the swipe that started them and never count again.
+const BURST = 300;
 const DOWN_KEYS = new Set(['ArrowDown', 'PageDown']);    // and space
 const UP_KEYS = new Set(['ArrowUp', 'PageUp']);          // and shift + space
-// Every glide is one smooth curve (a cubic Hermite): from rest it eases in and out. Started while
-// another glide is under way, it begins at that glide's speed, so the page never jolts, and it
-// still eases out into the stop. `at`: where the page is, a share `k` of the way through;
-// `speed`: how fast it is moving there (px per second).
-function at(g, k) {
-  const k2 = k * k, k3 = k2 * k;
-  return g.from + (g.to - g.from) * (3 * k2 - 2 * k3) + g.v0 * g.length * (k - 2 * k2 + k3);
-}
-function speed(g, k) {
-  return ((g.to - g.from) * (6 * k - 6 * k * k) + g.v0 * g.length * (1 - 4 * k + 3 * k * k)) / g.length;
-}
+// Every glide starts from standstill, eases in and out, and stops dead on its stop (smoothstep).
+const ease = k => k * k * (3 - 2 * k);
 
 export function autoplay({ experience, stage, reduce }) {
   let list = [];            // the stops' places on the page, read when needed (`stops`)
   let cur = -1;             // the stop the page is at, or heading to
-  let glide = null;         // { from, to, y, t, length, v0, v }
-  let restLeft = null;      // seconds until it moves on by itself, or null
-  let onward = false;       // moving on by itself after each rest (after a scroll down)
+  let glide = null;         // { from, to, y, t, length }
   let ticking = false, then = 0;
   // Where the intro's stage pins, and its last stop: outside them the page is the browser's own.
   // Read again whenever the page's size changes.
@@ -60,7 +47,6 @@ export function autoplay({ experience, stage, reduce }) {
   addEventListener('resize', () => { stale = true; arm(); }, { passive: true });
   new ResizeObserver(() => { stale = true; }).observe(document.body);
   addEventListener('keydown', onKey, { capture: true });
-  addEventListener('pointerdown', onPointer, { passive: true, capture: true });
   addEventListener('touchstart', onTouchStart, { passive: true, capture: true });
   addEventListener('touchend', () => { touch = null; }, { passive: true, capture: true });
   addEventListener('touchcancel', () => { touch = null; }, { passive: true, capture: true });
@@ -85,7 +71,7 @@ export function autoplay({ experience, stage, reduce }) {
     const top = node => node.getBoundingClientRect().top + scrollY;
     const start = top(experience);
     const length = Math.max(experience.offsetHeight - stage.clientHeight, 1);
-    list = INTRO.map(([screens, glide, rest]) => ({ y: start + screens / SCROLL_SCREENS * length, glide, rest }));
+    list = INTRO.map(([screens, glide]) => ({ y: start + screens / SCROLL_SCREENS * length, glide }));
     startY = start;
     endY = list.at(-1).y;
     stale = false;
@@ -109,20 +95,14 @@ export function autoplay({ experience, stage, reduce }) {
     cur = i;
     const to = list[i].y;
     const share = Math.min(1, Math.abs(to - y) / Math.max(Math.abs(to - from), 1));
-    // Carry on at the speed of a glide still under way, so nothing jolts.
-    const v0 = glide ? glide.v : 0;
-    glide = { from: y, to, y, t: 0, length: Math.max(.6, list[i].glide * share), v0, v: v0 };
-    restLeft = null;
-    onward = dir > 0;
+    glide = { from: y, to, y, t: 0, length: Math.max(.6, list[i].glide * share) };
     run();
     return true;
   }
 
-  // Stop moving by itself (the visitor did something else).
+  // Stop the glide (the visitor moved the page some other way).
   function settle() {
     glide = null;
-    restLeft = null;
-    onward = false;
   }
 
   function run() {
@@ -141,34 +121,28 @@ export function autoplay({ experience, stage, reduce }) {
     if (glide) {
       glide.t += dt;
       const k = Math.min(1, glide.t / glide.length);
-      glide.y = at(glide, k);
-      glide.v = speed(glide, k);
+      glide.y = glide.from + (glide.to - glide.from) * ease(k);
       scrollTo(0, glide.y);
-      if (k >= 1) {
-        glide = null;
-        restLeft = onward && cur < list.length - 1 ? list[cur].rest : null;
-      }
-    } else if (restLeft !== null) {
-      restLeft -= dt;
-      if (restLeft <= 0) { restLeft = null; step(1); }
+      if (k >= 1) glide = null;                                 // there: stop, and stay
     }
-    if (glide || restLeft !== null) {
+    if (glide) {
       ticking = true;
       requestAnimationFrame(tick);
     }
   }
 
   function onScroll() {
-    // The glide lands within a pixel or two of where it put the page; resting, the page
-    // stays on its stop. Anything else is the visitor (the scroll bar, a link, find in page).
-    if (glide ? Math.abs(scrollY - glide.y) > 3 : restLeft !== null && Math.abs(scrollY - list[cur].y) > 3) settle();
+    // The glide lands within a pixel or two of where it put the page. Anything else is the
+    // visitor (the scroll bar, a link, find in page): let them.
+    if (glide && Math.abs(scrollY - glide.y) > 3) settle();
     arm();
   }
 
   function onWheel(event) {
     if (event.ctrlKey || !event.deltaY || !on()) return;      // pinch zoom, or sideways
     const dir = Math.sign(event.deltaY), now = performance.now();
-    // A new scroll: the next animation, now. The rest of the same scroll only rides along.
+    // A new scroll: the next animation, now. The rest of the same scroll, and its momentum,
+    // only ride along: they are swallowed, never another step.
     if (now - burst.at > BURST || dir !== burst.dir) burst = { dir, handled: step(dir) };
     burst.at = now;
     if (burst.handled && event.cancelable) event.preventDefault();
@@ -211,8 +185,4 @@ export function autoplay({ experience, stage, reduce }) {
     if (step(down ? 1 : -1)) event.preventDefault();
   }
 
-  function onPointer(event) {
-    // A click on the page: stop moving on by itself, so nothing slides away under it.
-    if (event.pointerType !== 'touch') { restLeft = null; onward = false; }
-  }
 }

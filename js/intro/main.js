@@ -7,7 +7,7 @@
 import { follow, settle, smoother, spring } from './easing.js';
 import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose, clamp, ease, mix, measureStage, restingFrame, scrollTime } from './timeline.js?v=2';
 import { renderSignals } from './signals.js?v=2';
-import { autoplay } from './autoplay.js?v=7';
+import { autoplay } from './autoplay.js?v=8';
 import { ANSWER_AFTER, APPROACH_DETAIL, APPROACH_TEXT, ASK, SAMPLES_PER_BIT, CARD_ID, IDLE, LAB, LAST, NEAREST, REAL_MS, SHOTS, STEPS, TALK, approach, approachBand, approachView, centimetres,
   checkByte, hex, message, power, setCardId, talkLevels, view } from './cinema.js';
 import { LAB_START, PRESETS, clampSetting, curve, labLevels, measure as measureLab, parseId, status as labStatus } from './lab-model.js';
