@@ -640,7 +640,7 @@ function intro(experience) {
     reading('answer', m.awake ? (m.dip * 100).toFixed(1) + '%' : 'None', m.awake ? m.dip > .01 : false);
     // The numbers glide to their new values (paintLabNumbers, every frame), so a change reads as
     // a change, not a flicker.
-    lab.targets = { field: m.field, volts: m.volts, reach: m.reach, answer: m.awake ? m.dip * 100 : null };
+    lab.targets = { field: m.field, volts: m.volts, reach: m.reach, answer: m.awake ? m.dip * 100 : null, watts: m.watts * 1000 };
     // The situation that is set now, if it is one of the list.
     const s = lab.set;
     for (const button of labUi.presets.children) {
@@ -661,7 +661,7 @@ function intro(experience) {
     lab.tweens ??= { ...t };
     const k = reduce.matches ? 1 : 1 - Math.exp(-dt * 14);
     let moving = false;
-    for (const key of ['field', 'volts', 'reach', 'answer']) {
+    for (const key of ['field', 'volts', 'reach', 'answer', 'watts']) {
       const to = t[key];
       if (to === null) { lab.tweens[key] = null; continue; }
       const from = lab.tweens[key] ?? 0;
@@ -677,6 +677,11 @@ function intro(experience) {
     set('volts', v.volts.toFixed(2) + ' V');
     set('reach', t.reach < .05 ? 'Nowhere' : v.reach.toFixed(1) + ' cm');
     set('answer', v.answer === null ? 'None' : v.answer.toFixed(1) + '%');
+    // Under the voltage: the power the chip gets, and what it needs to wake; its limiter, once on.
+    const watts = labUi.readings.volts.querySelector('.try-watts');
+    const need = (lab.m.needs * 1000).toFixed(1);
+    const line = lab.m.limited ? `${v.watts.toFixed(1)} mW, its limiter holds 3.3 V` : `${v.watts.toFixed(1)} mW, needs ${need} mW`;
+    if (watts.textContent !== line) watts.textContent = line;
     // The chart's glide, at the same time.
     if (lab.morph) {
       paintPlot();

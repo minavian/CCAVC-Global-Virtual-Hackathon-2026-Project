@@ -87,6 +87,12 @@ export function measure(s) {
     current: r.rawVolts / normal(),
     // Whether the reader makes a field at all: off, it can neither power nor ask.
     on: s.drive >= READER_ON,
+    // The power the chip gets, in watts: the engine models the running chip as a resistor
+    // (`chipLoad`, calibrated so the card wakes where the standard's 1.5 A/m is), so it is
+    // V² / 2R for the peak voltage V. It needs 5.1 mW to wake; with its limiter holding 3.3 V it
+    // takes at most 13.9 mW, and the limiter burns off the rest. The reader is the battery.
+    watts: r.chipVolts ** 2 / (2 * P.TAGS.card.chipLoad),
+    needs: r.wake ** 2 / (2 * P.TAGS.card.chipLoad),
     H_MIN: P.H_MIN,
   };
 }
@@ -205,8 +211,10 @@ export function status(s, m) {
     if (s.metal > 0) return { text: 'Awake, but metal soaks up the field.', detail: reach };
     if (s.drive < 70) return { text: 'Awake, on a weak field.', detail: reach };
     if (Math.abs(s.tune - 13.56) > 3) return { text: 'Awake, though its tuning is off.', detail: reach };
-    if (phone) return { text: 'The phone powers the chip. It can answer.', detail: reach + ' A phone’s coil is small.' };
-    return { text: 'The chip is awake. It can answer.', detail: reach };
+    // The point of it all, in numbers: the power comes through the air.
+    const runs = `It runs on ${(m.watts * 1000).toFixed(1)} mW from the ${noun}.`;
+    if (phone) return { text: 'The phone powers the chip. It can answer.', detail: runs };
+    return { text: 'The chip is awake. It can answer.', detail: runs };
   }
   if (s.drive < READER_ON) return phone
     ? { text: 'The phone’s NFC is off. No field, no power.', detail: 'Turn the phone’s power up.' }

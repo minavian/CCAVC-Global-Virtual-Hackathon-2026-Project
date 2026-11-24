@@ -976,6 +976,7 @@ html[data-intro] .stage-light { opacity: 0; }
 .intro .try-reading dd { margin: .12rem 0 0; }
 .intro .try-reading b { font: 700 1.12rem/1.2 "Inter Tight", system-ui, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: -.005em; }
 .intro .try-reading.is-good b { color: #ffc56b; }
+.intro .try-watts { display: block; margin-top: .22rem; font-size: .66rem; font-variant-numeric: tabular-nums; color: rgba(244, 241, 234, .62); white-space: nowrap; }
 .intro .try-reading.is-low b { color: #ff8f7a; }
 /* A bar with a mark where the chip's need sits. */
 .intro .try-bar { position: relative; display: block; height: .3rem; margin-top: .3rem; border-radius: 1rem; background: rgba(255, 255, 255, .12); }
@@ -989,7 +990,7 @@ html[data-intro] .stage-light { opacity: 0; }
   color: rgba(244, 241, 234, .7); background: transparent; cursor: pointer;
 }
 .intro .try-tabs button[aria-pressed="true"] { color: #141210; background: #f4f1ea; }
-.intro .try-plot { width: 100%; height: 6rem; display: block; }
+.intro .try-plot { width: 100%; height: 5.2rem; display: block; }
 .intro .try-controls { display: grid; gap: .35rem; }
 /* Which reader: two buttons, like the chart's tabs, across the panel. */
 .intro .try-reader { display: grid; grid-template-columns: 1fr 1fr; gap: .25rem; padding: .2rem; border-radius: 999px; background: rgba(255, 255, 255, .07); }
