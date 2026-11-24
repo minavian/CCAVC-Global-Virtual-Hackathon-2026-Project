@@ -19,6 +19,7 @@
   <script src="../js/rfid/reader.js" defer></script>
   <script src="../js/rfid/channel.js" defer></script>
   <script src="../js/deep.js" defer></script>
+  <script type="module" src="../js/deep-motion.js"></script>
 </head>
 <body>
   <main class="deep" id="take-apart" aria-labelledby="deep-title">
@@ -28,7 +29,11 @@
       <p>Here it is, slowed down and taken apart. From here on, the card is the tag and the phone is the reader. Every number below is calculated as you change things.</p>
     </header>
 
-    <h2 class="deep-part"><span>Part one</span> The power: how a field makes electricity</h2>
+    <h2 class="deep-part" id="part-one">
+      <span>Part one</span>
+      <span class="deep-part-title"><span id="part-one-power">The power</span>: how a field makes electricity</span>
+      <span class="deep-part-sweep" aria-hidden="true"></span>
+    </h2>
 
     <section class="plate" id="s6" aria-labelledby="s6-title">
       <div class="plate-words">

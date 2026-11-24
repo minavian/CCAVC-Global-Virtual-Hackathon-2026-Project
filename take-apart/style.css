@@ -74,7 +74,41 @@ body::after {
   font-size: clamp(22px, 2.2vw, 34px);
   letter-spacing: -.025em;
 }
-.deep-part span { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+.deep-part > span:first-child { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+
+#part-one {
+  position: relative;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: clamp(14px, 2.4vh, 22px);
+  min-block-size: clamp(320px, 54svh, 580px);
+  padding: clamp(42px, 7vh, 80px) 0;
+  text-align: center;
+}
+#part-one > span:first-child { margin: 0; }
+.deep-part-title {
+  max-inline-size: 21ch;
+  font-size: clamp(2.25rem, 6.2vw, 5.75rem);
+  line-height: .96;
+  letter-spacing: -.04em;
+  text-wrap: balance;
+}
+#part-one-power { white-space: nowrap; }
+.deep-blink-accent, .deep-part-sweep {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+}
+.deep-blink-accent {
+  z-index: 1;
+  background: radial-gradient(ellipse, var(--copper) 40%, transparent 76%);
+  mix-blend-mode: screen;
+}
+.deep-part-sweep {
+  inset: 0;
+  background: radial-gradient(ellipse closest-side, var(--copper), transparent);
+}
 
 .plate {
   max-width: 1180px;

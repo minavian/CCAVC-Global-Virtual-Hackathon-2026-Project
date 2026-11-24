@@ -374,7 +374,7 @@ Owner: Mina Vian · 2026-11-21, updated 2026-11-21 · Issue #19
 ---
 
 ### Take it apart: scenes 6 to 17 (`js/deep.js`)
-Owner: Mina Vian · 2026-11-21 · Issue #19. Separated by Codex for the Issue #26 contributor · 2026-11-24.
+Owner: Mina Vian · 2026-11-21 · Issue #19. Separated by Codex for the Issue #26 contributor · 2026-11-24. Part One handoff by Codex for the project team · 2026-11-24 · Issue #26.
 
 **What it does.** Twelve scenes after the film, each one layer deeper into the same idea, each with one thing to try:
 - **6** Distance and coil size against field and volts.
@@ -391,12 +391,13 @@ Owner: Mina Vian · 2026-11-21 · Issue #19. Separated by Codex for the Issue #2
 - **17** Why a phone can't read a car key.
 
 **How it works.**
+- On the way from the chapter opener to Part One, `watchPartOne` in `js/deep-motion.js` starts a brief sequence. `blinkWord` uses a DOM Range to measure the last “blink” and places a decorative copper accent over it. A fast sweep then passes through the label and centered heading. The inline `#part-one-power` span gives the next scene a starting position for its title transition.
 - `plate(id, draw)` wires each scene: its canvas, inputs and readout. It redraws when an input changes, and only while it is on screen (an `IntersectionObserver`). Scenes 7 and 15 move, so they draw every frame while visible.
 - Every number comes from `js/rfid`. Scene 6 sweeps `physics.solve` across distance. Scene 8 sweeps frequency (`physics.sweep`) and finds the range by bisection (`physics.range`). Scene 9 traces field lines with the metal's mirror coil. Scene 10 runs the REQA command's real pauses through the chip's storage capacitor (200 µA drawn, reset below 1.8 V). Scene 11 plots a real exchange's samples. Scene 12 takes a Fourier transform (`fft`, written here) of a card's answer with and without the flicker. Scene 13 decodes a letter with a reader whose clock runs fast or slow. Scenes 14 to 16 run `reader.activate` on real channels: with noise and the checks on or off; with a packet stolen on the air (its samples wiped, so the check fails and the phone asks again); with up to three cards. Scene 17 plots the tag's tuning curve against the reader's frequency.
 
-**Why it is built this way.** The brief asks for one idea taken as far as possible. Each scene takes away or changes one part of the same mechanism, so the explanation comes from what the visitor sees break. That is what the organisers' example says a winning entry would do.
+**Why it is built this way.** The brief asks for one idea taken as far as possible. Each scene takes away or changes one part of the same mechanism, so the explanation comes from what the visitor sees break. That is what the organisers' example says a winning entry would do. Part One keeps both headings rendered throughout the motion, so native scroll, direct section links, and reduced motion all leave the page readable.
 
-**How to check it.** Serve the repository with `python -m http.server` and open `/take-apart/`. Scroll through the chapter and try the original controls.
+**How to check it.** Serve the repository with `python -m http.server` and open `/take-apart/`. Scroll from the opener toward Part One to see the glint and sweep. Return to the top to replay it, open `/#part-one` to go straight to the title, or enable reduced motion for the settled title. Scroll through the chapter and try the original controls.
 
 **How to join the introduction.** The original scene markup and styles are in `take-apart/index.html` and `take-apart/style.css`. The page uses the original `js/deep.js` and shared simulation. The root page forwards to this chapter while the introduction is being built. When the introduction takes over the root, its ending can link to `./take-apart/#take-apart`. If `js/scan.js` reveals that handoff, give its link `id="take-apart"` on the introduction page.
 
