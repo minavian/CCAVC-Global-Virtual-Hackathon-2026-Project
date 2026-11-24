@@ -1921,62 +1921,544 @@
   }
 
   // ---------- 16. Two cards in one field ----------
-  let s16seed = 4;
-  plate('s16', p => {
-    const count = +p.input('cards').value, prefer = +(p.radio('pick') || 1);
+  const s16El = document.getElementById('s16');
+  function rollS16Uids(seed) {
+    const rand = tags.random(seed);
+    return Array.from({ length: 3 }, () => [0x08, ...Array.from({ length: 3 }, () => Math.floor(rand() * 256))]);
+  }
+  const s16State = {
+    seed: 4,
+    placed: [0, 1],
+    uids: rollS16Uids(4),
+    busy: false,
+    draggingSlot: -1,
+    hiddenFlights: new Set(),
+    winnerRow: -1,
+    hasClash: false,
+    seqToken: 0,
+    flights: new Set(),
+  };
+
+  function s16StackPose(pos, total) {
+    if (total <= 1) return { x: 0, y: -6, r: -2 };
+    if (total === 2) return pos === 0 ? { x: -28, y: -18, r: -9 } : { x: 26, y: 14, r: 7 };
+    return pos === 0 ? { x: -28, y: -18, r: -11 } : pos === 1 ? { x: 2, y: -3, r: -1 } : { x: 28, y: 15, r: 9 };
+  }
+
+  function buildS16CardFace(slot, uid, { compact = false, isWinner = false } = {}) {
+    const label = compact ? `C${slot + 1}` : `Card ${slot + 1}${isWinner ? ' ✓' : ''}`;
+    return `
+      <img class="s16-card-img" src="../images/intro/credit-card-face.webp" width="520" height="328" alt="" draggable="false">
+      <span class="s16-card-tint" data-slot="${slot}" aria-hidden="true"></span>
+      ${compact
+        ? `<span class="s16-tucked-tag">${label}</span>`
+        : `<span class="s16-card-bar"><span>${label}</span></span>`}`;
+  }
+
+  function syncS16Desk(winnerRow = s16State.winnerRow, hasClash = s16State.hasClash) {
+    if (!s16El) return;
+    const padStage = s16El.querySelector('#s16-pad-stage');
+    const padCards = s16El.querySelector('#s16-pad-cards');
+    const fieldHint = s16El.querySelector('#s16-field-hint');
+    const walletBtn = s16El.querySelector('#s16-wallet');
+    const walletSlots = s16El.querySelector('#s16-wallet-slots');
+    const walletCount = s16El.querySelector('#s16-wallet-count');
+    const walletAction = s16El.querySelector('#s16-wallet-action');
+
+    const count = s16State.placed.length;
+    const inWallet = 3 - count;
+    if (padStage) {
+      padStage.dataset.active = String(count > 0);
+      padStage.dataset.clash = String(hasClash);
+    }
+    if (fieldHint) {
+      fieldHint.textContent = count ? 'Drag a card off to return it' : 'Tap wallet to place a card';
+    }
+    if (walletCount) {
+      walletCount.textContent = inWallet === 0 ? 'Empty' : `${inWallet} inside`;
+    }
+    if (walletBtn) walletBtn.dataset.empty = String(inWallet === 0);
+    if (walletAction) walletAction.textContent = inWallet ? 'Click to place' : 'All 3 on reader';
+
+    if (walletSlots) {
+      for (const slotEl of walletSlots.querySelectorAll('.s16-slot')) {
+        const slot = +slotEl.dataset.slot;
+        const shouldShow = !s16State.placed.includes(slot) && !s16State.hiddenFlights.has(slot);
+        let tucked = slotEl.querySelector('.s16-tucked-card');
+        if (shouldShow) {
+          if (!tucked) {
+            tucked = document.createElement('span');
+            tucked.className = 's16-tucked-card';
+            slotEl.prepend(tucked);
+          }
+          tucked.innerHTML = buildS16CardFace(slot, s16State.uids[slot], { compact: true });
+        } else {
+          tucked?.remove();
+        }
+      }
+    }
+
+    if (padCards) {
+      const wanted = new Set(s16State.placed);
+      for (const node of Array.from(padCards.children)) {
+        const slot = +node.dataset.slot;
+        if (!wanted.has(slot) && slot !== s16State.draggingSlot) node.remove();
+      }
+      s16State.placed.forEach((slot, pos) => {
+        const pose = s16StackPose(pos, s16State.placed.length);
+        const uid = s16State.uids[slot];
+        const isWinner = pos === winnerRow;
+        const isQuiet = winnerRow >= 0 && !isWinner && s16State.placed.length > 1;
+        let btn = padCards.querySelector(`.s16-pad-card[data-slot="${slot}"]`);
+        if (!btn) {
+          btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 's16-pad-card';
+          btn.dataset.slot = String(slot);
+          padCards.append(btn);
+        }
+        btn.style.setProperty('--sx', `${pose.x}px`);
+        btn.style.setProperty('--sy', `${pose.y}px`);
+        btn.style.setProperty('--sr', `${pose.r}deg`);
+        btn.style.zIndex = String(pos + 2);
+        btn.dataset.uid = uid ? uid.map(hex).join(' ') : '';
+        btn.classList.toggle('is-winner', isWinner);
+        btn.classList.toggle('is-quiet', isQuiet);
+        btn.classList.toggle('is-hidden-flight', s16State.hiddenFlights.has(slot));
+        btn.setAttribute('aria-label', `Card ${slot + 1} (${uid ? uid.map(hex).join(' ') : ''})${isWinner ? ', selected' : ''}. Drag off reader or press Delete to return to wallet.`);
+        btn.innerHTML = buildS16CardFace(slot, uid, { compact: false, isWinner });
+      });
+    }
+  }
+
+  const s16 = plate('s16', p => {
+    const prefer = +(p.radio('pick') || 1);
+    const count = s16State.placed.length;
     p.out('cards', String(count));
+    const countInput = p.input('cards');
+    if (countInput && +countInput.value !== count) countInput.value = String(count);
+    p.el.querySelector('#s16-pill')?.style.setProperty('--s16-pick-index', prefer === 1 ? '0' : '1');
+
+    const activeUids = s16State.placed.map(slot => s16State.uids[slot]);
+    const ctx = fit(p), cw = Math.min(16, (p.w - 116) / 32), x0 = 96, y0 = 26, rowStep = 30;
+    if (!activeUids.length) {
+      s16State.winnerRow = -1;
+      s16State.hasClash = false;
+      ctx.font = `500 13px ${SANS}`;
+      ctx.fillStyle = MUTED;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('No cards in the field. Click the wallet below to place one.', p.w / 2, p.h / 2);
+      p.canvas.clashTrace = { x0, cw, y0, rowStep, rows: [], clashes: [], winner: -1, prefer };
+      syncS16Desk(-1, false);
+      p.say('No cards on the phone. Click the wallet to place a card.');
+      return;
+    }
+
     const s = physics.solve({ tag: 'card', reader: 'phone', distance: .012 });
-    // Random IDs (a random ID starts with 08, so every pair shares its first byte).
-    const rand = tags.random(s16seed);
-    const uids = Array.from({ length: count }, () => [0x08, ...Array.from({ length: 3 }, () => Math.floor(rand() * 256))]);
-    const chips = uids.map(uid => tags.cardChip({ uid }));
-    const link = channel.cardChannel(chips.map(chip => ({ chip, depth: s.dip, awake: true })), { noise: .001, seed: s16seed });
+    const chips = activeUids.map(uid => tags.cardChip({ uid }));
+    const link = channel.cardChannel(chips.map(chip => ({ chip, depth: s.dip, awake: true })), { noise: .001, seed: s16State.seed });
     const run = reader.activate(link, { prefer });
-    const winner = run.ok ? uids.findIndex(u => u.every((b, i) => b === run.uid[i])) : -1;
+    const winner = run.ok ? activeUids.findIndex(u => u.every((b, i) => b === run.uid[i])) : -1;
     const clashes = run.steps.filter(st => st.clashAt !== undefined).map(st => st.clashAt);
-    const ctx = fit(p), cw = Math.min(16, (p.w - 120) / 32), x0 = 96;
+    s16State.winnerRow = winner;
+    s16State.hasClash = clashes.length > 0;
+
     ctx.textBaseline = 'middle';
-    uids.forEach((uid, r) => {
-      const y = 36 + r * 34, bits = iso.dataBits(uid);
+    const rows = activeUids.map((uid, r) => {
+      const slot = s16State.placed[r], y = y0 + r * rowStep, bits = iso.dataBits(uid);
       ctx.font = `600 12px ${SANS}`; ctx.textAlign = 'left'; ctx.fillStyle = r === winner ? GREEN : MUTED;
-      ctx.fillText(`Card ${r + 1}${r === winner ? ' ✓' : ''}`, 10, y);
+      ctx.fillText(`Card ${slot + 1}${r === winner ? ' ✓' : ''}`, 10, y);
       ctx.font = `600 12px ${MONO}`; ctx.textAlign = 'center';
       bits.forEach((b, k) => {
         ctx.fillStyle = r === winner ? INK : MUTED;
-        if (clashes.includes(k)) { ctx.fillStyle = 'rgba(179, 38, 30, .12)'; ctx.fillRect(x0 + k * cw - cw / 2, y - 12, cw, 24); ctx.fillStyle = RED; }
+        if (clashes.includes(k)) { ctx.fillStyle = 'rgba(179, 38, 30, .12)'; ctx.fillRect(x0 + k * cw - cw / 2, y - 11, cw, 22); ctx.fillStyle = RED; }
         ctx.fillText(String(b), x0 + k * cw, y);
       });
+      return { slot, y, bits, winner: r === winner };
     });
-    const y = 36 + count * 34 + 14;
+    const captionY = y0 + activeUids.length * rowStep + 10;
     ctx.font = `500 12px ${SANS}`; ctx.textAlign = 'left'; ctx.fillStyle = INK;
-    ctx.fillText('Each card’s ID, as sent: lowest bit first, byte by byte.', 10, y);
+    ctx.fillText('Each card’s ID, as sent: lowest bit first, byte by byte.', 10, captionY);
     if (clashes.length) {
       ctx.fillStyle = RED;
-      clashes.forEach((c, i) => ctx.fillText(`Clash at bit ${c + 1}: the phone asks only cards with a ${prefer} there to go on.`, 10, y + 22 + i * 20));
+      clashes.slice(0, 2).forEach((c, i) => ctx.fillText(`Clash at bit ${c + 1}: the phone asks only cards with a ${prefer} there to go on.`, 10, captionY + 20 + i * 18));
     }
+    p.canvas.clashTrace = { x0, cw, y0, rowStep, rows, clashes, winner, prefer };
+    syncS16Desk(winner, clashes.length > 0);
     const samples = link.recording.reduce((a, r) => a + r.samples.length, 0);
-    p.say(count === 1 ? `One card: no clash. Selected in ${(samples / iso.SAMPLE_RATE * 1000).toFixed(2)} ms.`
-      : run.ok ? `${clashes.length} clash${clashes.length === 1 ? '' : 'es'}; card ${winner + 1} won, the others went quiet. It took ${(samples / iso.SAMPLE_RATE * 1000).toFixed(2)} ms.`
+    const winSlot = winner >= 0 ? s16State.placed[winner] + 1 : 1;
+    p.say(activeUids.length === 1 ? `One card (Card ${winSlot}): no clash. Selected in ${(samples / iso.SAMPLE_RATE * 1000).toFixed(2)} ms.`
+      : run.ok ? `${clashes.length} clash${clashes.length === 1 ? '' : 'es'}; Card ${winSlot} won, the others went quiet. It took ${(samples / iso.SAMPLE_RATE * 1000).toFixed(2)} ms.`
       : run.reason);
   });
-  document.getElementById('s16-tap')?.addEventListener('click', () => { s16seed++; plates.find(q => q.el.id === 's16').dirty = true; });
+
+  if (s16) {
+    const padCards = s16.el.querySelector('#s16-pad-cards');
+    const walletBtn = s16.el.querySelector('#s16-wallet');
+    const walletSlots = s16.el.querySelector('#s16-wallet-slots');
+    const countInput = s16.input('cards');
+    const tapBtn = s16.el.querySelector('#s16-tap');
+    let drag = null;
+
+    function cancelS16Animations() {
+      s16State.seqToken++;
+      for (const item of Array.from(s16State.flights)) {
+        item.anim?.cancel();
+        item.el?.remove();
+      }
+      s16State.flights.clear();
+      s16State.hiddenFlights.clear();
+      s16State.busy = false;
+      s16State.draggingSlot = -1;
+      drag = null;
+      if (walletBtn) {
+        delete walletBtn.dataset.open;
+        delete walletBtn.dataset.catching;
+      }
+      syncS16Desk(s16State.winnerRow, s16State.hasClash);
+      s16.dirty = true;
+    }
+
+    function flyS16Card(slot, fromRect, toRect, { vx = 0, vy = 0, duration = 360, arc = -28, delay = 0, scaleFrom = 1, scaleTo = 1 } = {}) {
+      if (reduced.matches || document.hidden || !fromRect || !toRect || !fromRect.width || !toRect.width) {
+        return Promise.resolve();
+      }
+      const flyW = Math.max(fromRect.width, toRect.width, 86);
+      const flyH = flyW * 328 / 520;
+      const sx = fromRect.left + (fromRect.width - flyW) * .5;
+      const sy = fromRect.top + (fromRect.height - flyH) * .5;
+      const tx = toRect.left + (toRect.width - flyW) * .5;
+      const ty = toRect.top + (toRect.height - flyH) * .5;
+      const dx = tx - sx, dy = ty - sy;
+      const mx = dx * .5 + clamp(vx * 85, -45, 45);
+      const my = dy * .5 + clamp(vy * 85, -35, 35) + arc;
+
+      const card = document.createElement('div');
+      card.className = 's16-flight-card';
+      card.setAttribute('aria-hidden', 'true');
+      card.style.left = `${sx.toFixed(1)}px`;
+      card.style.top = `${sy.toFixed(1)}px`;
+      card.style.width = `${flyW.toFixed(1)}px`;
+      card.style.height = `${flyH.toFixed(1)}px`;
+      card.innerHTML = buildS16CardFace(slot, s16State.uids[slot], { compact: false });
+      document.body.append(card);
+
+      const token = { el: card, anim: null };
+      s16State.flights.add(token);
+      const anim = card.animate([
+        { transform: `translate(0px, 0px) scale(${scaleFrom}) rotate(0deg)`, opacity: 1 },
+        { transform: `translate(${mx.toFixed(1)}px, ${my.toFixed(1)}px) scale(${((scaleFrom + scaleTo) * .54).toFixed(3)}) rotate(${dx >= 0 ? 7 : -7}deg)`, opacity: 1, offset: .48 },
+        { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(${scaleTo}) rotate(${dx >= 0 ? -3 : 4}deg)`, opacity: scaleTo < .75 ? .92 : 1 },
+      ], { duration, delay, easing: 'cubic-bezier(.16, 1, .3, 1)', fill: 'both' });
+      token.anim = anim;
+      return Promise.race([
+        anim.finished.catch(() => {}),
+        new Promise(resolve => setTimeout(resolve, duration + delay + 80)),
+      ]).finally(() => {
+        anim.cancel();
+        s16State.flights.delete(token);
+        card.remove();
+      });
+    }
+
+    async function dealCardFromWallet(slot) {
+      if (s16State.placed.includes(slot)) return;
+      const token = s16State.seqToken;
+      const slotNode = walletSlots?.querySelector(`.s16-slot[data-slot="${slot}"]`);
+      const tuckedNode = slotNode?.querySelector('.s16-tucked-card') || slotNode;
+      const fromRect = tuckedNode?.getBoundingClientRect();
+      s16State.placed.push(slot);
+      syncS16Desk(s16State.winnerRow, s16State.hasClash);
+      const targetNode = padCards?.querySelector(`.s16-pad-card[data-slot="${slot}"]`);
+      const toRect = targetNode?.getBoundingClientRect();
+      s16State.hiddenFlights.add(slot);
+      targetNode?.classList.add('is-hidden-flight');
+      if (walletBtn) walletBtn.dataset.open = 'true';
+      s16.dirty = true;
+      await flyS16Card(slot, fromRect, toRect, { duration: 380, arc: -28, scaleFrom: .56, scaleTo: 1 });
+      if (token !== s16State.seqToken) return;
+      s16State.hiddenFlights.delete(slot);
+      if (!s16State.busy && walletBtn) delete walletBtn.dataset.open;
+      syncS16Desk(s16State.winnerRow, s16State.hasClash);
+      s16.dirty = true;
+    }
+
+    async function returnCardToWallet(slot, fromRect, vx = 0, vy = 0) {
+      const idx = s16State.placed.indexOf(slot);
+      if (idx === -1) return;
+      const token = s16State.seqToken;
+      s16State.placed.splice(idx, 1);
+      s16State.hiddenFlights.add(slot);
+      if (walletBtn) walletBtn.dataset.open = 'true';
+      syncS16Desk(s16State.winnerRow, s16State.hasClash);
+      s16.dirty = true;
+      const slotNode = walletSlots?.querySelector(`.s16-slot[data-slot="${slot}"]`);
+      const toRect = slotNode?.getBoundingClientRect();
+      await flyS16Card(slot, fromRect, toRect, { vx, vy, duration: 340, arc: -24, scaleFrom: 1, scaleTo: .54 });
+      if (token !== s16State.seqToken) return;
+      s16State.hiddenFlights.delete(slot);
+      if (!s16State.busy && walletBtn) delete walletBtn.dataset.open;
+      syncS16Desk(s16State.winnerRow, s16State.hasClash);
+      s16.dirty = true;
+    }
+
+    walletBtn?.addEventListener('click', () => {
+      if (s16State.busy) return;
+      const slot = [0, 1, 2].find(i => !s16State.placed.includes(i));
+      if (slot === undefined) {
+        if (!reduced.matches && !document.hidden) {
+          walletBtn.animate([
+            { transform: 'translateX(0)' },
+            { transform: 'translateX(-4px)' },
+            { transform: 'translateX(4px)' },
+            { transform: 'none' },
+          ], { duration: 240, easing: 'ease-out' });
+        }
+        return;
+      }
+      void dealCardFromWallet(slot);
+    });
+
+    if (padCards) {
+      padCards.addEventListener('pointerdown', event => {
+        if (s16State.busy || !event.isPrimary || event.button !== 0) return;
+        const card = event.target.closest?.('.s16-pad-card');
+        if (!card) return;
+        const slot = +card.dataset.slot;
+        s16State.draggingSlot = slot;
+        drag = {
+          id: event.pointerId,
+          slot,
+          card,
+          startX: event.clientX,
+          startY: event.clientY,
+          lastX: event.clientX,
+          lastY: event.clientY,
+          lastT: performance.now(),
+          vx: 0,
+          vy: 0,
+        };
+        card.classList.add('is-dragging');
+        card.setPointerCapture?.(event.pointerId);
+      });
+
+      padCards.addEventListener('pointermove', event => {
+        if (!drag || event.pointerId !== drag.id) return;
+        const now = performance.now();
+        const dt = Math.max(8, now - drag.lastT);
+        drag.vx = (event.clientX - drag.lastX) / dt;
+        drag.vy = (event.clientY - drag.lastY) / dt;
+        drag.lastX = event.clientX;
+        drag.lastY = event.clientY;
+        drag.lastT = now;
+        const dx = event.clientX - drag.startX;
+        const dy = event.clientY - drag.startY;
+        const tilt = clamp(dx * .09, -18, 18);
+        drag.card.style.transform = `translate(calc(-50% + var(--sx, 0px) + ${dx.toFixed(1)}px), calc(-50% + var(--sy, 0px) + ${dy.toFixed(1)}px)) rotate(calc(var(--sr, 0deg) + ${tilt.toFixed(1)}deg)) scale(1.04)`;
+        if (walletBtn) {
+          if (Math.hypot(dx, dy) > 52) walletBtn.dataset.catching = 'true';
+          else delete walletBtn.dataset.catching;
+        }
+      });
+
+      for (const name of ['pointerup', 'pointercancel']) {
+        padCards.addEventListener(name, event => {
+          if (!drag || event.pointerId !== drag.id) return;
+          const ended = drag;
+          drag = null;
+          s16State.draggingSlot = -1;
+          ended.card.classList.remove('is-dragging');
+          if (walletBtn) delete walletBtn.dataset.catching;
+          const dx = event.clientX - ended.startX;
+          const dy = event.clientY - ended.startY;
+          const dist = Math.hypot(dx, dy);
+          const speed = Math.hypot(ended.vx, ended.vy);
+          const toss = event.type === 'pointerup' && (dist > 62 || (speed > .36 && dist > 24));
+          if (toss) {
+            const rect = ended.card.getBoundingClientRect();
+            ended.card.style.removeProperty('transform');
+            void returnCardToWallet(ended.slot, rect, ended.vx, ended.vy);
+          } else {
+            ended.card.style.removeProperty('transform');
+          }
+        });
+      }
+
+      padCards.addEventListener('keydown', event => {
+        if (s16State.busy || event.altKey || event.ctrlKey || event.metaKey) return;
+        const card = event.target.closest?.('.s16-pad-card');
+        if (!card) return;
+        if (['Backspace', 'Delete', 'Enter', ' '].includes(event.key)) {
+          event.preventDefault();
+          void returnCardToWallet(+card.dataset.slot, card.getBoundingClientRect(), .22, -.08);
+        }
+      });
+    }
+
+    countInput?.addEventListener('input', () => {
+      if (s16State.busy) return;
+      const wanted = clamp(Math.round(+countInput.value), 0, 3);
+      while (s16State.placed.length < wanted) {
+        const nextSlot = [0, 1, 2].find(i => !s16State.placed.includes(i));
+        if (nextSlot === undefined) break;
+        void dealCardFromWallet(nextSlot);
+      }
+      while (s16State.placed.length > wanted) {
+        const dropSlot = s16State.placed[s16State.placed.length - 1];
+        const card = padCards?.querySelector(`.s16-pad-card[data-slot="${dropSlot}"]`);
+        if (card) void returnCardToWallet(dropSlot, card.getBoundingClientRect(), .18, -.06);
+        else s16State.placed.pop();
+      }
+      s16.dirty = true;
+    });
+
+    tapBtn?.addEventListener('click', async () => {
+      if (s16State.busy) return;
+      const targetCount = s16State.placed.length ? s16State.placed.length : 2;
+      if (reduced.matches || document.hidden || !walletBtn) {
+        s16State.seed++;
+        s16State.uids = rollS16Uids(s16State.seed);
+        s16State.placed = [0, 1, 2].slice(0, targetCount);
+        syncS16Desk(-1, false);
+        s16.dirty = true;
+        return;
+      }
+
+      const token = s16State.seqToken;
+      s16State.busy = true;
+      walletBtn.dataset.open = 'true';
+
+      const recallList = s16State.placed.map(slot => ({
+        slot,
+        rect: padCards?.querySelector(`.s16-pad-card[data-slot="${slot}"]`)?.getBoundingClientRect(),
+      }));
+      s16State.placed = [];
+      for (const item of recallList) s16State.hiddenFlights.add(item.slot);
+      syncS16Desk(-1, false);
+      s16.dirty = true;
+
+      await Promise.all(recallList.map((item, i) => {
+        const toRect = walletSlots?.querySelector(`.s16-slot[data-slot="${item.slot}"]`)?.getBoundingClientRect();
+        return flyS16Card(item.slot, item.rect, toRect, { duration: 300, delay: i * 45, arc: -20, scaleFrom: 1, scaleTo: .54 });
+      }));
+      if (token !== s16State.seqToken) return;
+
+      s16State.hiddenFlights.clear();
+      syncS16Desk(-1, false);
+      delete walletBtn.dataset.open;
+
+      const shake = walletBtn.animate([
+        { transform: 'rotate(0deg) scale(1)' },
+        { transform: 'rotate(-6deg) translateY(-3px) scale(1.03)', offset: .18 },
+        { transform: 'rotate(6deg) translateY(-2px) scale(1.03)', offset: .36 },
+        { transform: 'rotate(-5deg) translateY(-1px)', offset: .54 },
+        { transform: 'rotate(4deg)', offset: .72 },
+        { transform: 'rotate(-2deg)', offset: .86 },
+        { transform: 'none' },
+      ], { duration: 420, easing: 'ease-in-out' });
+      const shakeToken = { el: null, anim: shake };
+      s16State.flights.add(shakeToken);
+      await Promise.race([
+        shake.finished.catch(() => {}),
+        new Promise(resolve => setTimeout(resolve, 500)),
+      ]);
+      shake.cancel();
+      s16State.flights.delete(shakeToken);
+      if (token !== s16State.seqToken) return;
+
+      s16State.seed++;
+      s16State.uids = rollS16Uids(s16State.seed);
+      const freshSlots = [0, 1, 2].slice(0, targetCount);
+      walletBtn.dataset.open = 'true';
+      const dealFromRects = freshSlots.map(slot => {
+        const node = walletSlots?.querySelector(`.s16-slot[data-slot="${slot}"] .s16-tucked-card`)
+          || walletSlots?.querySelector(`.s16-slot[data-slot="${slot}"]`);
+        return node?.getBoundingClientRect();
+      });
+
+      s16State.placed = freshSlots;
+      syncS16Desk(-1, false);
+      const targetRects = freshSlots.map(slot => padCards?.querySelector(`.s16-pad-card[data-slot="${slot}"]`)?.getBoundingClientRect());
+      for (const slot of freshSlots) {
+        s16State.hiddenFlights.add(slot);
+        padCards?.querySelector(`.s16-pad-card[data-slot="${slot}"]`)?.classList.add('is-hidden-flight');
+      }
+      s16.dirty = true;
+
+      await Promise.all(freshSlots.map((slot, i) =>
+        flyS16Card(slot, dealFromRects[i], targetRects[i], { duration: 380, delay: i * 85, arc: -28, scaleFrom: .56, scaleTo: 1 })
+          .then(() => {
+            if (token !== s16State.seqToken) return;
+            s16State.hiddenFlights.delete(slot);
+            syncS16Desk(s16State.winnerRow, s16State.hasClash);
+          })
+      ));
+      if (token !== s16State.seqToken) return;
+      delete walletBtn.dataset.open;
+      s16State.busy = false;
+      syncS16Desk(s16State.winnerRow, s16State.hasClash);
+      s16.dirty = true;
+    });
+
+    for (const ev of ['resize', 'hashchange', 'pagehide']) addEventListener(ev, cancelS16Animations);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) cancelS16Animations(); });
+    reduced.addEventListener('change', () => { if (reduced.matches) cancelS16Animations(); });
+  }
 
   // ---------- 17. Why your phone can't read your car key ----------
+  let s17Anim = null;
   plate('s17', p => {
     const readerKey = p.radio('reader') || 'phone', tagKey = p.radio('tag') || 'key';
     const R = physics.READERS[readerKey], T = physics.TAGS[tagKey];
     const opts = { tag: tagKey, reader: readerKey, distance: .01 };
     const s = physics.solve(opts);
+    const sweep = physics.sweep(opts, 30e3, 60e6, 300);
+
+    p.el.querySelector('#s17-reader-pill')?.style.setProperty('--s17-pill-index', readerKey === 'phone' ? '0' : '1');
+    p.el.querySelector('#s17-tag-pill')?.style.setProperty('--s17-pill-index', tagKey === 'key' ? '0' : '1');
+    const rOut = p.el.querySelector('#s17-reader-freq'), tOut = p.el.querySelector('#s17-tag-freq');
+    if (rOut) rOut.textContent = readerKey === 'phone' ? '13.56 MHz' : '125 kHz';
+    if (tOut) tOut.textContent = tagKey === 'key' ? '125 kHz' : '13.56 MHz';
+
+    const target = {
+      key: `${readerKey}:${tagKey}`,
+      freq: R.frequency,
+      wake: T.wake,
+      sweep,
+      volts: s.rawVolts,
+      awake: s.awake,
+      readerLabel: (readerKey === 'phone' ? 'The phone' : 'The car') + ' flips here',
+      tagName: tagKey === 'key' ? 'key' : 'card',
+    };
+
+    const now = performance.now();
+    if (!s17Anim || reduced.matches || document.hidden) {
+      s17Anim = { from: target, to: target, started: now - 300, active: false };
+    } else if (s17Anim.to.key !== target.key) {
+      s17Anim = { from: s17Anim.current || s17Anim.to, to: target, started: now, active: true };
+    }
+
+    const rawT = s17Anim.active ? Math.min(1, (now - s17Anim.started) / 260) : 1;
+    const easeT = rawT * rawT * (3 - 2 * rawT);
+    const A = s17Anim.from, B = s17Anim.to;
+    const curFreq = Math.pow(10, Math.log10(A.freq) + (Math.log10(B.freq) - Math.log10(A.freq)) * easeT);
+    const curWake = A.wake + (B.wake - A.wake) * easeT;
+    const curVolts = Math.pow(10, Math.log10(Math.max(A.volts, 1e-4)) + (Math.log10(Math.max(B.volts, 1e-4)) - Math.log10(Math.max(A.volts, 1e-4))) * easeT);
+    const curSweep = B.sweep.map(([f, v], idx) => [f, (A.sweep[idx]?.[1] ?? v) + (v - (A.sweep[idx]?.[1] ?? v)) * easeT]);
+    s17Anim.current = { key: B.key, freq: curFreq, wake: curWake, sweep: curSweep, volts: curVolts, awake: B.awake };
+
     const ctx = fit(p), bx = box(p, 26, 44);
-    const sweep = physics.sweep({ tag: tagKey, reader: readerKey, distance: .01 }, 30e3, 60e6, 300);
-    const top = Math.max(...sweep.map(([, v]) => v)) * 1.15;
+    const top = Math.max(...curSweep.map(([, v]) => v)) * 1.15;
     const a = chart(ctx, bx, { from: 30e3, to: 60e6, log: true, ticks: [[125e3, '125 kHz'], [1e6, '1 MHz'], [13.56e6, '13.56 MHz']], label: 'Frequency' },
-      { from: 1e-3, to: Math.max(top, 10), log: true, ticks: [[1e-3, '1 mV'], [.1, '0.1 V'], [10, '10 V']], label: `The ${tagKey === 'key' ? 'key' : 'card'}’s chip would get` });
-    curve(ctx, sweep.map(([f, v]) => [f, Math.max(v, 1e-3)]), a.X, a.Y, COPPER, 2);
-    vline(ctx, a.X(R.frequency), bx.y, bx.y + bx.h, INK, (readerKey === 'phone' ? 'The phone' : 'The car') + ' flips here');
-    hline(ctx, a.Y(T.wake), bx.x, bx.x + bx.w, GREEN, 'Wake-up');
-    dot(ctx, a.X(R.frequency), a.Y(Math.max(s.rawVolts, 1e-3)), s.awake ? GREEN : RED);
-    p.say(`${readerKey === 'phone' ? 'The phone' : 'The car’s reader'} gives the ${tagKey === 'key' ? 'key' : 'card'}’s chip ${si(s.rawVolts, 'V', 2)}. It needs ${T.wake} V. ${s.awake ? 'Awake.' : 'Nothing happens.'}`);
+      { from: 1e-3, to: Math.max(top, 10), log: true, ticks: [[1e-3, '1 mV'], [.1, '0.1 V'], [10, '10 V']], label: `The ${B.tagName}’s chip would get` });
+    curve(ctx, curSweep.map(([f, v]) => [f, Math.max(v, 1e-3)]), a.X, a.Y, COPPER, 2);
+    vline(ctx, a.X(curFreq), bx.y, bx.y + bx.h, INK, B.readerLabel);
+    hline(ctx, a.Y(curWake), bx.x, bx.x + bx.w, GREEN, 'Wake-up');
+    dot(ctx, a.X(curFreq), a.Y(Math.max(curVolts, 1e-3)), s.awake ? GREEN : RED);
+    p.say(`${readerKey === 'phone' ? 'The phone' : 'The car’s reader'} gives the ${B.tagName}’s chip ${si(s.rawVolts, 'V', 2)}. It needs ${T.wake} V. ${s.awake ? 'Awake.' : 'Nothing happens.'}`);
+    if (rawT < 1) p.dirty = true;
+    else s17Anim.active = false;
   });
 
   // ---------- Drawing only what is on screen ----------

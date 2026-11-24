@@ -2927,6 +2927,773 @@ function watchConversation(previous, scene) {
   reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) finish(); });
 }
 
+function watchTwoCards(previous, scene) {
+  const root = document.documentElement, chapter = scene.closest('.deep');
+  const before = previous.querySelector('.plate-words'), source = previous.querySelector('.plate-river');
+  const sourceChart = previous.querySelector('#s15-chart'), sourceTitle = previous.querySelector('#s15-title');
+  const after = scene.querySelector('.plate-words'), targetTitle = scene.querySelector('#s16-title');
+  const chart = scene.querySelector('#s16-chart'), desk = scene.querySelector('#s16-desk');
+  if (!before || !source || !sourceChart || !sourceTitle || !after || !targetTitle || !chart) return;
+
+  const copy = document.createElement('canvas');
+  copy.className = 's16-handoff-copy';
+  copy.setAttribute('aria-hidden', 'true');
+  const ctx = copy.getContext('2d');
+  const cut = 620, arrivalEnd = 1680, readHold = 1000;
+  let run, frame, listeners, armed = false, lastTop = scrollY;
+  const canPlay = () => ctx && !reducedMotion.matches && !document.hidden;
+
+  function clearEffects() {
+    if (!copy.isConnected && !run?.titleMorph?.isConnected && !scene.classList.contains('s16-staged')) return;
+    copy.remove();
+    run?.titleMorph?.remove();
+    targetTitle.style.removeProperty('opacity');
+    previous.style.removeProperty('--s16-source-opacity');
+    chart.style.removeProperty('--s16-chart-opacity');
+    scene.classList.remove('s16-staged');
+    run?.animations.forEach(animation => animation.cancel());
+  }
+
+  function finish() {
+    if (!run) return;
+    cancelAnimationFrame(frame);
+    clearEffects();
+    run = undefined;
+    root.classList.remove('deep-twocards-hold');
+    lastTop = scrollY;
+    scheduleMotion();
+  }
+
+  function buildStrandBits(fromBox, toBox, stacked) {
+    const trace = chart.clashTrace;
+    const x0 = trace?.x0 ?? 96;
+    const cw = trace?.cw ?? Math.min(16, (toBox.w - 116) / 32);
+    const y0 = trace?.y0 ?? 26;
+    const rowStep = trace?.rowStep ?? 30;
+    const row0 = trace?.rows?.[0]?.bits || [0,0,0,1,0,0,0,0, 1,1,0,1,0,1,1,0, 0,0,1,1,0,1,0,0, 1,0,1,0,0,0,1,0];
+    const row1 = trace?.rows?.[1]?.bits || [0,0,0,1,0,0,0,0, 0,1,0,1,0,1,1,0, 1,0,1,1,0,1,0,0, 0,0,1,0,0,0,1,0];
+    const clashes = trace?.clashes?.length ? trace.clashes : [8];
+    const bits = [];
+    const pairs = [[row0, 0], [row1, 1]];
+    for (const [arr, r] of pairs) {
+      const targetY = toBox.y + (trace?.rows?.[r]?.y ?? (y0 + r * rowStep));
+      arr.slice(0, 32).forEach((b, k) => {
+        const laneOff = r === 0 ? .36 : .64;
+        const riverPhase = ((k + r * .5) / 32);
+        const sx = fromBox.x + 28 + riverPhase * Math.max(80, fromBox.w - 56);
+        const sy = fromBox.y + fromBox.h * laneOff + ((k % 3) - 1) * 8;
+        const tx = toBox.x + x0 + k * cw;
+        bits.push({
+          row: r,
+          k,
+          ch: String(b),
+          sx,
+          sy,
+          tx,
+          ty: targetY,
+          dep: 60 + k * 7 + r * 40,
+          dur: 860 + (k % 4) * 35,
+          arc: stacked ? -14 : (r === 0 ? -34 : 18),
+          isClash: clashes.includes(k),
+        });
+      });
+    }
+    return { bits, clashes, x0, cw, y0, rowStep };
+  }
+
+  function createTitleMorph(fromBox) {
+    const wrap = document.createElement('div');
+    wrap.className = 's16-title-morph';
+    wrap.setAttribute('aria-hidden', 'true');
+    const outEl = document.createElement('div');
+    outEl.className = 's16-title-layer';
+    outEl.textContent = sourceTitle.textContent;
+    outEl.style.width = `${Math.max(180, fromBox.w)}px`;
+    const inEl = document.createElement('div');
+    inEl.className = 's16-title-layer';
+    inEl.textContent = targetTitle.textContent;
+    wrap.append(outEl, inEl);
+    chapter.append(wrap);
+    return { wrap, outEl, inEl };
+  }
+
+  function land() {
+    scrollTo({ top: run.destination, behavior: 'instant' });
+    run.top = scrollY;
+    lastTop = run.top;
+    run.landed = true;
+    scene.classList.remove('s16-staged');
+    targetTitle.style.opacity = '0';
+    for (const [i, node] of Array.from(after.children).entries()) {
+      if (node === targetTitle) continue;
+      run.animations.push(node.animate([
+        { opacity: 0, filter: 'blur(4px)', transform: 'translateY(8px)' },
+        { opacity: 1, filter: 'blur(0px)', transform: 'none' },
+      ], { duration: 420, delay: 110 + i * 44, easing: arrivalEase, fill: 'both' }));
+    }
+    if (desk) {
+      run.animations.push(desk.animate([
+        { opacity: 0, filter: 'blur(4px)', transform: 'translateY(10px)' },
+        { opacity: 1, filter: 'blur(0px)', transform: 'none' },
+      ], { duration: 460, delay: 320, easing: arrivalEase, fill: 'both' }));
+    }
+  }
+
+  function drawHandoff(elapsed) {
+    const { width, height, strand, fromTitleBox, toTitleBox, morph, toBox } = run;
+    previous.style.setProperty('--s16-source-opacity', 1 - ease(40, 340, elapsed));
+
+    if (morph?.wrap?.isConnected) {
+      const m = ease(80, 960, elapsed);
+      const curX = mix(fromTitleBox.x, toTitleBox.x, m);
+      const curY = mix(fromTitleBox.y, toTitleBox.y, m);
+      const outFade = 1 - ease(100, 620, elapsed);
+      const outBlur = ease(100, 620, elapsed) * 7;
+      const inFade = ease(320, 960, elapsed);
+      const inBlur = (1 - inFade) * 7;
+      morph.outEl.style.transform = `translate(${curX.toFixed(1)}px, ${curY.toFixed(1)}px)`;
+      morph.outEl.style.opacity = String(outFade);
+      morph.outEl.style.filter = `blur(${outBlur.toFixed(2)}px)`;
+      morph.inEl.style.width = `${Math.max(180, toTitleBox.w)}px`;
+      morph.inEl.style.transform = `translate(${curX.toFixed(1)}px, ${curY.toFixed(1)}px)`;
+      morph.inEl.style.opacity = String(inFade);
+      morph.inEl.style.filter = `blur(${inBlur.toFixed(2)}px)`;
+      if (elapsed >= 980) {
+        targetTitle.style.removeProperty('opacity');
+        morph.wrap.remove();
+      }
+    }
+
+    ctx.clearRect(0, 0, width, height);
+    const bitsAlpha = 1 - ease(1260, 1600, elapsed);
+    if (bitsAlpha > 0) {
+      ctx.save();
+      ctx.font = '600 12px "JetBrains Mono", ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      for (const b of strand.bits) {
+        const travel = ease(b.dep, b.dep + b.dur, elapsed);
+        const px = mix(b.sx, b.tx, travel);
+        const py = mix(b.sy, b.ty, travel) + Math.sin(Math.PI * travel) * b.arc;
+        if (b.isClash && travel > .62) {
+          ctx.fillStyle = '#b3261e';
+        } else {
+          ctx.fillStyle = b.row === 0 ? '#0d0d0c' : '#b8652a';
+        }
+        ctx.globalAlpha = bitsAlpha * mix(.85, 1, travel);
+        ctx.fillText(b.ch, px, py);
+      }
+
+      const clashHint = ease(1020, 1280, elapsed) * bitsAlpha;
+      if (clashHint > 0) {
+        ctx.globalAlpha = clashHint * .14;
+        ctx.fillStyle = '#b3261e';
+        for (const c of strand.clashes) {
+          ctx.fillRect(toBox.x + strand.x0 + c * strand.cw - strand.cw * .5, toBox.y + strand.y0 - 11, strand.cw, strand.rowStep + 22);
+        }
+      }
+      ctx.restore();
+    }
+
+    if (run.landed) {
+      chart.style.setProperty('--s16-chart-opacity', ease(1160, 1520, elapsed));
+    }
+  }
+
+  function animate(now) {
+    const elapsed = now - run.start;
+    if (elapsed >= cut && !run.landed) land();
+    if (elapsed < arrivalEnd) drawHandoff(elapsed);
+    else if (copy.isConnected || run.titleMorph?.wrap?.isConnected) clearEffects();
+    if (elapsed >= arrivalEnd + readHold) return finish();
+    frame = requestAnimationFrame(animate);
+  }
+
+  function approach(top, height) {
+    const start = bounds(previous, top).y, end = bounds(scene, top).y;
+    const cue = Math.max(start, end - height);
+    return { start, cue, end };
+  }
+
+  function canBegin(event, direction) {
+    if (direction < 0 || event.defaultPrevented || !canPlay()) return false;
+    if (run) return true;
+    if (!event.cancelable && event.type !== 'wheel') return false;
+    if (root.classList.contains('deep-conversation-hold')) return false;
+    const { cue, end } = approach(scrollY, innerHeight);
+    if (scrollY >= end - 1) return false;
+    if (scrollY >= cue - 2 || event.type === 'touchmove' || event.key === 'PageDown' || event.key === ' ') return true;
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
+    return event.type === 'wheel' && scrollY + event.deltaY * unit > cue;
+  }
+
+  function startRun(height) {
+    if (run || !canPlay()) return;
+    const width = innerWidth;
+    const { cue, end } = approach(scrollY, height);
+    if (scrollY > cue + 1) scrollTo({ top: cue, behavior: 'instant' });
+    const top = scrollY;
+    armed = false;
+
+    const destination = end;
+    const from = bounds(sourceChart, top), to = bounds(chart, top);
+    const fromBox = { x: from.x, y: from.y - top, w: Math.max(160, from.w), h: Math.max(80, from.h) };
+    const toBox = { x: to.x, y: to.y - destination, w: Math.max(200, to.w), h: Math.max(120, to.h) };
+    const stBounds = bounds(sourceTitle, top), ttBounds = bounds(targetTitle, top);
+    const fromTitleBox = { x: stBounds.x, y: stBounds.y - top, w: stBounds.w, h: stBounds.h };
+    const toTitleBox = { x: ttBounds.x, y: ttBounds.y - destination, w: ttBounds.w, h: ttBounds.h };
+    const stacked = matchMedia('(max-width: 860px)').matches;
+    const strand = buildStrandBits(fromBox, toBox, stacked);
+    const morph = createTitleMorph(fromTitleBox);
+
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    copy.width = Math.round(width * dpr);
+    copy.height = Math.round(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    run = { top, width, height, start: performance.now(), destination, strand, toBox, fromTitleBox, toTitleBox, morph, titleMorph: morph.wrap, animations: [] };
+    lastTop = top;
+    root.classList.add('deep-twocards-hold');
+    scene.classList.add('s16-staged');
+    chart.style.setProperty('--s16-chart-opacity', 0);
+    chapter.append(copy);
+    for (const node of before.children) {
+      run.animations.push(node.animate([{ opacity: 1 }, { opacity: 0 }],
+        { duration: 380, delay: 40, fill: 'both' }));
+    }
+    drawHandoff(0);
+    frame = requestAnimationFrame(animate);
+  }
+
+  function begin(event) {
+    if (event.cancelable) event.preventDefault();
+    if (run) {
+      if (Math.abs(scrollY - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
+      return;
+    }
+    const height = innerHeight, { cue } = approach(scrollY, height);
+    if (scrollY < cue - 2) {
+      scrollTo({ top: cue, behavior: 'instant' });
+      return;
+    }
+    startRun(height);
+  }
+
+  function interrupt(direction, event) {
+    if (run && direction === -1 && event?.type === 'wheel' && Math.abs(event.deltaY) < 24) {
+      if (event.cancelable) event.preventDefault();
+      return;
+    }
+    if (run && !run.landed && direction === -1 && event?.cancelable) event.preventDefault();
+    finish();
+  }
+
+  watchScrollMotion((top, height) => {
+    const { start, cue, end } = approach(top, height);
+    if (run) {
+      if (!canPlay() || Math.abs(top - run.top) > height * .95) finish();
+      else if (Math.abs(top - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
+    } else {
+      if (top >= end - 1 || scene.contains(document.activeElement)) {
+        armed = false;
+      } else if (top >= start - height * .2 && top <= cue + 4) {
+        armed = true;
+      } else if (Math.abs(top - lastTop) > height * .95) {
+        armed = false;
+      }
+      if (armed && canPlay() && !root.classList.contains('deep-conversation-hold') &&
+        top > cue + 2 && top < end - 1 && top > lastTop) {
+        startRun(height);
+      }
+    }
+    lastTop = scrollY;
+    const activeBounds = approach(lastTop, height);
+    if (canPlay() && (run || (lastTop >= activeBounds.cue - height * .25 && lastTop < activeBounds.end - 1))) {
+      listeners ??= capturePageGesture(canBegin, begin, interrupt);
+    } else {
+      listeners?.abort();
+      listeners = undefined;
+    }
+  });
+
+  for (const area of [previous.querySelector('.plate-controls'), previous.querySelector('.plate-river'), scene.querySelector('.plate-controls'), scene.querySelector('.s16-instrument')]) {
+    if (!area) continue;
+    for (const event of ['focusin', 'pointerdown', 'input']) area.addEventListener(event, finish);
+  }
+  for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, finish);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) finish(); });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) finish(); });
+}
+
+function watchCarKey(previous, scene) {
+  const root = document.documentElement, chapter = scene.closest('.deep');
+  const before = previous.querySelector('.plate-words'), after = scene.querySelector('.plate-words');
+  const sourceChart = previous.querySelector('#s16-chart'), fieldZone = previous.querySelector('#s16-field-zone');
+  const walletZone = previous.querySelector('#s16-wallet-zone'), walletBtn = previous.querySelector('#s16-wallet');
+  const targetChart = scene.querySelector('#s17-chart');
+  if (!before || !after || !targetChart) return;
+
+  const copy = document.createElement('canvas');
+  copy.className = 's17-handoff-copy';
+  copy.setAttribute('aria-hidden', 'true');
+  const ctx = copy.getContext('2d');
+  const cut = 620, burstStart = 860, arrivalEnd = 1660, readHold = 1000;
+  let run, frame, listeners, armed = false, lastTop = scrollY;
+  const canPlay = () => ctx && !reducedMotion.matches && !document.hidden;
+
+  function clearEffects() {
+    if (!copy.isConnected && !run?.portal?.isConnected && !scene.classList.contains('s17-staged')) return;
+    copy.remove();
+    run?.portal?.remove();
+    walletBtn?.style.removeProperty('visibility');
+    scene.classList.remove('s17-staged');
+    run?.animations.forEach(animation => animation.cancel());
+  }
+
+  function finish() {
+    if (!run) return;
+    cancelAnimationFrame(frame);
+    clearEffects();
+    run = undefined;
+    root.classList.remove('deep-carkey-hold');
+    lastTop = scrollY;
+    scheduleMotion();
+  }
+
+  function createPortalWallet(wRect) {
+    const portal = document.createElement('div');
+    portal.className = 's16-wallet s17-portal-wallet';
+    portal.setAttribute('aria-hidden', 'true');
+    if (walletBtn) portal.innerHTML = walletBtn.innerHTML;
+    portal.dataset.open = 'true';
+    portal.style.left = `${wRect.left.toFixed(1)}px`;
+    portal.style.top = `${wRect.top.toFixed(1)}px`;
+    portal.style.width = `${wRect.width.toFixed(1)}px`;
+    portal.style.height = `${wRect.height.toFixed(1)}px`;
+    chapter.append(portal);
+    return portal;
+  }
+
+  function land() {
+    scrollTo({ top: run.destination, behavior: 'instant' });
+    run.top = scrollY;
+    lastTop = run.top;
+    run.landed = true;
+  }
+
+  function releaseScene17() {
+    run.released = true;
+    run.portal.dataset.open = 'true';
+    scene.classList.remove('s17-staged');
+    const { cx, cy } = run;
+    const targets = [...Array.from(after.children), targetChart].filter(Boolean);
+    targets.forEach((node, i) => {
+      const r = node.getBoundingClientRect();
+      const fx = cx - (r.left + r.width * .5);
+      const fy = cy - (r.top + r.height * .5);
+      run.animations.push(node.animate([
+        { transform: `translate(${fx.toFixed(1)}px, ${fy.toFixed(1)}px) scale(.12) rotate(${fx >= 0 ? -7 : 7}deg)`, opacity: 0, filter: 'blur(4px)' },
+        { transform: `translate(${(fx * .16).toFixed(1)}px, ${(fy * .16 - 10).toFixed(1)}px) scale(1.02) rotate(0deg)`, opacity: .96, filter: 'blur(0.5px)', offset: .64 },
+        { transform: 'none', opacity: 1, filter: 'blur(0px)' },
+      ], { duration: 540, delay: i * 42, easing: arrivalEase, fill: 'both' }));
+    });
+  }
+
+  function drawHandoff(elapsed) {
+    const { width, height, portal, wx, wy, cx, cy, wisps } = run;
+    if (elapsed >= burstStart && !run.released) releaseScene17();
+
+    if (portal?.isConnected) {
+      const glide = ease(460, 740, elapsed);
+      const tx = mix(0, cx - wx, glide);
+      const ty = mix(0, cy - wy, glide);
+      let rot = 0, sc = mix(1, 1.08, glide);
+      if (elapsed >= 520 && elapsed < burstStart) delete portal.dataset.open;
+      if (elapsed >= 600 && elapsed < burstStart) {
+        const s = (elapsed - 600) / (burstStart - 600);
+        rot = Math.sin(s * Math.PI * 5) * (1 - s * .35) * 9;
+        sc = 1.08 + Math.sin(s * Math.PI * 2) * .06;
+      } else if (elapsed >= burstStart) {
+        const vanish = ease(1120, 1540, elapsed);
+        sc = vanish > 0 ? mix(1.12, 0, vanish) : mix(1.08, 1.16, ease(burstStart, 1080, elapsed));
+        rot = mix(0, -18, vanish);
+        portal.style.opacity = String(1 - vanish);
+        if (vanish >= 1) portal.remove();
+      }
+      portal.style.transform = `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px) rotate(${rot.toFixed(1)}deg) scale(${sc.toFixed(3)})`;
+    }
+
+    ctx.clearRect(0, 0, width, height);
+    if (elapsed < 560) {
+      const wispAlpha = 1 - ease(360, 560, elapsed);
+      ctx.save();
+      ctx.font = '600 12px "JetBrains Mono", ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      for (const w of wisps) {
+        const t = ease(w.dep, w.dep + 380, elapsed);
+        const px = mix(w.x, wx, t);
+        const py = mix(w.y, wy, t) + Math.sin(Math.PI * t) * w.arc;
+        ctx.globalAlpha = wispAlpha * .82;
+        ctx.fillStyle = w.copper ? '#b8652a' : '#0d0d0c';
+        ctx.fillText(w.ch, px, py);
+      }
+      ctx.restore();
+    } else if (elapsed >= burstStart && elapsed < 1420) {
+      const wave = ease(burstStart, 1400, elapsed);
+      const alpha = (1 - wave) * .45;
+      if (alpha > 0) {
+        ctx.save();
+        ctx.strokeStyle = '#b8652a';
+        ctx.lineWidth = 1.6;
+        for (let r = 0; r < 2; r++) {
+          ctx.globalAlpha = alpha * (1 - r * .35);
+          ctx.beginPath();
+          ctx.arc(cx, cy, 36 + wave * (160 + r * 70), 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+  }
+
+  function animate(now) {
+    const elapsed = now - run.start;
+    if (elapsed >= cut && !run.landed) land();
+    if (elapsed < arrivalEnd) drawHandoff(elapsed);
+    else if (copy.isConnected || run.portal?.isConnected) clearEffects();
+    if (elapsed >= arrivalEnd + readHold) return finish();
+    frame = requestAnimationFrame(animate);
+  }
+
+  function approach(top, height) {
+    const start = bounds(previous, top).y, end = bounds(scene, top).y;
+    const cue = Math.max(start, end - height);
+    return { start, cue, end };
+  }
+
+  function canBegin(event, direction) {
+    if (direction < 0 || event.defaultPrevented || !canPlay()) return false;
+    if (run) return true;
+    if (!event.cancelable && event.type !== 'wheel') return false;
+    if (root.classList.contains('deep-twocards-hold')) return false;
+    const { cue, end } = approach(scrollY, innerHeight);
+    if (scrollY >= end - 1) return false;
+    if (scrollY >= cue - 2 || event.type === 'touchmove' || event.key === 'PageDown' || event.key === ' ') return true;
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
+    return event.type === 'wheel' && scrollY + event.deltaY * unit > cue;
+  }
+
+  function startRun(height) {
+    if (run || !canPlay()) return;
+    const width = innerWidth;
+    const { cue, end } = approach(scrollY, height);
+    if (scrollY > cue + 1) scrollTo({ top: cue, behavior: 'instant' });
+    const top = scrollY;
+    armed = false;
+
+    const rawRect = walletBtn?.getBoundingClientRect();
+    const wRect = rawRect && rawRect.width > 40 ? rawRect : { left: width * .74 - 70, top: height * .58 - 78, width: 140, height: 156 };
+    const wx = wRect.left + wRect.width * .5;
+    const wy = wRect.top + wRect.height * .45;
+    const cx = width * .5;
+    const cy = height * .48;
+    const portal = createPortalWallet(wRect);
+
+    const wisps = Array.from({ length: 20 }, (_, i) => ({
+      x: mix(width * .12, width * .82, ((i * 37) % 19) / 18),
+      y: mix(height * .16, height * .82, ((i * 53) % 17) / 16),
+      ch: i % 2 === 0 ? '0' : '1',
+      copper: i % 3 === 0,
+      dep: (i % 5) * 28,
+      arc: i % 2 === 0 ? -24 : 18,
+    }));
+
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    copy.width = Math.round(width * dpr);
+    copy.height = Math.round(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    run = { top, width, height, start: performance.now(), destination: end, portal, wx, wy, cx, cy, wisps, animations: [] };
+    lastTop = top;
+    root.classList.add('deep-carkey-hold');
+    scene.classList.add('s17-staged');
+    if (walletBtn) walletBtn.style.visibility = 'hidden';
+    chapter.append(copy);
+
+    const swallowTargets = [...Array.from(before.children), sourceChart, fieldZone, walletZone?.querySelector('.s16-zone-head')].filter(Boolean);
+    swallowTargets.forEach((node, i) => {
+      const r = node.getBoundingClientRect();
+      const dx = wx - (r.left + r.width * .5);
+      const dy = (wRect.top + 32) - (r.top + r.height * .5);
+      run.animations.push(node.animate([
+        { transform: 'none', opacity: 1, filter: 'blur(0px)' },
+        { transform: `translate(${(dx * .46).toFixed(1)}px, ${(dy * .46).toFixed(1)}px) scale(.56) rotate(${dx >= 0 ? 5 : -5}deg)`, opacity: .88, filter: 'blur(1.5px)', offset: .54 },
+        { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(.05) rotate(${dx >= 0 ? 12 : -12}deg)`, opacity: 0, filter: 'blur(4px)' },
+      ], { duration: 460, delay: i * 22, easing: 'cubic-bezier(.55, 0, .85, .35)', fill: 'both' }));
+    });
+    if (walletZone) {
+      run.animations.push(walletZone.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 280, delay: 180, fill: 'both' }));
+    }
+
+    drawHandoff(0);
+    frame = requestAnimationFrame(animate);
+  }
+
+  function begin(event) {
+    if (event.cancelable) event.preventDefault();
+    if (run) {
+      if (Math.abs(scrollY - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
+      return;
+    }
+    const height = innerHeight, { cue } = approach(scrollY, height);
+    if (scrollY < cue - 2) {
+      scrollTo({ top: cue, behavior: 'instant' });
+      return;
+    }
+    startRun(height);
+  }
+
+  function interrupt(direction, event) {
+    if (run && direction === -1 && event?.type === 'wheel' && Math.abs(event.deltaY) < 24) {
+      if (event.cancelable) event.preventDefault();
+      return;
+    }
+    if (run && !run.landed && direction === -1 && event?.cancelable) event.preventDefault();
+    finish();
+  }
+
+  watchScrollMotion((top, height) => {
+    const { start, cue, end } = approach(top, height);
+    if (run) {
+      if (!canPlay() || Math.abs(top - run.top) > height * .95) finish();
+      else if (Math.abs(top - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
+    } else {
+      if (top >= end - 1 || scene.contains(document.activeElement)) {
+        armed = false;
+      } else if (top >= start - height * .2 && top <= cue + 4) {
+        armed = true;
+      } else if (Math.abs(top - lastTop) > height * .95) {
+        armed = false;
+      }
+      if (armed && canPlay() && !root.classList.contains('deep-twocards-hold') &&
+        top > cue + 2 && top < end - 1 && top > lastTop) {
+        startRun(height);
+      }
+    }
+    lastTop = scrollY;
+    const activeBounds = approach(lastTop, height);
+    if (canPlay() && (run || (lastTop >= activeBounds.cue - height * .25 && lastTop < activeBounds.end - 1))) {
+      listeners ??= capturePageGesture(canBegin, begin, interrupt);
+    } else {
+      listeners?.abort();
+      listeners = undefined;
+    }
+  });
+
+  for (const area of [previous.querySelector('.plate-controls'), previous.querySelector('.s16-instrument'), scene.querySelector('.plate-controls')]) {
+    if (!area) continue;
+    for (const event of ['focusin', 'pointerdown', 'input']) area.addEventListener(event, finish);
+  }
+  for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, finish);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) finish(); });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) finish(); });
+}
+
+function watchFinale(previous, end) {
+  const root = document.documentElement, chapter = end.closest('.deep');
+  const whyWord = previous.querySelector('#s17-why-word'), endBlink = end.querySelector('#deep-end-blink');
+  if (!whyWord || !endBlink) return;
+
+  const cover = document.createElement('span');
+  cover.className = 'deep-blink-cover';
+  cover.setAttribute('aria-hidden', 'true');
+  const normal = { color: 'var(--ink)', backgroundColor: 'transparent' };
+  const inverted = { color: 'var(--paper)', backgroundColor: 'var(--ink)' };
+  const blinkEnd = 860, closeEnd = 995, openEnd = 1280, readHold = 1000;
+  let run, frame, listeners, armed = false, lastTop = scrollY;
+  const canPlay = () => !reducedMotion.matches && !document.hidden;
+
+  function syncAfterblink(inView) {
+    if (!endBlink) return;
+    endBlink.classList.toggle('is-afterblink', inView && !reducedMotion.matches);
+  }
+
+  if (typeof IntersectionObserver === 'function') {
+    const observer = new IntersectionObserver(entries => {
+      for (const entry of entries) syncAfterblink(entry.isIntersecting);
+    }, { threshold: .15 });
+    observer.observe(end);
+  } else {
+    syncAfterblink(true);
+  }
+
+  function clearEffects() {
+    cover.remove();
+    end.classList.remove('deep-end-staged');
+    run?.animations.forEach(animation => animation.cancel());
+  }
+
+  function finish() {
+    if (!run) return;
+    cancelAnimationFrame(frame);
+    clearEffects();
+    run = undefined;
+    root.classList.remove('deep-finale-hold');
+    lastTop = scrollY;
+    scheduleMotion();
+  }
+
+  function land() {
+    scrollTo({ top: run.destination, behavior: 'instant' });
+    run.top = scrollY;
+    lastTop = run.top;
+    run.landed = true;
+    end.classList.remove('deep-end-staged');
+    syncAfterblink(true);
+    for (const [i, node] of Array.from(end.children).entries()) {
+      run.animations.push(node.animate([
+        { opacity: 0, transform: 'translateY(8px)' },
+        { opacity: 1, transform: 'none' },
+      ], { duration: 400, delay: 110 + i * 65, easing: arrivalEase, fill: 'both' }));
+    }
+    const echo = endBlink.animate([
+      normal,
+      { color: 'var(--paper)', backgroundColor: 'rgba(13, 13, 12, .76)', offset: .18 },
+      { ...normal, offset: .36 },
+      { color: 'var(--paper)', backgroundColor: 'rgba(13, 13, 12, .4)', offset: .56 },
+      normal,
+    ], { duration: 780, delay: 220, easing: 'ease-out' });
+    run.animations.push(echo);
+  }
+
+  function animate(now) {
+    const elapsed = now - run.start;
+    if (elapsed >= blinkEnd && !run.coverClosing) {
+      run.coverClosing = true;
+      chapter.append(cover);
+      run.closeAnim = cover.animate([{ opacity: 0 }, { opacity: 1 }], { duration: closeEnd - blinkEnd, easing: 'ease-in', fill: 'forwards' });
+      run.animations.push(run.closeAnim);
+    }
+    if (elapsed >= closeEnd && !run.landed) {
+      land();
+      run.closeAnim?.cancel();
+      run.animations.push(cover.animate([
+        { opacity: 1 }, { opacity: 1, offset: .16, easing: 'ease-out' }, { opacity: 0 },
+      ], { duration: openEnd - closeEnd, fill: 'both' }));
+    }
+    if (elapsed >= openEnd && cover.isConnected) cover.remove();
+    if (elapsed >= openEnd + readHold) return finish();
+    frame = requestAnimationFrame(animate);
+  }
+
+  function approach(top, height) {
+    const start = bounds(previous, top).y;
+    const endTop = bounds(end, top).y;
+    const cue = Math.max(start, endTop - height);
+    return { start, cue, end: endTop };
+  }
+
+  function canBegin(event, direction) {
+    if (direction < 0 || event.defaultPrevented || !canPlay()) return false;
+    if (run) return true;
+    if (!event.cancelable && event.type !== 'wheel') return false;
+    if (root.classList.contains('deep-carkey-hold')) return false;
+    const { cue, end: endTop } = approach(scrollY, innerHeight);
+    if (scrollY >= endTop - 1) return false;
+    if (scrollY >= cue - 2 || event.type === 'touchmove' || event.key === 'PageDown' || event.key === ' ') return true;
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
+    return event.type === 'wheel' && scrollY + event.deltaY * unit > cue;
+  }
+
+  function startRun(height) {
+    if (run || !canPlay()) return;
+    const { cue, end: endTop } = approach(scrollY, height);
+    if (scrollY > cue + 1) scrollTo({ top: cue, behavior: 'instant' });
+    const top = scrollY;
+    armed = false;
+    const maxScroll = Math.max(0, root.scrollHeight - height);
+    const destination = Math.min(endTop, maxScroll);
+
+    run = { top, start: performance.now(), destination, animations: [] };
+    lastTop = top;
+    root.classList.add('deep-finale-hold');
+    end.classList.add('deep-end-staged');
+    run.animations.push(whyWord.animate([
+      normal, { ...normal, offset: .10 }, { ...inverted, offset: .14 },
+      { ...inverted, offset: .27 }, { ...normal, offset: .32 },
+      { ...normal, offset: .48 }, { ...inverted, offset: .53 },
+      { ...inverted, offset: .66 }, { ...normal, offset: .72 }, normal,
+    ], { duration: blinkEnd }));
+    frame = requestAnimationFrame(animate);
+  }
+
+  function begin(event) {
+    if (event.cancelable) event.preventDefault();
+    if (run) {
+      if (Math.abs(scrollY - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
+      return;
+    }
+    const height = innerHeight, { cue } = approach(scrollY, height);
+    if (scrollY < cue - 2) {
+      scrollTo({ top: cue, behavior: 'instant' });
+      return;
+    }
+    startRun(height);
+  }
+
+  function interrupt(direction, event) {
+    if (run && direction === -1 && event?.type === 'wheel' && Math.abs(event.deltaY) < 24) {
+      if (event.cancelable) event.preventDefault();
+      return;
+    }
+    if (run && !run.landed && direction === -1 && event?.cancelable) event.preventDefault();
+    finish();
+  }
+
+  watchScrollMotion((top, height) => {
+    const { start, cue, end: endTop } = approach(top, height);
+    const maxDest = Math.min(endTop, Math.max(0, root.scrollHeight - height));
+    if (run) {
+      if (!canPlay() || Math.abs(top - run.top) > height * .95) finish();
+      else if (Math.abs(top - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
+    } else {
+      if (top >= maxDest - 1 || end.contains(document.activeElement)) {
+        armed = false;
+      } else if (top >= start - height * .2 && top <= cue + 4) {
+        armed = true;
+      } else if (Math.abs(top - lastTop) > height * .95) {
+        armed = false;
+      }
+      if (armed && canPlay() && !root.classList.contains('deep-carkey-hold') &&
+        top > cue + 2 && top < maxDest - 1 && top > lastTop) {
+        startRun(height);
+      }
+    }
+    lastTop = scrollY;
+    const activeBounds = approach(lastTop, height);
+    if (canPlay() && (run || (lastTop >= activeBounds.cue - height * .25 && lastTop < Math.min(activeBounds.end, Math.max(0, root.scrollHeight - height)) - 1))) {
+      listeners ??= capturePageGesture(canBegin, begin, interrupt);
+    } else {
+      listeners?.abort();
+      listeners = undefined;
+    }
+  });
+
+  for (const area of [previous.querySelector('.plate-controls'), end]) {
+    if (!area) continue;
+    for (const event of ['focusin', 'pointerdown', 'input']) area.addEventListener(event, finish);
+  }
+  for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, finish);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) finish(); });
+  reducedMotion.addEventListener('change', () => {
+    if (reducedMotion.matches) {
+      finish();
+      syncAfterblink(false);
+    }
+  });
+}
+
 const blink = document.getElementById('deep-blink-word');
 const partOne = document.getElementById('part-one');
 if (blink?.animate && partOne) watchPartOne(blink, partOne);
@@ -2957,3 +3724,9 @@ const mistakes = document.getElementById('s14');
 if (counting && mistakes) watchMistakes(counting, mistakes);
 const conversationScene = document.getElementById('s15');
 if (mistakes && conversationScene) watchConversation(mistakes, conversationScene);
+const twoCards = document.getElementById('s16');
+if (conversationScene && twoCards) watchTwoCards(conversationScene, twoCards);
+const carKey = document.getElementById('s17');
+if (twoCards && carKey) watchCarKey(twoCards, carKey);
+const finale = document.getElementById('deep-end');
+if (carKey && finale) watchFinale(carKey, finale);

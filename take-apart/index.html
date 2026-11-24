@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
-  <link rel="stylesheet" href="style.css?v=conversation-river-7">
+  <link rel="stylesheet" href="style.css?v=finale-3">
   <script src="../js/rfid/physics.js" defer></script>
   <script src="../js/rfid/iso14443a.js" defer></script>
   <script src="../js/rfid/lf.js" defer></script>
@@ -18,8 +18,8 @@
   <script src="../js/rfid/air.js" defer></script>
   <script src="../js/rfid/reader.js" defer></script>
   <script src="../js/rfid/channel.js" defer></script>
-  <script src="../js/deep.js?v=conversation-river-7" defer></script>
-  <script type="module" src="../js/deep-motion.js?v=conversation-river-7"></script>
+  <script src="../js/deep.js?v=finale-3" defer></script>
+  <script type="module" src="../js/deep-motion.js?v=finale-3"></script>
 </head>
 <body>
   <main class="deep" id="take-apart" aria-labelledby="deep-title">
@@ -380,34 +380,89 @@
         <p class="plate-num">16</p>
         <h3 id="s16-title">Two cards in one field</h3>
         <p>Both cards answer at once. Where their IDs differ, the reader hears a 1 and a 0 together: a clash. It picks one side, and the other card goes quiet. That’s why tapping a whole wallet can charge the wrong card.</p>
-        <div class="plate-controls">
-          <label>Cards on the phone <output data-for="s16-cards"></output><input id="s16-cards" type="range" min="1" max="3" value="2"></label>
-          <span class="plate-switch" role="radiogroup" aria-label="At a clash, the reader picks"><label><input type="radio" name="s16-pick" value="1" checked> 1s first</label><label><input type="radio" name="s16-pick" value="0"> 0s first</label></span>
+        <div class="plate-controls s16-controls">
+          <label class="s16-count-row">Cards on the phone <output data-for="s16-cards"></output><input id="s16-cards" type="range" min="0" max="3" value="2"></label>
+          <div class="s16-pick-group">
+            <span class="s16-pick-label" id="s16-pick-label">At a clash, pick</span>
+            <div class="s16-pill" id="s16-pill" role="radiogroup" aria-labelledby="s16-pick-label">
+              <span class="s16-pill-thumb" aria-hidden="true"></span>
+              <label class="s16-pill-opt"><input type="radio" name="s16-pick" value="1" checked><span>1s first</span></label>
+              <label class="s16-pill-opt"><input type="radio" name="s16-pick" value="0"><span>0s first</span></label>
+            </div>
+          </div>
           <button type="button" id="s16-tap">New cards</button>
         </div>
         <p class="plate-readout" aria-live="polite"></p>
         <p class="plate-real">Real name: bit-wise anticollision (ISO/IEC 14443-3). Transport for London calls it “card clash”.</p>
       </div>
-      <canvas class="plate-canvas" role="img" aria-label="The cards' IDs, the clash and the reader's choice"></canvas>
+      <div class="s16-instrument">
+        <canvas class="plate-canvas" id="s16-chart" role="img" aria-label="The cards' IDs, the clash and the reader's choice"></canvas>
+        <div class="s16-desk" id="s16-desk">
+          <div class="s16-field-zone" id="s16-field-zone">
+            <div class="s16-zone-head">
+              <span class="s16-zone-title">Reader field</span>
+              <span class="s16-zone-hint" id="s16-field-hint">Drag a card off to return it</span>
+            </div>
+            <div class="s16-pad-stage" id="s16-pad-stage">
+              <span class="s16-rf-ring s16-rf-ring-outer" aria-hidden="true"></span>
+              <span class="s16-rf-ring s16-rf-ring-inner" aria-hidden="true"></span>
+              <img class="s16-reader" src="../images/intro/reader.webp" width="640" height="512" alt="" draggable="false">
+              <div class="s16-pad-cards" id="s16-pad-cards"></div>
+            </div>
+          </div>
+          <div class="s16-wallet-zone" id="s16-wallet-zone">
+            <div class="s16-zone-head">
+              <span class="s16-zone-title">Wallet</span>
+              <span class="s16-zone-hint" id="s16-wallet-count">1 inside</span>
+            </div>
+            <button type="button" class="s16-wallet" id="s16-wallet" aria-label="Open wallet and place a card on the reader">
+              <span class="s16-wallet-back" aria-hidden="true"></span>
+              <span class="s16-wallet-slots" id="s16-wallet-slots" aria-hidden="true">
+                <span class="s16-slot" data-slot="0"><span class="s16-slot-lip"></span></span>
+                <span class="s16-slot" data-slot="1"><span class="s16-slot-lip"></span></span>
+                <span class="s16-slot" data-slot="2"><span class="s16-slot-lip"></span></span>
+              </span>
+              <span class="s16-wallet-front" aria-hidden="true">
+                <span class="s16-wallet-stitch"></span>
+                <span class="s16-wallet-action" id="s16-wallet-action">Click to place</span>
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
     </section>
 
     <section class="plate" id="s17" aria-labelledby="s17-title">
       <div class="plate-words">
         <p class="plate-num">17</p>
-        <h3 id="s17-title">Why your phone can’t read your car key</h3>
+        <h3 id="s17-title"><span id="s17-why-word" class="s17-why-word">Why</span> your phone can’t read your car key</h3>
         <p>A reader and a tag have to be tuned to each other. The key is tuned to 125 kHz; the phone’s field flips at 13.56 MHz, about 100 times faster.</p>
-        <div class="plate-controls">
-          <span class="plate-switch" role="radiogroup" aria-label="Reader"><label><input type="radio" name="s17-reader" value="phone" checked> Phone</label><label><input type="radio" name="s17-reader" value="key"> Car’s reader</label></span>
-          <span class="plate-switch" role="radiogroup" aria-label="Tag"><label><input type="radio" name="s17-tag" value="key" checked> Car key</label><label><input type="radio" name="s17-tag" value="card"> Card</label></span>
+        <div class="plate-controls s17-controls">
+          <div class="s17-switch-row">
+            <span class="s17-switch-label" id="s17-reader-label">Reader <output id="s17-reader-freq">13.56 MHz</output></span>
+            <div class="s17-pill" id="s17-reader-pill" role="radiogroup" aria-labelledby="s17-reader-label">
+              <span class="s17-pill-thumb" aria-hidden="true"></span>
+              <label class="s17-pill-opt"><input type="radio" name="s17-reader" value="phone" checked><span>Phone</span></label>
+              <label class="s17-pill-opt"><input type="radio" name="s17-reader" value="key"><span>Car’s reader</span></label>
+            </div>
+          </div>
+          <div class="s17-switch-row">
+            <span class="s17-switch-label" id="s17-tag-label">Tag <output id="s17-tag-freq">125 kHz</output></span>
+            <div class="s17-pill" id="s17-tag-pill" role="radiogroup" aria-labelledby="s17-tag-label">
+              <span class="s17-pill-thumb" aria-hidden="true"></span>
+              <label class="s17-pill-opt"><input type="radio" name="s17-tag" value="key" checked><span>Car key</span></label>
+              <label class="s17-pill-opt"><input type="radio" name="s17-tag" value="card"><span>Card</span></label>
+            </div>
+          </div>
         </div>
         <p class="plate-readout" aria-live="polite"></p>
         <p class="plate-real">Real name: low frequency (LF, 125 kHz) and high frequency (HF, 13.56 MHz).</p>
       </div>
-      <canvas class="plate-canvas" role="img" aria-label="The tag's tuning curve and the reader's frequency"></canvas>
+      <canvas class="plate-canvas" id="s17-chart" role="img" aria-label="The tag's tuning curve and the reader's frequency"></canvas>
     </section>
 
-    <footer class="deep-end">
-      <p class="deep-last">Every tap does all of this, in less time than a blink.</p>
+    <footer class="deep-end" id="deep-end">
+      <p class="deep-last">Every tap does all of this, in less time than a <span id="deep-end-blink" class="deep-end-blink">blink</span>.</p>
       <p>Everything on this page is computed by its own code: the coils from Maxwell’s formula, the card and phone from the ISO/IEC 14443 standard, and a reader that decodes only the signal it receives. <a href="../tests/">See the checks run</a>.</p>
       <p class="deep-fine">Sources: ISO/IEC 14443-2 and -3; NIST SP 800-98; NXP NTAG21x and PN7462 datasheets; TI TMS37145 datasheet; EM4100 format; Transport for London, “card clash”. 3D models made by our team. Built with Three.js.</p>
     </footer>
