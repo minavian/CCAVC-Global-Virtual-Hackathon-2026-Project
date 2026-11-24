@@ -459,6 +459,10 @@ function intro(experience) {
         }
         next[key] = key === 'metal' ? Math.round(value) : Math.round(value * 10) / 10;
       }
+      // What the demo doesn't move stays normal, whatever the visitor set before pressing Play
+      // (a card left tuned to 6 MHz made the whole demo say it was tuned wrong).
+      next.drive = LAB_START.drive;
+      next.tune = LAB_START.tune;
       if (Object.keys(next).some(key => next[key] !== lab.set[key])) setLab(next);
       if (auto.held >= plan.hold) go(step + 1);
     } else if (auto.held >= plan.hold) go(step + 1);
@@ -880,7 +884,9 @@ function intro(experience) {
         // The lab: what the setting makes of the tap, and its own conversation.
         if (!lab.m) setLab({});
         said = labMessage();
-        const levels = { ...plan.levels, ...labLevels(lab.set, lab.m), reply: lab.talk?.answers ? 1 : 0 };
+        // The card's answer only once it answers: while the reader still asks, nothing comes back
+        // (it used to show the answer coming down from the moment Ask was pressed).
+        const levels = { ...plan.levels, ...labLevels(lab.set, lab.m), reply: lab.talk?.answers && said?.dir < 0 ? 1 : 0 };
         goal = said ? talkLevels(levels, said) : levels;
         if (said && reduce.matches && said.dir < 0) goal = { ...goal, reply: 1 };
       }
