@@ -543,7 +543,8 @@ function watchFlipping(previous, plate, settlePrevious) {
     const angle = mix(.36, .77, travel);
     const dx = Math.cos(angle), dy = Math.sin(angle);
     const length = Math.min(width * .57, 270);
-    const radius = Math.min(width * .102, height * .078, 57);
+    const radius = Math.min(width * .073, height * .052, 36);
+    const strandWidth = mix(2, 1.5, lift);
     const strands = outgoing.map(({ box, points }, index) => {
       const wave = waves?.[index];
       return Array.from({ length: 201 }, (_, i) => {
@@ -551,11 +552,13 @@ function watchFlipping(previous, plate, settlePrevious) {
         const [ax, ay] = points[j], [bx, by] = points[Math.min(j + 1, points.length - 1)];
         const x = source.x + box.x + mix(ax, bx, sample - j) * box.w;
         const y = source.y + box.y + mix(ay, by, sample - j) * box.h;
-        // A half-turn offset makes the strands cross as they orbit the same tilted axis.
-        const spin = u * Math.PI * 4.8 - travel * Math.PI * 1.75 + index * Math.PI;
-        const along = (u - .5) * length + Math.sin(spin) * radius * .12;
-        const curl = Math.cos(spin) * radius * (.56 + .44 * Math.sin(u * Math.PI));
-        const helixX = center.x + along * dx - curl * dy, helixY = center.y + along * dy + curl * dx;
+        // Both strands follow a traveling bend, with opposite phases around it.
+        const spin = u * Math.PI * 4.4 - travel * Math.PI * 1.75 + index * Math.PI;
+        const along = (u - .5) * length;
+        const bend = Math.sin((u - travel * .78) * Math.PI * 2) * radius * .68;
+        const curl = Math.cos(spin) * radius * (.38 + .62 * Math.sin(u * Math.PI));
+        const across = bend + curl;
+        const helixX = center.x + along * dx - across * dy, helixY = center.y + along * dy + across * dx;
         const mergeX = mix(x, helixX, gather), mergeY = mix(y, helixY, gather);
         return {
           x: wave ? mix(mergeX, target.x + wave.box.x + wave.box.w * u, open) : mergeX,
@@ -584,13 +587,13 @@ function watchFlipping(previous, plate, settlePrevious) {
     ctx.globalAlpha = alpha;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    strands.forEach((points, i) => stroke(points, colors[i], 2));
+    strands.forEach((points, i) => stroke(points, colors[i], strandWidth));
     const depth = ease(.30, .68, lift);
     if (depth) {
       ctx.globalAlpha = alpha * depth;
-      for (const points of strands) stroke(points, paper, 2 + depth * 5, true);
+      for (const points of strands) stroke(points, paper, strandWidth + depth * 3, true);
       ctx.globalAlpha = alpha;
-      strands.forEach((points, i) => stroke(points, colors[i], 2.1, true));
+      strands.forEach((points, i) => stroke(points, colors[i], strandWidth, true));
     }
     ctx.globalAlpha = 1;
   }
