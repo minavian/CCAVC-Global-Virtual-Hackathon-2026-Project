@@ -202,7 +202,7 @@ Owner: Mina Vian · 2026-11-22. Metro ticket model by Akris Luno (`nduchuy348-ar
 
 Original section written by OpenAI Codex for the project team · 2026-11-22 (the team's `ui-rebuild` part 2, in `Teams parts/`). Moved into this page: Owner: Mina Vian · 2026-11-22. The reader slab and the gliding drag were rebuilt · 2026-11-23.
 
-**What it does.** The section after the three taps. One bank card, played by scrolling: it opens like a mouth and lets out the letters R, F, I, D. The letters spell "Radio-Frequency Identification", a line explains that RFID swaps data by radio, an X-ray shows the antenna and the chip, and the card asks how it can work with no battery. At the end you drag the card onto a reader.
+**What it does.** The section after the three taps. One bank card, played by scrolling: it opens like a mouth and lets out the letters R, F, I, D. The letters spell "Radio-Frequency Identification", then one line says what it does: "This technology works by exchanging data using radio waves. That's literally it." An X-ray shows the antenna and the chip, and the card asks how it can work with no battery. At the end you drag the card onto a reader.
 
 **How it works.**
 - **Where it sits.** `index.html` has a tall `<section class="intro">` right after the taps. Inside it, `.intro-stage` is `position: sticky`, so it stays on screen while the section scrolls past. Its paper background covers the pinned landing page, like the taps.
