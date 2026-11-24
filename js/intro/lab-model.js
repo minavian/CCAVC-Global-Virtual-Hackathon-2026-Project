@@ -35,7 +35,9 @@ export const READERS = {
 const CARD_HALF_CM = 2.7;
 export function nearestFor(s) {
   const r = READERS[readerOf(s)];
-  return Math.max(r.nearest, CARD_HALF_CM * Math.sin((s.angle || 0) * Math.PI / 180) + r.surface + .1);
+  // Up to the distance slider's next 0.1 cm step, so a lifted card sits on a value it can show.
+  const lifted = Math.ceil((CARD_HALF_CM * Math.sin((s.angle || 0) * Math.PI / 180) + r.surface + .1) * 10 - 1e-9) / 10;
+  return Math.max(r.nearest, lifted);
 }
 const readerOf = s => READERS[s.reader] ? s.reader : 'pad';
 // Where a setting starts for a reader: everything normal, the card at that reader's normal tap.
