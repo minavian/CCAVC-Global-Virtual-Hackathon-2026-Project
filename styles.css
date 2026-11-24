@@ -1063,6 +1063,9 @@ html[data-intro] .stage-light { opacity: 0; }
    so the page still scrolls up and down). */
 .intro .intro-stage.is-docked { cursor: grab; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
 .intro .intro-stage.is-orbiting { cursor: grabbing; }
+/* The lab's card can be moved up and down (main.js `cardDrag`). */
+.intro .intro-stage.is-over-card { cursor: ns-resize; }
+.intro .intro-stage.is-moving-card { cursor: grabbing; }
 @media (prefers-reduced-motion: reduce) {
   .intro .readout .readout-next.is-ask { animation: none; }
 }

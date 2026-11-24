@@ -131,6 +131,9 @@ function intro(experience) {
   // The step's own tilt, before the hand's: the drag's tilt stops where the view stops.
   let shotTilt = 1;
   let orbitDrag = null, orbited = false;
+  // In the lab the card itself can be dragged up or down, closer to the reader or away (`cardDrag`);
+  // `cardMoved` once it has been, so the hint that says so can go.
+  let cardDrag = null, cardMoved = false;
   // Autoplay. Until the visitor does anything, the close-up plays by itself: once the card is
   // ready it is carried to the reader, every step holds for its `hold` (cinema.js), and Ask
   // is pressed for them. The moment they touch, click, drag or press a key, it stops and
@@ -1036,7 +1039,10 @@ function intro(experience) {
       if (tag.kind !== 'check') paintTrace(said);
     }
     // Not while it plays by itself: then there is nothing to do but watch.
-    film.hint.classList.toggle('is-shown', docked && b.dark > .6 && !orbited && !auto.on);
+    // In the lab the hint says the card can be moved; elsewhere, that the view can be turned.
+    const hint = inLab ? 'Drag the card to move it.' : 'Drag to look around';
+    if (film.hint.textContent !== hint) film.hint.textContent = hint;
+    film.hint.classList.toggle('is-shown', docked && b.dark > .6 && !auto.on && (inLab ? !cardMoved : !orbited));
 
     // The check mark, drawn over the reader, and the explanation at the end.
     const top = available ? scene.anchor('readerTop') : { x: layout.reader.x, y: layout.reader.y - layout.reader.height * .3 };
@@ -1426,7 +1432,27 @@ function intro(experience) {
   stage.addEventListener('dragstart', event => event.preventDefault());
   stage.addEventListener('selectstart', event => { if (detected) event.preventDefault(); });
 
-  // After the drop, dragging anywhere on the stage (not on a button) turns the camera.
+  // Whether a point on the stage (in its own pixels) is on the card, as it lies over the reader:
+  // the card's outline worked out from where its chip and the end of its coil are on screen.
+  function overCard(x, y) {
+    if (!available || step !== LAB) return false;
+    const chip = scene.anchor('chip'), end = scene.anchor('cardCoil');
+    const dx = end.x - chip.x, dy = end.y - chip.y, length = Math.hypot(dx, dy) || 1;
+    // The chip sits 27.7 mm left of the card's middle and the coil's end 40.2 mm right of it; the
+    // card is 85.6 by 54 mm. Along the card from its middle, and across it, in card millimetres.
+    const mm = length / 67.9, mid = { x: chip.x + dx * 27.7 / 67.9, y: chip.y + dy * 27.7 / 67.9 };
+    const along = ((x - mid.x) * dx + (y - mid.y) * dy) / length / mm;
+    const across = Math.abs((y - mid.y) * dx - (x - mid.x) * dy) / length;
+    return Math.abs(along) < 46 && across < Math.max(34, 30 * mm);
+  }
+  const stagePoint = event => {
+    const rect = stage.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  };
+
+  // After the drop, dragging anywhere on the stage (not on a button) turns the camera. In the lab,
+  // dragging the card itself moves it instead: up takes it away from the reader, down brings it in,
+  // and everything follows the physics as it goes (as the distance slider does).
   stage.addEventListener('pointerdown', event => {
     if (!detected || step < 0 || step >= LAST || event.button !== 0) return;
     if (event.target.closest('button, a, input, .readout, .cine-explain, .try')) return;
@@ -1435,11 +1461,24 @@ function intro(experience) {
     // take over the next one, and the view would stop turning.
     event.preventDefault();
     getSelection()?.removeAllRanges();
+    const at = stagePoint(event);
+    if (overCard(at.x, at.y)) {
+      // About a fortieth of the stage's height a centimetre: the whole 10 cm in a quarter of it.
+      cardDrag = { id: event.pointerId, y: event.clientY, from: lab.set.distance, perCm: stage.clientHeight / 40 };
+      try { stage.setPointerCapture(event.pointerId); } catch {}
+      stage.classList.add('is-moving-card');
+      return;
+    }
     orbitDrag = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: 0 };
     try { stage.setPointerCapture(event.pointerId); } catch {}
     stage.classList.add('is-orbiting');
   });
   stage.addEventListener('pointermove', event => {
+    if (cardDrag?.id === event.pointerId) {
+      const distance = Math.round((cardDrag.from + (cardDrag.y - event.clientY) / cardDrag.perCm) * 10) / 10;
+      if (distance !== lab.set.distance) { setLab({ distance }); cardMoved = true; }
+      return;
+    }
     if (orbitDrag?.id !== event.pointerId) return;
     // Each move adds only what the pointer moved since the last one, so a drag that runs past
     // the tilt's end, or far off the stage, never leaves slack to undo: turning back answers
@@ -1457,6 +1496,12 @@ function intro(experience) {
   });
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
     stage.addEventListener(type, event => {
+      if (cardDrag?.id === event.pointerId) {
+        cardDrag = null;
+        stage.classList.remove('is-moving-card');
+        wake();
+        return;
+      }
       if (orbitDrag?.id !== event.pointerId) return;
       orbitDrag = null;
       stage.classList.remove('is-orbiting');
@@ -1468,6 +1513,11 @@ function intro(experience) {
     if (event.pointerType !== 'mouse') {
       clearMouseTilt();
       return;
+    }
+    // Over the card in the lab, the pointer says it can be moved up and down.
+    if (!event.buttons) {
+      const at = stagePoint(event), over = detected && overCard(at.x, at.y);
+      if (stage.classList.contains('is-over-card') !== over) stage.classList.toggle('is-over-card', over);
     }
     if (event.buttons || reduce.matches) return;
     const rect = stage.getBoundingClientRect();
