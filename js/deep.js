@@ -294,35 +294,72 @@
   }, { animate: true });
 
   // ---------- 8. The tuning trick ----------
+  function blendTuningPlot(from, to, t) {
+    const mix = (a, b) => a + (b - a) * t;
+    const frequency = from.frequency === to.frequency ? to.frequency : Math.exp(mix(Math.log(from.frequency), Math.log(to.frequency)));
+    const top = mix(from.top, to.top);
+    const volts = (a, b) => mix(a / from.top, b / to.top) * top;
+    const blendSamples = (old, next) => next.map(([f, v], i) => [
+      f * frequency / to.frequency, volts(old[i][1], v),
+    ]);
+    return {
+      frequency, top, points: blendSamples(from.points, to.points), tuned: blendSamples(from.tuned, to.tuned),
+      wake: volts(from.wake, to.wake), marker: volts(from.marker, to.marker), awake: mix(from.awake, to.awake),
+    };
+  }
+
   const tuningScene = plate('s8', p => {
     const which = p.radio('tag') || 'card', T = physics.TAGS[which];
     const cap = p.input('cap'), removed = p.input('cap-toggle').hasAttribute('data-removed');
     const setting = cap.valueAsNumber / Number(cap.max);
     const C = removed ? 0 : T.capacitance * (setting * 2);
-    const capText = removed ? 'taken out' : si(C, 'F', 3);
-    cap.disabled = removed;
-    cap.setAttribute('aria-valuetext', capText);
-    p.out('cap', capText);
-    p.el.style.setProperty('--s8-cap-size', .62 + setting * .48);
-    const readerKey = which === 'key' ? 'key' : 'pad', d = which === 'key' ? .025 : .03;
-    const opts = { tag: which, reader: readerKey, distance: d, capacitance: C };
-    const f0 = T.frequency, ctx = fit(p), bx = box(p, 26, 44, 54, 28);
-    const curveNow = physics.sweep(opts, f0 / 4, f0 * 4, 220), tuned = physics.sweep({ ...opts, capacitance: T.capacitance }, f0 / 4, f0 * 4, 220);
-    const top = Math.max(...tuned.map(([, v]) => v)) * 1.12;
     const fmt = v => si(v, 'Hz', 3);
+    const now = performance.now();
+    const target = p.tuningTarget;
+
+    if (!target || target.which !== which || target.removed !== removed || target.C !== C) {
+      const capText = removed ? 'taken out' : si(C, 'F', 3);
+      cap.disabled = removed;
+      cap.setAttribute('aria-valuetext', capText);
+      p.out('cap', capText);
+      p.el.style.setProperty('--s8-cap-size', .62 + setting * .48);
+      const opts = { tag: which, reader: which === 'key' ? 'key' : 'pad', distance: which === 'key' ? .025 : .03, capacitance: C };
+      const frequency = T.frequency;
+      const points = physics.sweep(opts, frequency / 4, frequency * 4, 220);
+      const tuned = physics.sweep({ ...opts, capacitance: T.capacitance }, frequency / 4, frequency * 4, 220);
+      const top = Math.max(...tuned.map(([, v]) => v)) * 1.12;
+      const s = physics.solve(opts);
+      const r = physics.range(opts), r0 = physics.range({ ...opts, capacitance: T.capacitance });
+      const tuning = removed ? 'Without its capacitor' : C === 0 ? 'At 0 F' : 'Tuned to ' + fmt(s.resonance);
+      p.say(`${tuning}, the ${which === 'key' ? 'key' : 'card'} works up to ${cm(r)} away${Math.abs(r - r0) < .0005 ? '.' : ` (${cm(r0)} when tuned right).`}`);
+
+      // Retarget from the frame on screen so fast toggles never jump back to an older curve.
+      const animate = target && (target.which !== which || target.removed !== removed || p.tuningFrom);
+      p.tuningFrom = animate ? p.tuningShown : null;
+      p.tuningStarted = now;
+      p.tuningTarget = { which, removed, C, frequency, top, points, tuned, wake: s.wake, marker: Math.min(s.rawVolts, top), awake: Number(s.awake) };
+    }
+
+    const t = p.tuningFrom && !reduced.matches ? stage(0, 360, now - p.tuningStarted) : 1;
+    if (t < 1) {
+      p.tuningShown = t === 0 ? p.tuningFrom : blendTuningPlot(p.tuningFrom, p.tuningTarget, t * t * (3 - 2 * t));
+      p.dirty = true;
+    } else {
+      p.tuningFrom = null;
+      p.tuningShown = p.tuningTarget;
+    }
+
+    const { frequency: f0, top, points, tuned, wake, marker, awake } = p.tuningShown;
+    const ctx = fit(p), bx = box(p, 26, 44, 54, 28);
     const a = chart(ctx, bx, { from: f0 / 4, to: f0 * 4, log: true, ticks: [f0 / 4, f0 / 2, f0, f0 * 2, f0 * 4].map(v => [v, fmt(v)]), label: 'If the reader’s field flipped at…' },
       { from: 0, to: top, ticks: [0, top / 2, top].map(v => [v, v.toFixed(1) + ' V']), label: 'Volts at the chip' });
     curve(ctx, tuned, a.X, a.Y, FAINT, 1.5, [5, 5]);
-    curve(ctx, curveNow, a.X, a.Y, COPPER, 2.2);
-    p.canvas.resonanceCurve = { box: bx, points: curveNow, X: a.X, Y: a.Y, color: COPPER };
+    curve(ctx, points, a.X, a.Y, COPPER, 2.2);
+    p.canvas.resonanceCurve = { box: bx, points, X: a.X, Y: a.Y, color: COPPER };
     vline(ctx, a.X(f0), bx.y, bx.y + bx.h, INK, 'The reader: ' + fmt(f0));
-    const s = physics.solve(opts);
-    hline(ctx, a.Y(s.wake), bx.x, bx.x + bx.w, GREEN, 'Wake-up');
-    dot(ctx, a.X(f0), a.Y(Math.min(s.rawVolts, top)), s.awake ? GREEN : RED);
-    const r = physics.range({ tag: which, reader: readerKey, capacitance: C }), r0 = physics.range({ tag: which, reader: readerKey });
-    const tunedRight = Math.abs(r - r0) < .0005;
-    const tuning = removed ? 'Without its capacitor' : C === 0 ? 'At 0 F' : 'Tuned to ' + fmt(s.resonance);
-    p.say(`${tuning}, the ${which === 'key' ? 'key' : 'card'} works up to ${cm(r)} away${tunedRight ? '.' : ` (${cm(r0)} when tuned right).`}`);
+    hline(ctx, a.Y(wake), bx.x, bx.x + bx.w, GREEN, 'Wake-up');
+    const markerColor = awake === 1 ? GREEN : awake === 0 ? RED : `color-mix(in srgb, ${GREEN} ${awake * 100}%, ${RED})`;
+    dot(ctx, a.X(f0), a.Y(marker), markerColor);
   });
   if (tuningScene) {
     const button = tuningScene.input('cap-toggle');
@@ -333,6 +370,7 @@
       button.setAttribute('aria-label', removed ? 'Put back the capacitor' : 'Lift out the capacitor');
       tuningScene.dirty = true;
     });
+    reduced.addEventListener('change', () => { tuningScene.dirty = true; });
   }
 
   // ---------- 9. Why metal fights back ----------
