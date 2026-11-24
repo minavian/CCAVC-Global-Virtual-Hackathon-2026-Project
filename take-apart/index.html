@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
-  <link rel="stylesheet" href="style.css?v=mistakes-jam-4">
+  <link rel="stylesheet" href="style.css?v=conversation-river-4">
   <script src="../js/rfid/physics.js" defer></script>
   <script src="../js/rfid/iso14443a.js" defer></script>
   <script src="../js/rfid/lf.js" defer></script>
@@ -18,8 +18,8 @@
   <script src="../js/rfid/air.js" defer></script>
   <script src="../js/rfid/reader.js" defer></script>
   <script src="../js/rfid/channel.js" defer></script>
-  <script src="../js/deep.js?v=mistakes-jam-4" defer></script>
-  <script type="module" src="../js/deep-motion.js?v=mistakes-jam-4"></script>
+  <script src="../js/deep.js?v=conversation-river-4" defer></script>
+  <script type="module" src="../js/deep-motion.js?v=conversation-river-4"></script>
 </head>
 <body>
   <main class="deep" id="take-apart" aria-labelledby="deep-title">
@@ -320,16 +320,57 @@
         <h3 id="s15-title">The whole conversation</h3>
         <p class="plate-gate">You’re not supposed to see this… But just this once, we’ll make an exception.</p>
         <p>Every tap starts with the same six messages. The phone works out every bit from the dips alone: it never peeks at the card’s memory.</p>
-        <div class="plate-controls">
-          <button type="button" id="s15-tap">Tap the card</button>
-          <label class="plate-check"><input id="s15-random" type="checkbox" checked> New ID every tap</label>
-          <button type="button" id="s15-steal">Steal a packet</button>
+        <div class="plate-controls s15-controls">
+          <div class="s15-tap-box" id="s15-tap-box" data-state="idle">
+            <div class="s15-tap-head">
+              <span class="s15-tap-prompt" id="s15-tap-prompt">Tap the card on the reader</span>
+              <span class="s15-tap-hint" id="s15-tap-hint">Drag or click</span>
+            </div>
+            <div class="s15-tap-stage" id="s15-tap-stage">
+              <img class="s15-reader" src="../images/intro/reader.webp" width="640" height="512" alt="" draggable="false">
+              <span class="s15-reader-ring" aria-hidden="true"></span>
+              <span class="s15-field-arc" aria-hidden="true"></span>
+              <button type="button" id="s15-tap" class="s15-card-btn" aria-label="Tap the card on the reader to replay the conversation" aria-describedby="s15-tap-prompt">
+                <img src="../images/intro/credit-card-face.webp" width="520" height="328" alt="" draggable="false">
+              </button>
+            </div>
+          </div>
+          <div class="s15-action-row">
+            <button type="button" id="s15-steal" class="s15-steal-btn">
+              <span class="s15-steal-text">Steal a packet</span>
+              <span class="s15-jaw-wrap" aria-hidden="true">
+                <svg class="s15-jaw-svg" viewBox="0 0 36 36" width="24" height="24">
+                  <g class="s15-jaw-top">
+                    <path d="M5 18 A13 13 0 0 1 31 18 Z" fill="currentColor"/>
+                    <path d="M23.5 18 L25.5 20.5 L27.5 18 Z" fill="var(--paper)"/>
+                    <circle cx="21" cy="11.5" r="1.7" fill="var(--paper)"/>
+                  </g>
+                  <g class="s15-jaw-bot">
+                    <path d="M5 18 A13 13 0 0 0 31 18 Z" fill="currentColor"/>
+                    <path d="M21.5 18 L23.5 15.5 L25.5 18 Z" fill="var(--paper)"/>
+                  </g>
+                </svg>
+              </span>
+            </button>
+          </div>
+          <div class="s15-random-row">
+            <label class="s15-random-label" for="s15-random">
+              <span class="s15-random-text">
+                <span>New ID every tap</span>
+                <span class="s15-random-sub">Random UID (08 …)</span>
+              </span>
+              <span class="s15-random-toggle">
+                <output id="s15-random-state" for="s15-random" aria-live="off">On</output>
+                <input id="s15-random" type="checkbox" role="switch" checked>
+              </span>
+            </label>
+          </div>
         </div>
         <p class="plate-readout" aria-live="polite"></p>
         <p class="plate-real">Real name: ISO/IEC 14443-3: REQA, ATQA, anticollision, UID, SELECT, SAK.</p>
       </div>
       <div class="plate-river">
-        <canvas class="plate-canvas" role="img" aria-label="Messages flowing between the phone and the card"></canvas>
+        <canvas class="plate-canvas" id="s15-chart" role="img" aria-label="Messages flowing between the phone and the card"></canvas>
         <ol class="chat" aria-label="The phone's log"></ol>
       </div>
     </section>

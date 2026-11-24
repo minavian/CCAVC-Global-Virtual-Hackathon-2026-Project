@@ -1389,10 +1389,42 @@
   }
 
   // ---------- 15. The whole conversation (the Bit River) ----------
-  const river = { messages: [], started: 0, steal: false, seed: 1 };
-  function conversation(p) {
+  const river = {
+    messages: [],
+    started: 0,
+    steal: false,
+    seed: 1,
+    awaitingTap: !reduced.matches,
+    stolenIndex: -1,
+    preHeistPace: false,
+    heistActive: false,
+    heistGrabbed: false,
+    grabAt: 0,
+    packetPos: null,
+    settledReadout: '',
+  };
+
+  function setS15StateUI(p) {
+    const tapBox = p.el.querySelector('#s15-tap-box');
+    const prompt = p.el.querySelector('#s15-tap-prompt');
+    const randomInput = p.input('random');
+    const randomState = p.input('random-state');
+    if (tapBox) tapBox.dataset.state = river.awaitingTap ? 'idle' : 'ready';
+    if (prompt) prompt.textContent = river.awaitingTap ? 'Tap the card on the reader' : 'Tap again to replay';
+    if (randomState && randomInput) {
+      randomState.textContent = randomInput.checked ? 'On' : 'Off';
+      randomState.toggleAttribute('data-off', !randomInput.checked);
+    }
+  }
+
+  function conversation(p, { fromSteal = false } = {}) {
     const random = p.input('random').checked;
     river.seed++;
+    river.awaitingTap = false;
+    river.heistGrabbed = false;
+    river.grabAt = 0;
+    river.packetPos = null;
+    river.preHeistPace = fromSteal && !reduced.matches;
     const chip = tags.cardChip({ randomUid: random, seed: random ? river.seed : 1 });
     const s = physics.solve({ tag: 'card', reader: 'phone', distance: .015 });
     const link = channel.cardChannel([{ chip, depth: s.dip, awake: true }], { noise: .0015, seed: river.seed });
@@ -1400,11 +1432,11 @@
     const thief = {
       send(bits) {
         const heard = link.send(bits), rec = link.recording[link.recording.length - 1];
-        // A stolen packet: the card's ID answer is wiped out on the air.
+        // A stolen packet: the card's ID answer is wiped cleanly off the air.
         if (river.steal && !stolen && rec.answers[0]?.name === 'UID') {
           stolen = true; river.steal = false;
           const g = air.gaussian(tags.random(river.seed));
-          for (let i = rec.begin + 3 * iso.BIT; i < rec.begin + 20 * iso.BIT && i < heard.samples.length; i++) heard.samples[i] = 1 + g() * .05;
+          for (let i = rec.begin + 3 * iso.BIT; i < rec.begin + 20 * iso.BIT && i < heard.samples.length; i++) heard.samples[i] = 1 + g() * .001;
           rec.stolen = true;
         }
         return heard;
@@ -1425,16 +1457,48 @@
       }
     });
     if (run.ok) messages.push({ from: 'app', name: 'App', words: 'Then the app takes over: a payment, a ticket, a door.', bytes: [] });
-    river.messages = messages; river.started = performance.now(); river.ok = run.ok; river.uid = run.uid;
+    river.messages = messages;
+    river.stolenIndex = messages.findIndex(m => m.stolen);
+    river.started = performance.now();
+    river.ok = run.ok;
+    river.uid = run.uid;
+    river.settledReadout = run.ok
+      ? `Card ${run.uid.map(hex).join(' ')} selected.${messages.some(m => m.stolen) ? ' A packet went missing, so the phone simply asked again.' : ''}`
+      : run.reason;
     const chat = p.el.querySelector('.chat');
     chat.innerHTML = '';
-    p.say(run.ok ? `Card ${run.uid.map(hex).join(' ')} selected. ${messages.some(m => m.stolen) ? 'A packet went missing, so the phone simply asked again.' : ''}` : run.reason);
+    setS15StateUI(p);
+    p.say(river.preHeistPace ? 'Watching for the card’s ID packet…' : river.settledReadout);
   }
+
+  function riverTiming(elapsed) {
+    if (reduced.matches) return { shown: river.messages.length, q: 1 };
+    if (!river.preHeistPace || river.stolenIndex < 0) {
+      const each = 1.1;
+      const shown = Math.min(river.messages.length, Math.floor(elapsed / each) + 1);
+      const q = Math.min(1, (elapsed - (shown - 1) * each) / (each * .8));
+      return { shown, q };
+    }
+    const preEach = .78, postEach = 1.05;
+    const splitTime = (river.stolenIndex + 1) * preEach;
+    if (elapsed < splitTime) {
+      const idx = Math.floor(elapsed / preEach);
+      return { shown: idx + 1, q: Math.min(1, (elapsed - idx * preEach) / (preEach * .82)) };
+    }
+    const rem = elapsed - splitTime;
+    const extra = Math.floor(rem / postEach);
+    const shown = Math.min(river.messages.length, river.stolenIndex + 2 + extra);
+    const q = shown >= river.messages.length && rem - extra * postEach > postEach
+      ? 1
+      : Math.min(1, (rem - extra * postEach) / (postEach * .82));
+    return { shown, q };
+  }
+
   const s15 = plate('s15', p => {
-    if (!river.messages.length) conversation(p);
-    const ctx = fit(p), t = (performance.now() - river.started) / 1000;
-    const each = reduced.matches ? 0 : 1.1, shown = reduced.matches ? river.messages.length : Math.min(river.messages.length, Math.floor(t / each) + 1);
+    const ctx = fit(p), now = performance.now();
     const left = 40, right = p.w - 40, mid = p.h / 2;
+    const t = river.awaitingTap ? now / 1000 : (now - river.started) / 1000;
+
     // The river: bits flowing between the phone and the card.
     ctx.font = `500 11px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     const rand = tags.random(3);
@@ -1446,21 +1510,65 @@
     }
     ctx.font = `600 12px ${SANS}`; ctx.fillStyle = INK;
     ctx.textAlign = 'left'; ctx.fillText('Phone', 10, 16); ctx.textAlign = 'right'; ctx.fillText('Card', p.w - 10, 16);
+
+    const chat = p.el.querySelector('.chat');
+    if (river.awaitingTap) {
+      river.packetPos = null;
+      p.canvas.riverState = null;
+      setS15StateUI(p);
+      ctx.font = `500 13px ${SANS}`;
+      ctx.fillStyle = 'rgba(87, 83, 76, .88)';
+      ctx.textAlign = 'center';
+      ctx.fillText('Tap the card on the reader to start', p.w / 2, mid);
+      if (!chat.children.length) {
+        const empty = document.createElement('li');
+        empty.className = 'chat-empty';
+        empty.textContent = 'Waiting for you to tap the card…';
+        chat.append(empty);
+      }
+      p.say('Drag or click the card onto the reader to watch all six messages.');
+      return;
+    }
+
+    if (!river.messages.length) conversation(p);
+    const { shown, q } = riverTiming(t);
+    chat.querySelector('.chat-empty')?.remove();
+
     // The packet in flight.
     const m = river.messages[shown - 1];
     if (m && m.from !== 'app') {
-      const q = reduced.matches ? 1 : Math.min(1, (t - (shown - 1) * each) / (each * .8));
       const x = m.from === 'phone' ? left + q * (right - left) : right - q * (right - left);
       const label = m.name;
       ctx.font = `700 12px ${SANS}`;
       const w = ctx.measureText(label).width + 24;
-      ctx.fillStyle = m.stolen ? RED : m.from === 'phone' ? INK : COPPER;
-      ctx.beginPath(); ctx.roundRect(x - w / 2, mid - 14, w, 28, 14); ctx.fill();
-      ctx.fillStyle = '#f5f2ec'; ctx.textAlign = 'center'; ctx.fillText(label, x, mid + 1);
-      if (m.stolen && q > .5) { ctx.fillStyle = RED; ctx.font = `700 12px ${SANS}`; ctx.fillText('WARNING: Data packet missing!', p.w / 2, mid + 40); }
+      river.packetPos = { x, y: mid, w, h: 28, stolen: !!m.stolen, q, index: shown - 1, label };
+      p.canvas.riverState = river.packetPos;
+      if (m.stolen && river.heistGrabbed) {
+        const age = Math.min(1, (now - river.grabAt) / 480);
+        if (age < 1) {
+          ctx.save();
+          ctx.strokeStyle = RED;
+          ctx.globalAlpha = (1 - age) * .72;
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.arc(x, mid, 10 + age * 26, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+        ctx.fillStyle = RED; ctx.font = `700 12px ${SANS}`; ctx.textAlign = 'center';
+        ctx.fillText('WARNING: Data packet missing!', p.w / 2, mid + 40);
+      } else {
+        ctx.fillStyle = m.stolen ? RED : m.from === 'phone' ? INK : COPPER;
+        ctx.beginPath(); ctx.roundRect(x - w / 2, mid - 14, w, 28, 14); ctx.fill();
+        ctx.fillStyle = '#f5f2ec'; ctx.textAlign = 'center'; ctx.fillText(label, x, mid + 1);
+        if (m.stolen && q > .5) { ctx.fillStyle = RED; ctx.font = `700 12px ${SANS}`; ctx.fillText('WARNING: Data packet missing!', p.w / 2, mid + 40); }
+      }
+    } else {
+      river.packetPos = null;
+      p.canvas.riverState = null;
     }
+
     // The phone's log, as a chat.
-    const chat = p.el.querySelector('.chat');
     while (chat.children.length < shown) {
       const msg = river.messages[chat.children.length], li = document.createElement('li');
       li.className = 'chat-' + msg.from + (msg.stolen ? ' is-stolen' : '');
@@ -1468,9 +1576,328 @@
       li.querySelector('button').addEventListener('click', () => li.classList.toggle('is-open'));
       chat.append(li);
     }
+    if (shown >= river.messages.length && river.settledReadout) p.say(river.settledReadout);
   }, { animate: true });
-  document.getElementById('s15-tap')?.addEventListener('click', () => conversation(s15));
-  document.getElementById('s15-steal')?.addEventListener('click', () => { river.steal = true; conversation(s15); });
+
+  if (s15) {
+    const tapBtn = s15.input('tap'), stealBtn = s15.input('steal');
+    const stage = s15.el.querySelector('#s15-tap-stage'), ring = s15.el.querySelector('.s15-reader-ring');
+    const randomInput = s15.input('random'), randomState = s15.input('random-state');
+    const chartEl = s15.el.querySelector('#s15-chart');
+    let cardAnim, ringAnim, randomFlip, heistFrame = 0, heistSvg = null, drag = null, suppressTapClick = false;
+    let heistStartScroll = 0;
+
+    function cancelHeist() {
+      cancelAnimationFrame(heistFrame);
+      heistFrame = 0;
+      heistSvg?.remove();
+      heistSvg = null;
+      river.heistActive = false;
+      river.heistGrabbed = false;
+      if (stealBtn) {
+        stealBtn.removeAttribute('data-heist');
+        stealBtn.style.removeProperty('--s15-jaw-angle');
+        stealBtn.style.removeProperty('--s15-jaw-scale');
+        stealBtn.style.removeProperty('--s15-jaw-aim');
+        stealBtn.style.removeProperty('transform');
+      }
+    }
+
+    function performTap({ fromDrag = false } = {}) {
+      cancelHeist();
+      cardAnim?.cancel();
+      ringAnim?.cancel();
+      const distance = stage ? Math.max(52, stage.clientWidth - tapBtn.offsetWidth - 16) : 90;
+      if (!fromDrag && !reduced.matches && !document.hidden && tapBtn?.animate) {
+        cardAnim = tapBtn.animate([
+          { transform: 'translateX(-6px) rotate(5deg)' },
+          { transform: `translateX(-${distance}px) rotate(0deg)`, offset: .30 },
+          { transform: `translateX(-${distance}px) rotate(0deg)`, offset: .56 },
+          { transform: 'translateX(0px) rotate(7deg)' },
+        ], { duration: 760, easing: 'cubic-bezier(.22, 1, .36, 1)' });
+      }
+      if (!reduced.matches && !document.hidden && ring?.animate) {
+        ringAnim = ring.animate([
+          { opacity: .35, transform: 'scale(.95)' },
+          { opacity: 1, transform: 'scale(1.24)', offset: .36 },
+          { opacity: .30, transform: 'scale(1)' },
+        ], { duration: 680, easing: 'cubic-bezier(.16, 1, .3, 1)' });
+      }
+      conversation(s15);
+    }
+
+    function launchHeistAnimation() {
+      cancelHeist();
+      if (reduced.matches || document.hidden || !stealBtn || !chartEl) return;
+      river.heistActive = true;
+      heistStartScroll = scrollY;
+      stealBtn.dataset.heist = 'stalking';
+
+      const ns = 'http://www.w3.org/2000/svg';
+      const svg = document.createElementNS(ns, 'svg');
+      svg.setAttribute('class', 's15-heist-svg');
+      svg.setAttribute('aria-hidden', 'true');
+      svg.innerHTML = `
+        <path class="s15-heist-arm" fill="none" stroke="#0d0d0c" stroke-width="3.6" stroke-linecap="round"/>
+        <g class="s15-heist-crumbs" opacity="0">
+          <text font-family="JetBrains Mono, ui-monospace, monospace" font-size="11" font-weight="700" fill="#b3261e">0</text>
+          <text font-family="JetBrains Mono, ui-monospace, monospace" font-size="11" font-weight="700" fill="#0d0d0c">1</text>
+          <text font-family="JetBrains Mono, ui-monospace, monospace" font-size="10" font-weight="700" fill="#b3261e">1</text>
+          <text font-family="JetBrains Mono, ui-monospace, monospace" font-size="11" font-weight="700" fill="#0d0d0c">0</text>
+          <text font-family="JetBrains Mono, ui-monospace, monospace" font-size="10" font-weight="700" fill="#b3261e">0</text>
+          <text font-family="JetBrains Mono, ui-monospace, monospace" font-size="11" font-weight="700" fill="#0d0d0c">1</text>
+        </g>
+        <g class="s15-heist-packet" opacity="0">
+          <rect x="-22" y="-14" width="44" height="28" rx="14" fill="#b3261e"/>
+          <text x="0" y="4" text-anchor="middle" font-family="Inter Tight, system-ui, sans-serif" font-size="12" font-weight="700" fill="#f5f2ec">UID</text>
+        </g>
+        <g class="s15-heist-hand">
+          <g class="s15-hand-open">
+            <path d="M-9 5 L-11 -6 C-11 -9 -7 -9 -7 -6 L-6 1 L-4 -10 C-4 -13 0 -13 0 -10 L0 0 L3 -9 C3 -12 7 -12 7 -9 L6 2 L10 -4 C11 -6 14 -5 13 -2 L8 10 C6 13 -5 13 -8 8 Z" fill="#f5f2ec" stroke="#0d0d0c" stroke-width="1.9" stroke-linejoin="round"/>
+          </g>
+          <g class="s15-hand-fist" opacity="0">
+            <rect x="-10" y="-6" width="20" height="15" rx="7" fill="#f5f2ec" stroke="#0d0d0c" stroke-width="1.9"/>
+            <path d="M-6 -6 V2 M-1 -6 V2 M4 -6 V2" stroke="#0d0d0c" stroke-width="1.5" stroke-linecap="round"/>
+          </g>
+        </g>`;
+      document.body.append(svg);
+      heistSvg = svg;
+
+      const armEl = svg.querySelector('.s15-heist-arm');
+      const handEl = svg.querySelector('.s15-heist-hand');
+      const openHand = svg.querySelector('.s15-hand-open');
+      const fistHand = svg.querySelector('.s15-hand-fist');
+      const packetEl = svg.querySelector('.s15-heist-packet');
+      const crumbsEl = svg.querySelector('.s15-heist-crumbs');
+      const crumbNodes = Array.from(crumbsEl.children);
+      const startTime = performance.now();
+      let grabStart = 0, grabOrigin = null, snapped = false, chomped = false;
+
+      function easeOutCubic(t) { return 1 - Math.pow(1 - clamp(t, 0, 1), 3); }
+      function easeInOut(t) { const x = clamp(t, 0, 1); return x * x * (3 - 2 * x); }
+
+      function step(now) {
+        if (!heistSvg?.isConnected || Math.abs(scrollY - heistStartScroll) > innerHeight * .38) {
+          cancelHeist();
+          return;
+        }
+        const jawEl = stealBtn.querySelector('.s15-jaw-wrap') || stealBtn;
+        const jRect = jawEl.getBoundingClientRect();
+        const cRect = chartEl.getBoundingClientRect();
+        const ax = jRect.left + jRect.width * .5;
+        const ay = jRect.top + jRect.height * .5;
+        const waitX = cRect.left + cRect.width * .52;
+        const waitY = cRect.top + cRect.height * .78;
+        const elapsed = now - startTime;
+
+        const pkt = river.packetPos;
+        if (!grabStart && pkt?.stolen && pkt.q >= .30) {
+          grabStart = now;
+          grabOrigin = { x: cRect.left + pkt.x, y: cRect.top + pkt.y };
+        }
+
+        let hx = ax, hy = ay, showArm = true, showPacket = false, pScale = 1, handRot = 0;
+
+        if (!grabStart) {
+          const outT = easeOutCubic(elapsed / 900);
+          const bob = Math.sin(elapsed * .0065) * 4 * outT;
+          hx = ax + (waitX - ax) * outT;
+          hy = ay + (waitY - ay) * outT + bob;
+          handRot = Math.atan2(hy - ay, hx - ax) * 180 / Math.PI + 90;
+          stealBtn.style.setProperty('--s15-jaw-angle', '6deg');
+          stealBtn.style.setProperty('--s15-jaw-scale', '1');
+        } else {
+          const gElapsed = now - grabStart;
+          const livePktX = pkt?.stolen ? cRect.left + pkt.x : grabOrigin.x;
+          const livePktY = pkt?.stolen ? cRect.top + pkt.y : grabOrigin.y;
+          if (gElapsed < 170) {
+            const p = easeOutCubic(gElapsed / 170);
+            hx = waitX + (livePktX - waitX) * p;
+            hy = waitY + (livePktY - waitY) * p;
+            handRot = Math.atan2(hy - ay, hx - ax) * 180 / Math.PI + 90;
+            if (gElapsed >= 100 && !snapped) {
+              snapped = true;
+              river.heistGrabbed = true;
+              river.grabAt = now;
+              openHand.setAttribute('opacity', '0');
+              fistHand.setAttribute('opacity', '1');
+              grabOrigin = { x: livePktX, y: livePktY };
+            }
+            if (snapped) showPacket = true;
+          } else if (gElapsed < 1020) {
+            if (!snapped) {
+              snapped = true;
+              river.heistGrabbed = true;
+              river.grabAt = now;
+              openHand.setAttribute('opacity', '0');
+              fistHand.setAttribute('opacity', '1');
+            }
+            const retT = easeInOut((gElapsed - 170) / 850);
+            const arc = Math.sin(Math.PI * retT) * -36;
+            hx = grabOrigin.x + (ax - grabOrigin.x) * retT;
+            hy = grabOrigin.y + (ay - grabOrigin.y) * retT + arc;
+            handRot = Math.atan2(ay - grabOrigin.y, ax - grabOrigin.x) * 180 / Math.PI + 90;
+            showPacket = true;
+            pScale = retT > .78 ? 1 - easeInOut((retT - .78) / .22) * .42 : 1;
+            const mouthOpen = easeOutCubic((retT - .38) / .52);
+            if (mouthOpen > 0) {
+              const aim = clamp(Math.atan2(grabOrigin.y - ay, grabOrigin.x - ax) * 180 / Math.PI, -72, 24);
+              stealBtn.dataset.heist = 'open';
+              stealBtn.style.setProperty('--s15-jaw-angle', `${(mouthOpen * 52).toFixed(1)}deg`);
+              stealBtn.style.setProperty('--s15-jaw-scale', `${(1 + mouthOpen * .55).toFixed(3)}`);
+              stealBtn.style.setProperty('--s15-jaw-aim', `${(aim * mouthOpen).toFixed(1)}deg`);
+            }
+          } else if (gElapsed < 1640) {
+            const chT = gElapsed - 1020;
+            showArm = chT < 160;
+            hx = ax; hy = ay;
+            const shrinkT = easeInOut(chT / 120);
+            showPacket = chT < 120;
+            pScale = Math.max(0, .58 * (1 - shrinkT));
+            let angle = 0;
+            if (chT < 120) angle = 52 * (1 - easeInOut(chT / 120));
+            else if (chT < 260) angle = Math.sin(((chT - 120) / 140) * Math.PI) * 24;
+            else if (chT < 400) angle = Math.sin(((chT - 260) / 140) * Math.PI) * 14;
+            if (!chomped && chT >= 100) {
+              chomped = true;
+              stealBtn.dataset.heist = 'chomp';
+              stealBtn.animate?.([
+                { transform: 'scale(1)' },
+                { transform: 'scale(1.06, .93)', offset: .32 },
+                { transform: 'scale(.98, 1.03)', offset: .68 },
+                { transform: 'scale(1)' },
+              ], { duration: 340, easing: 'cubic-bezier(.16, 1, .3, 1)' });
+            }
+            stealBtn.style.setProperty('--s15-jaw-angle', `${angle.toFixed(1)}deg`);
+            stealBtn.style.setProperty('--s15-jaw-scale', `${(1.55 - easeInOut(chT / 440) * .55).toFixed(3)}`);
+
+            const burst = clamp((chT - 80) / 420, 0, 1);
+            if (burst > 0 && burst < 1) {
+              crumbsEl.setAttribute('opacity', (1 - burst).toFixed(2));
+              crumbNodes.forEach((node, idx) => {
+                const a = (-0.75 + idx * 0.42);
+                const d = (12 + (idx % 2) * 8) * easeOutCubic(burst);
+                node.setAttribute('x', (ax + Math.cos(a) * d).toFixed(1));
+                node.setAttribute('y', (ay + Math.sin(a) * d - burst * 6).toFixed(1));
+              });
+            } else {
+              crumbsEl.setAttribute('opacity', '0');
+            }
+          } else {
+            cancelHeist();
+            return;
+          }
+        }
+
+        if (showArm) {
+          const mx = (ax + hx) * .5 + 22;
+          const my = (ay + hy) * .5 + 48;
+          armEl.setAttribute('d', `M ${ax.toFixed(1)} ${ay.toFixed(1)} Q ${mx.toFixed(1)} ${my.toFixed(1)} ${hx.toFixed(1)} ${hy.toFixed(1)}`);
+          armEl.setAttribute('opacity', '1');
+          handEl.setAttribute('opacity', '1');
+          handEl.setAttribute('transform', `translate(${hx.toFixed(1)} ${hy.toFixed(1)}) rotate(${(clamp(handRot, -45, 45)).toFixed(1)})`);
+        } else {
+          armEl.setAttribute('opacity', '0');
+          handEl.setAttribute('opacity', '0');
+        }
+
+        if (showPacket) {
+          packetEl.setAttribute('opacity', '1');
+          packetEl.setAttribute('transform', `translate(${hx.toFixed(1)} ${hy.toFixed(1)}) scale(${pScale.toFixed(3)})`);
+        } else {
+          packetEl.setAttribute('opacity', '0');
+        }
+
+        heistFrame = requestAnimationFrame(step);
+      }
+
+      heistFrame = requestAnimationFrame(step);
+    }
+
+    if (tapBtn && stage) {
+      tapBtn.addEventListener('pointerdown', event => {
+        if (!event.isPrimary || event.button !== 0) return;
+        const maxTravel = Math.max(52, stage.clientWidth - tapBtn.offsetWidth - 14);
+        drag = { id: event.pointerId, startX: event.clientX, maxTravel, dx: 0, tapped: false };
+        tapBtn.classList.add('is-dragging');
+        tapBtn.setPointerCapture?.(event.pointerId);
+      });
+
+      tapBtn.addEventListener('pointermove', event => {
+        if (event.pointerId !== drag?.id || !(event.buttons & 1)) return;
+        const dx = clamp(drag.startX - event.clientX, 0, drag.maxTravel);
+        drag.dx = dx;
+        const prox = dx / drag.maxTravel;
+        stage.style.setProperty('--s15-drag-x', `${(-dx).toFixed(1)}px`);
+        stage.style.setProperty('--s15-prox', prox.toFixed(3));
+        if (prox >= .76 && !drag.tapped) {
+          drag.tapped = true;
+          suppressTapClick = true;
+          performTap({ fromDrag: true });
+        }
+      });
+
+      for (const name of ['pointerup', 'pointercancel']) {
+        tapBtn.addEventListener(name, event => {
+          if (event.pointerId !== drag?.id) return;
+          const ended = drag;
+          drag = null;
+          tapBtn.classList.remove('is-dragging');
+          stage.style.removeProperty('--s15-drag-x');
+          stage.style.removeProperty('--s15-prox');
+          if (!ended.tapped) {
+            if (ended.dx / ended.maxTravel >= .52) {
+              suppressTapClick = true;
+              performTap({ fromDrag: true });
+            } else if (ended.dx < 8 && event.type === 'pointerup') {
+              suppressTapClick = true;
+              performTap({ fromDrag: false });
+            }
+          }
+          setTimeout(() => { suppressTapClick = false; }, 0);
+        });
+      }
+
+      tapBtn.addEventListener('click', () => {
+        if (suppressTapClick) { suppressTapClick = false; return; }
+        performTap({ fromDrag: false });
+      });
+    }
+
+    chartEl?.addEventListener('click', () => {
+      if (river.awaitingTap) performTap({ fromDrag: false });
+    });
+
+    randomInput?.addEventListener('change', () => {
+      if (!randomState) return;
+      const on = randomInput.checked;
+      randomState.textContent = on ? 'On' : 'Off';
+      randomState.toggleAttribute('data-off', !on);
+      if (!reduced.matches && !document.hidden) {
+        randomFlip?.cancel();
+        const dir = on ? -1 : 1;
+        randomFlip = randomState.animate([
+          { opacity: 0, transform: `perspective(220px) translateY(${dir * 6}px) rotateX(${-dir * 48}deg)` },
+          { opacity: 1, transform: 'none' },
+        ], { duration: 240, easing: 'cubic-bezier(.16, 1, .3, 1)' });
+      }
+    });
+
+    stealBtn?.addEventListener('click', () => {
+      river.steal = true;
+      conversation(s15, { fromSteal: true });
+      launchHeistAnimation();
+    });
+
+    for (const ev of ['resize', 'hashchange', 'pagehide']) addEventListener(ev, cancelHeist);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) cancelHeist(); });
+    reduced.addEventListener('change', () => {
+      if (reduced.matches) {
+        cancelHeist();
+        if (river.awaitingTap) conversation(s15);
+      }
+    });
+  }
 
   // ---------- 16. Two cards in one field ----------
   let s16seed = 4;
