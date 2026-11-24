@@ -131,13 +131,26 @@
         <p class="plate-num">9</p>
         <h3 id="s9-title">Why metal fights back</h3>
         <p>Metal makes its own currents that push against the field, and it knocks the coil out of tune.</p>
-        <div class="plate-controls">
-          <label>Metal behind the card <output data-for="s9-gap"></output><input id="s9-gap" type="range" min="1" max="61" value="61"></label>
+        <div class="s9-readout">
+          <div class="s9-status">
+            <strong id="s9-distance">No metal</strong>
+            <span id="s9-chip" role="status">Chip awake</span>
+          </div>
+          <dl class="s9-metrics">
+            <div><dt>Field at the card</dt><dd id="s9-strength">—</dd></div>
+            <div><dt>Coil tuning</dt><dd id="s9-tuning">—</dd></div>
+          </dl>
         </div>
-        <p class="plate-readout" aria-live="polite"></p>
         <p class="plate-real">Real name: eddy currents and detuning. Modelled as a perfect conductor: a mirror image of the reader’s coil, with the current reversed.</p>
       </div>
-      <canvas class="plate-canvas" role="img" aria-label="Field lines bending away from a metal plate"></canvas>
+      <div class="s9-field" id="s9-field">
+        <canvas class="plate-canvas" id="s9-chart" role="img" aria-label="Magnetic field lines around the reader’s coil and card"></canvas>
+        <button class="s9-metal-action" id="s9-metal-action" type="button">Bring metal closer</button>
+        <div class="s9-metal" id="s9-metal" role="slider" tabindex="0" aria-label="Metal distance behind the card" aria-describedby="s9-metal-help" aria-orientation="vertical" aria-valuemin="1" aria-valuemax="61" aria-valuenow="61" aria-valuetext="No metal">
+          <span class="s9-metal-surface" aria-hidden="true"></span>
+        </div>
+        <span id="s9-metal-help" hidden>Drag the plate or use the arrow keys to move it. Home brings it closest and End moves it away.</span>
+      </div>
     </section>
 
     <section class="plate" id="s10" aria-labelledby="s10-title">

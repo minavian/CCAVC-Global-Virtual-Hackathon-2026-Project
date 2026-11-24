@@ -247,43 +247,102 @@
       return pts;
     });
   }
-  plate('s9', p => {
-    const v = +p.input('gap').value, gap = v > 60 ? null : v / 1000, d = .02;
-    p.out('gap', gap === null ? 'none' : (gap * 1000).toFixed(0) + ' mm away');
-    const R = physics.READERS.pad, a = R.radius;
-    const coils = [[a, 1, 0]];
-    if (gap !== null) coils.push([a, -1, 2 * (d + gap)]);
-    const lines = traceField(coils, [.3, .5, .68, .82, .93].map(f => [f * a, 0]), (rho, z) => Math.abs(rho) < .09 && z > -.03 && z < .1 && (gap === null || z < d + gap));
-    const ctx = fit(p), k = Math.min(p.w / .2, p.h / .15), cx = p.w / 2, cy = p.h - 34;
-    const S = (rho, z) => [cx + rho * k, cy - z * k];
+  function setupMetal(figure) {
+    const metal = document.getElementById('s9-metal'), action = document.getElementById('s9-metal-action');
+    const distance = document.getElementById('s9-distance'), chip = document.getElementById('s9-chip');
+    const strength = document.getElementById('s9-strength'), tuning = document.getElementById('s9-tuning');
+    const park = 61, restY = 68, d = .02, a = physics.READERS.pad.radius;
     const card = physics.TAGS.card.radius;
-    for (const pts of lines) {
-      let through = false;
-      for (let i = 1; i < pts.length; i++) if ((pts[i - 1][1] - d) * (pts[i][1] - d) <= 0 && Math.abs(pts[i][0]) < card) through = true;
-      for (const side of [1, -1]) {
-        ctx.strokeStyle = through ? COPPER : FAINT; ctx.lineWidth = 1.4; ctx.beginPath();
-        pts.forEach(([r, z], i) => { const [x, y] = S(side * r, z); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
-        ctx.stroke();
+    let value = park, model, scale, coilY, metalY = restY, pointer = null, grabOffset;
+    const heightAt = mm => coilY - (d + mm / 1000) * scale;
+
+    function positionMetal(y = value === park ? restY : heightAt(value)) {
+      metalY = y;
+      metal.style.setProperty('--s9-metal-y', `${y}px`);
+    }
+
+    function setGap(mm) {
+      if (mm === value) return;
+      value = mm;
+      const label = mm === park ? 'No metal' : `Metal ${mm} mm behind the card`;
+      metal.setAttribute('aria-valuenow', mm);
+      metal.setAttribute('aria-valuetext', label);
+      distance.textContent = label;
+      action.textContent = mm === park ? 'Bring metal closer' : 'Move metal away';
+      figure.classList.toggle('has-metal', mm !== park);
+      scene.dirty = true;
+    }
+
+    const scene = plate('s9', p => {
+      if (model?.value !== value) {
+        const gap = value === park ? null : value / 1000;
+        const coils = [[a, 1, 0]];
+        if (gap !== null) coils.push([a, -1, 2 * (d + gap)]);
+        const paths = traceField(coils, [.3, .5, .68, .82, .93].map(f => [f * a, 0]),
+          (rho, z) => Math.abs(rho) < .09 && z > -.03 && z < .1 && (gap === null || z < d + gap));
+        const lines = paths.map(points => {
+          const through = points.some(([rho, z], i) => i > 0 && (points[i - 1][1] - d) * (z - d) <= 0 && Math.abs(rho) < card);
+          return { points, color: through ? COPPER : FAINT };
+        });
+        model = { value, lines };
+        const s = physics.solve({ tag: 'card', reader: 'pad', distance: d, metal: gap });
+        strength.textContent = `${s.field.toFixed(2)} A/m`;
+        tuning.textContent = si(s.resonance, 'Hz', 4);
+        const state = s.awake ? 'Chip awake' : 'Chip asleep';
+        if (chip.textContent !== state) chip.textContent = state;
+        chip.dataset.awake = s.awake;
       }
+
+      const ctx = fit(p), k = Math.min(p.w / .2, p.h / .15);
+      coilY = p.h - 34;
+      // Leave room above the first field line for the parked metal and its cue.
+      scale = (coilY - 88) / .1;
+      const X = rho => p.w / 2 + rho * k, Y = z => coilY - z * scale;
+      const { lines } = model;
+      p.canvas.metalField = { lines, X, Y };
+      for (const { points, color } of lines) {
+        for (const side of [-1, 1]) curve(ctx, points, rho => X(side * rho), Y, color, 1.4);
+      }
+
+      for (const side of [-1, 1]) dot(ctx, X(side * a), Y(0), INK, 4);
+      ctx.fillStyle = 'rgba(184, 101, 42, .25)'; ctx.fillRect(X(-card), Y(d) - 3, X(card) - X(-card), 6);
+      ctx.fillStyle = INK; ctx.font = `600 11px ${SANS}`; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+      ctx.fillText('Card', X(card) + 6, Y(d) + 4);
+      ctx.textBaseline = 'top'; ctx.fillText('Reader’s coil', X(a) + 8, Y(0) + 4);
+      metal.style.setProperty('--s9-metal-width', `${.16 * k}px`);
+      if (pointer === null) positionMetal();
+    });
+
+    action.addEventListener('click', () => setGap(value === park ? 1 : park));
+    const steps = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 10, PageDown: -10, Home: 1 - park, End: park - 1 };
+    metal.addEventListener('keydown', event => {
+      if (!Object.hasOwn(steps, event.key)) return;
+      event.preventDefault();
+      setGap(clamp(value + steps[event.key], 1, park));
+    });
+    metal.addEventListener('pointerdown', event => {
+      if (!event.isPrimary || event.button !== 0 || !scale) return;
+      metal.setPointerCapture(event.pointerId);
+      pointer = event.pointerId;
+      grabOffset = event.clientY - figure.getBoundingClientRect().top - metalY;
+    });
+    metal.addEventListener('pointermove', event => {
+      if (event.pointerId !== pointer) return;
+      const y = clamp(event.clientY - figure.getBoundingClientRect().top - grabOffset, restY, heightAt(1));
+      const mm = y < heightAt(60) ? park : clamp(Math.round(((coilY - y) / scale - d) * 1000), 1, 60);
+      setGap(mm);
+      positionMetal(mm === park ? y : heightAt(mm));
+    });
+    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+      metal.addEventListener(type, event => {
+        if (event.pointerId !== pointer) return;
+        pointer = null;
+        positionMetal();
+      });
     }
-    // The reader's coil, the card, the plate.
-    ctx.fillStyle = INK;
-    for (const side of [1, -1]) { const [x, y] = S(side * a, 0); dot(ctx, x, y, INK, 4); }
-    const [c0x, c0y] = S(-card, d), [c1x] = S(card, d);
-    ctx.fillStyle = 'rgba(184, 101, 42, .25)'; ctx.fillRect(c0x, c0y - 3, c1x - c0x, 6);
-    ctx.fillStyle = INK; ctx.font = `600 11px ${SANS}`; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
-    ctx.fillText('Card', c1x + 6, c0y + 4);
-    const [rx, ry] = S(a, 0); ctx.textBaseline = 'top'; ctx.fillText('Reader’s coil', rx + 8, ry + 4);
-    if (gap !== null) {
-      const [m0x, my] = S(-.08, d + gap), [m1x] = S(.08, d + gap);
-      ctx.fillStyle = '#9ea3a9'; ctx.fillRect(m0x, my - 5, m1x - m0x, 5);
-      ctx.fillStyle = INK; ctx.textBaseline = 'bottom'; ctx.fillText('Metal', m0x, my - 8);
-    }
-    const free = physics.solve({ tag: 'card', reader: 'pad', distance: d });
-    const s = physics.solve({ tag: 'card', reader: 'pad', distance: d, metal: gap });
-    p.say(gap === null ? `No metal: ${free.field.toFixed(2)} A/m reaches the card, tuned to ${si(free.resonance, 'Hz', 4)}. Awake.`
-      : `Metal ${(gap * 1000).toFixed(0)} mm behind: only ${s.field.toFixed(2)} A/m reaches the card, and its tuning moves to ${si(s.resonance, 'Hz', 4)}. ${s.awake ? 'Still awake.' : 'The chip stays asleep.'}`);
-  });
+  }
+  const metalFigure = document.getElementById('s9-field');
+  if (metalFigure) setupMetal(metalFigure);
 
   // ---------- 10. Getting through the pauses ----------
   plate('s10', p => {

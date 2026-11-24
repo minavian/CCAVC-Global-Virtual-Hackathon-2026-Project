@@ -680,6 +680,159 @@ function watchTuning(previous, plate) {
   for (const scene of [previous, plate]) copySize.observe(scene.querySelector('.plate-words'));
 }
 
+function watchMetal(previous, plate) {
+  const chapter = plate.closest('.deep');
+  const source = previous.querySelector('#s8-chart'), target = plate.querySelector('#s9-chart');
+  const copy = plate.querySelector('.plate-words'), figure = target.parentElement;
+  const cue = figure.querySelector('#s9-metal-action');
+  const plot = document.createElement('canvas');
+  plot.className = 's9-plot-copy';
+  plot.setAttribute('aria-hidden', 'true');
+  const ctx = plot.getContext('2d');
+  let layout, lastTop, armed;
+
+  function measure(top, height) {
+    const from = bounds(source, top), to = bounds(target, top);
+    const start = from.y - height * .06;
+    const curled = start + height * .19;
+    const end = Math.max(curled + height * .32, to.y + to.h - height * .82);
+    const unfold = Math.max(curled + height * .07, end - height * .21);
+    const reveal = Math.max(start, bounds(copy, top).y - height * .94);
+    return { from, to, start, curled, unfold, end, reveal, height, width: innerWidth,
+      stacked: matchMedia('(max-width: 860px)').matches };
+  }
+
+  function settle() {
+    if (!plot.isConnected) return;
+    plot.remove();
+    source.style.removeProperty('--s9-source-opacity');
+    target.style.removeProperty('opacity');
+    copy.style.removeProperty('opacity');
+    copy.style.removeProperty('transform');
+    cue.style.removeProperty('--s9-cue-drop');
+  }
+
+  function sample(points, index) {
+    const i = Math.floor(index), [x, y] = points[i], next = points[i + 1];
+    return next ? [mix(x, next[0], index - i), mix(y, next[1], index - i)] : [x, y];
+  }
+
+  function stroke(pointAt, color, alpha, width) {
+    if (alpha <= 0) return;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    for (let i = 0; i <= 64; i++) {
+      const [x, y] = pointAt(i / 64);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  function paint(top) {
+    const { from, to, width, height, stacked, start, curled, unfold, end, reveal } = layout;
+    const { box, points, X, Y, color } = source.resonanceCurve;
+    const cut = (points.length - 1) / 2;
+    const curl = ease(start + height * .025, curled, top), flight = ease(curled, unfold, top);
+    const bloom = stage(unfold, end, top);
+    const leave = ease(start, start + height * .06, top), arrive = ease(.76, 1, bloom);
+    const words = ease(reveal, reveal + height * .16, top);
+    source.style.setProperty('--s9-source-opacity', 1 - leave);
+    target.style.opacity = arrive;
+    plot.style.opacity = leave * (1 - arrive);
+    copy.style.opacity = mix(.87, 1, words);
+    copy.style.transform = stacked ? `translateY(${7 * (1 - words)}px)` : `translateX(${18 * (1 - words)}px)`;
+    cue.style.setProperty('--s9-cue-drop', `${Math.sin(Math.PI * ease(.72, 1, bloom)) * 4}px`);
+    ctx.clearRect(0, 0, width, height);
+
+    // On narrow screens the loop stays beside the copy until it reaches the illustration.
+    const margin = width - to.x - to.w;
+    const centerX = stacked ? width - margin / 2 : to.x + to.w / 2;
+    const centerY = stacked ? mix(height * .51, to.y + to.h * .14 - top, flight) : height * mix(.48, .57, flight);
+    const radius = stacked ? margin * .37 : Math.min(23, to.w * .045);
+    const angle = -Math.PI / 2 + flight * .6;
+    const loop = (side, u) => {
+      const turn = angle + side * Math.PI * u;
+      return [centerX + radius * Math.cos(turn), centerY + radius * Math.sin(turn)];
+    };
+
+    if (!bloom) {
+      const splitX = box.x + box.w / 2;
+      const gap = 14 * ease(0, .25, curl) * (1 - ease(.35, .9, curl));
+      for (const side of [-1, 1]) {
+        stroke(u => {
+          const [frequency, volts] = sample(points, cut + side * cut * u);
+          const x = u === 0 ? splitX : X(frequency);
+          const [lx, ly] = loop(side, u);
+          return [mix(from.x + x + side * gap * (1 - u / 2), lx, curl), mix(from.y + Y(volts) - top, ly, curl)];
+        }, color, 1, mix(2.2, 1.8, curl));
+      }
+      return;
+    }
+
+    const field = target.metalField;
+    const last = field.lines.length - 1;
+    for (let i = last; i >= 0; i--) {
+      const line = field.lines[i];
+      const delay = (last - i) * .105;
+      const growth = ease(delay, .91, bloom);
+      const visibility = i === last ? 1 : ease(delay, delay + .14, bloom);
+      if (!visibility) continue;
+      for (const side of [-1, 1]) {
+        const pointAt = u => {
+          const [rho, z] = sample(line.points, (line.points.length - 1) * u);
+          const [lx, ly] = loop(side, u);
+          return [mix(lx, to.x + field.X(side * rho), growth), mix(ly, to.y + field.Y(z) - top, growth)];
+        };
+        const copper = i === last ? 1 - ease(.15, .75, growth) : 0;
+        stroke(pointAt, color, copper, mix(1.8, 1.4, growth));
+        stroke(pointAt, line.color, visibility * (1 - copper), 1.4);
+      }
+    }
+  }
+
+  watchScrollMotion((top, height, needsMeasure) => {
+    if (reducedMotion.matches || document.hidden) return settle();
+    if (needsMeasure || !layout) {
+      settle();
+      layout = measure(top, height);
+      armed = top <= layout.start;
+      lastTop = top;
+    }
+    if (Math.abs(top - lastTop) > height * .55) armed = false;
+    lastTop = top;
+    if (top <= layout.start) {
+      armed = true;
+      return settle();
+    }
+    if (!armed || top >= layout.end || !source.resonanceCurve || !target.metalField || chapter.querySelector('.s8-plot-copy')) return settle();
+
+    if (!plot.isConnected) {
+      const dpr = Math.min(devicePixelRatio || 1, 2);
+      plot.width = Math.round(layout.width * dpr);
+      plot.height = Math.round(height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      chapter.append(plot);
+    }
+    paint(top);
+  });
+
+  function interrupt() {
+    if (plot.isConnected) armed = false;
+    settle();
+  }
+  for (const controls of [previous.querySelector('.plate-controls'), figure]) {
+    for (const event of ['focusin', 'pointerdown', 'input']) controls.addEventListener(event, interrupt);
+  }
+  const contentSize = new ResizeObserver(() => {
+    layout = null;
+    scheduleMotion();
+  });
+  for (const node of [source, figure, copy]) contentSize.observe(node);
+}
+
 const opener = document.getElementById('deep-title');
 const partOne = document.getElementById('part-one');
 if (opener && partOne) watchPartOne(opener, partOne);
@@ -693,3 +846,5 @@ if (closer && typeof closer.animate === 'function') {
 }
 const tuning = document.getElementById('s8');
 if (flipping && tuning && typeof tuning.animate === 'function') watchTuning(flipping, tuning);
+const metal = document.getElementById('s9');
+if (tuning && metal) watchMetal(tuning, metal);

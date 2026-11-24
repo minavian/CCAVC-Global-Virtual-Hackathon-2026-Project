@@ -249,7 +249,8 @@ input.s7-track-copy {
   display: inline-block;
   transform-origin: center 66%;
 }
-#s7-chart, #s8-chart { opacity: var(--s8-plot-opacity, 1); }
+#s7-chart { opacity: var(--s8-plot-opacity, 1); }
+#s8-chart { opacity: calc(var(--s8-plot-opacity, 1) * var(--s9-source-opacity, 1)); }
 .s8-plot-copy, .s8-pluck {
   position: fixed;
   inset-block-start: 0;
@@ -331,6 +332,98 @@ input.s7-track-copy {
   block-size: 7px;
   background: linear-gradient(#ae967c, #765e45);
   clip-path: polygon(0 0, 88% 0, 100% 40%, 83% 100%, 67% 100%, 60% 67%, 43% 67%, 36% 100%, 0 100%);
+}
+
+.s9-readout {
+  max-inline-size: 27rem;
+  margin-block: 6px 2px;
+  border-block: 1px solid rgba(13, 13, 12, .16);
+}
+.s9-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding-block: 10px;
+  border-bottom: 1px solid rgba(13, 13, 12, .1);
+  font-size: .875rem;
+  font-variant-numeric: tabular-nums;
+}
+#s9-chip { color: var(--green); font-weight: 600; }
+#s9-chip[data-awake="false"] { color: var(--red); }
+.s9-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 0;
+  padding-block: 10px 12px;
+}
+.s9-metrics dt { color: var(--muted); font-size: .8125rem; }
+.s9-metrics dd {
+  margin: 3px 0 0;
+  font-size: clamp(1.25rem, 2.1vw, 1.625rem);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.s9-field { position: relative; }
+.s9-metal-action, .s9-metal {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 50%;
+  min-block-size: 44px;
+}
+.s9-metal-action {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: 650 .875rem "Inter Tight", system-ui, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+  transform: translateX(-50%);
+}
+.s9-metal-action::after {
+  content: "";
+  inline-size: 7px;
+  block-size: 7px;
+  border-block-end: 1px solid;
+  border-inline-end: 1px solid;
+  transform: translateY(calc(-2px + var(--s9-cue-drop, 0px))) rotate(45deg);
+}
+.s9-field.has-metal .s9-metal-action::after { transform: translateY(2px) rotate(225deg); }
+.s9-metal-action:hover, .s9-metal-action:focus-visible { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.s9-metal {
+  inline-size: var(--s9-metal-width, 80%);
+  transform: translate(-50%, calc(var(--s9-metal-y, 68px) - 22px));
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.s9-metal:active { cursor: grabbing; }
+.s9-metal-surface {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: calc(50% + 2px);
+  block-size: 15px;
+  border: 1px solid #8b847a;
+  border-radius: 2px;
+  background: linear-gradient(174deg, #e9e6df, #c4beb3 52%, #a29b90);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .64), 0 2px 3px rgba(13, 13, 12, .12);
+}
+.s9-metal:focus-visible, .s9-metal-action:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.s9-plot-copy {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  inline-size: 100%;
+  block-size: 100%;
+  pointer-events: none;
 }
 
 .plate-river { display: grid; gap: 14px; }
