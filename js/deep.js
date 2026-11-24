@@ -903,7 +903,7 @@
   // ---------- 14. Catching mistakes ----------
   const firstSignalBit = 9, signalBitCount = 9;
   const I_SPUR = [1, 1, -1, -1];
-  let s14seed = 1, checkedSignal, baseCapture = null, revealMode = 'none', prevRowCount = 0;
+  let s14seed = 1, checkedSignal, baseCapture = null, revealMode = 'none', prevSnapshot = null;
   const jammedCells = new Set();
   let replyAnimations = [];
 
@@ -1055,22 +1055,53 @@
     p.canvas.errorTrace = { box: { x: 0, y: 0, w, h }, X, Y, points, bits, jammed: [...jammedCells], color: COPPER };
   }
 
-  function animateS14Reveal(p, replies) {
-    const rows = Array.from(replies.children);
-    if (reduced.matches || document.hidden) {
-      cancelReplyReveal();
-      prevRowCount = rows.length;
-      revealMode = 'none';
-      return;
-    }
+  function snapshotS14(replies, readout, tone, checks, jamCount) {
+    const rows = Array.from(replies.children).map(row => {
+      const spans = Array.from(row.querySelectorAll('.s14-bit'));
+      const bitsText = spans.length ? spans.map(s => s.textContent).join('') : (row.querySelector('.s14-bits')?.textContent || '');
+      const wrongKey = spans.map((s, k) => (s.hasAttribute('data-wrong') ? String(k) : '')).filter(Boolean).join(',');
+      return {
+        exchange: row.dataset.exchange || '',
+        badge: row.querySelector('.s14-prompt span')?.textContent || '',
+        bitsText,
+        wrongKey,
+      };
+    });
+    return { readout, tone, checks, jamCount, rows };
+  }
+
+  function animateRowDrop(row, delay, blurPx = 5.5, offsetPx = 10, duration = 380) {
+    if (!row?.animate) return;
+    const easing = 'cubic-bezier(.16, 1, .3, 1)';
+    replyAnimations.push(row.animate([
+      { opacity: 0, transform: `translateY(-${offsetPx}px)`, filter: `blur(${blurPx}px)`, clipPath: 'inset(0 0 100% 0)' },
+      { opacity: .82, transform: 'translateY(-1.5px)', filter: `blur(${(blurPx * .32).toFixed(1)}px)`, clipPath: 'inset(0 0 16% 0)', offset: .42 },
+      { opacity: 1, transform: 'none', filter: 'blur(0px)', clipPath: 'inset(0 0 0% 0)' },
+    ], { duration, delay, easing, fill: 'backwards' }));
+  }
+
+  function animateS14Reveal(p, replies, readoutText, tone, checks, jamCount) {
+    const next = snapshotS14(replies, readoutText, tone, checks, jamCount);
+    const prev = prevSnapshot;
+    prevSnapshot = next;
     const mode = revealMode;
     revealMode = 'none';
-    if (mode === 'tap') {
+    if (reduced.matches || document.hidden || mode === 'none') {
       cancelReplyReveal();
-      const easing = 'cubic-bezier(.16, 1, .3, 1)';
+      return;
+    }
+
+    cancelReplyReveal();
+    const easing = 'cubic-bezier(.16, 1, .3, 1)';
+    const tapWave = p.el.querySelector('.s14-tap-wave');
+    const tapBadge = p.input('tap-status');
+    const checksState = p.input('checks-state');
+    const disturbance = p.input('disturbance');
+    const readout = p.el.querySelector('.plate-readout');
+    const rows = Array.from(replies.children);
+
+    if (mode === 'tap') {
       const cardWrap = p.el.querySelector('.s14-card-wrap');
-      const tapWave = p.el.querySelector('.s14-tap-wave');
-      const tapBadge = p.input('tap-status');
       if (cardWrap?.animate) {
         replyAnimations.push(cardWrap.animate([
           { transform: 'translateX(-8px) rotate(4deg)' },
@@ -1091,41 +1122,98 @@
           { opacity: .15, transform: 'scale(.72)', filter: 'blur(3px)' },
           { opacity: 1, transform: 'scale(1.06)', filter: 'blur(0px)', offset: .62 },
           { opacity: 1, transform: 'none', filter: 'blur(0px)' },
-        ], { duration: 380, delay: 260, easing, fill: 'both' }));
+        ], { duration: 380, delay: 260, easing, fill: 'backwards' }));
       }
       if (p.canvas.animate) {
         replyAnimations.push(p.canvas.animate([
           { opacity: .28, filter: 'blur(5px)', clipPath: 'inset(0 0 100% 0)', transform: 'translateY(-6px)' },
           { opacity: 1, filter: 'blur(0px)', clipPath: 'inset(0 0 0% 0)', transform: 'none' },
-        ], { duration: 420, delay: 240, easing, fill: 'both' }));
+        ], { duration: 420, delay: 240, easing, fill: 'backwards' }));
       }
-      rows.forEach((row, i) => {
-        if (!row.animate) return;
-        replyAnimations.push(row.animate([
-          { opacity: 0, transform: 'translateY(-12px)', filter: 'blur(7px)', clipPath: 'inset(0 0 100% 0)' },
-          { opacity: .78, transform: 'translateY(-2px)', filter: 'blur(2.5px)', clipPath: 'inset(0 0 18% 0)', offset: .42 },
-          { opacity: 1, transform: 'none', filter: 'blur(0px)', clipPath: 'inset(0 0 0% 0)' },
-        ], { duration: 520, delay: 340 + i * 130, easing, fill: 'both' }));
-      });
-      const readout = p.el.querySelector('.plate-readout');
+      rows.forEach((row, i) => animateRowDrop(row, 340 + i * 130, 7, 12, 520));
       if (readout?.animate) {
         replyAnimations.push(readout.animate([
           { opacity: .35, filter: 'blur(4px)', transform: 'translateY(-6px)' },
           { opacity: 1, filter: 'blur(0px)', transform: 'none' },
-        ], { duration: 420, delay: 360, easing, fill: 'both' }));
+        ], { duration: 420, delay: 360, easing, fill: 'backwards' }));
       }
-    } else if (mode === 'diff' && rows.length > prevRowCount) {
-      cancelReplyReveal();
-      const easing = 'cubic-bezier(.16, 1, .3, 1)';
-      rows.slice(prevRowCount).forEach((row, idx) => {
-        if (!row.animate) return;
-        replyAnimations.push(row.animate([
-          { opacity: 0, transform: 'translateY(-8px)', filter: 'blur(4px)', clipPath: 'inset(0 0 100% 0)' },
-          { opacity: 1, transform: 'none', filter: 'blur(0px)', clipPath: 'inset(0 0 0% 0)' },
-        ], { duration: 280, delay: idx * 70, easing, fill: 'both' }));
-      });
+      return;
     }
-    prevRowCount = rows.length;
+
+    if (prev && next.checks !== prev.checks && checksState?.animate) {
+      const dir = next.checks ? -1 : 1;
+      replyAnimations.push(checksState.animate([
+        { opacity: 0, transform: `perspective(220px) translateY(${dir * 6}px) rotateX(${-dir * 48}deg)` },
+        { opacity: 1, transform: 'none' },
+      ], { duration: 240, easing }));
+    }
+
+    if (prev && next.readout !== prev.readout && readout?.animate) {
+      replyAnimations.push(readout.animate([
+        { opacity: 0, transform: 'translateY(-7px)', filter: 'blur(4px)' },
+        { opacity: 1, transform: 'none', filter: 'blur(0px)' },
+      ], { duration: 340, easing }));
+    }
+
+    if (prev && next.tone !== prev.tone) {
+      if (tapBadge?.animate) {
+        replyAnimations.push(tapBadge.animate([
+          { opacity: .2, transform: 'scale(.62) rotate(-18deg)', filter: 'blur(3px)' },
+          { opacity: 1, transform: 'scale(1.08)', filter: 'blur(0px)', offset: .6 },
+          { opacity: 1, transform: 'none', filter: 'blur(0px)' },
+        ], { duration: 320, easing }));
+      }
+      if (tapWave?.animate) {
+        replyAnimations.push(tapWave.animate([
+          { opacity: .25, transform: 'scale(.85)' },
+          { opacity: .9, transform: 'scale(1.15)', offset: .4 },
+          { opacity: .38, transform: 'scale(1)' },
+        ], { duration: 420, easing }));
+      }
+    }
+
+    if (prev && next.jamCount !== prev.jamCount && disturbance?.animate) {
+      const dir = Math.sign(next.jamCount - prev.jamCount);
+      replyAnimations.push(disturbance.animate([
+        { opacity: .4, transform: `translateY(${dir * 4}px)` },
+        { opacity: 1, transform: 'none' },
+      ], { duration: 200, easing }));
+    }
+
+    let changedIndex = 0;
+    const prevRows = prev?.rows || [];
+    rows.forEach((row, i) => {
+      const pRow = prevRows[i];
+      const nRow = next.rows[i];
+      const noAnswerShift = nRow.bitsText === 'No answer' || pRow?.bitsText === 'No answer';
+      const structureChanged = !pRow || nRow.exchange !== pRow.exchange || nRow.badge !== pRow.badge || noAnswerShift;
+      const contentChanged = structureChanged || nRow.bitsText !== pRow.bitsText || nRow.wrongKey !== pRow.wrongKey;
+      if (!contentChanged) return;
+
+      if (mode === 'checks' || mode === 'clear' || structureChanged) {
+        animateRowDrop(row, changedIndex++ * 72, 5, 9, 350);
+        return;
+      }
+
+      const bitsEl = row.querySelector('.s14-bits');
+      if (bitsEl?.animate) {
+        replyAnimations.push(bitsEl.animate([
+          { opacity: .55, filter: 'blur(2px)', transform: 'translateY(-3px)' },
+          { opacity: 1, filter: 'blur(0px)', transform: 'none' },
+        ], { duration: 240, easing }));
+      }
+      const prevWrong = new Set(pRow.wrongKey ? pRow.wrongKey.split(',') : []);
+      row.querySelectorAll('.s14-bit').forEach((digit, k) => {
+        const bitChanged = digit.textContent !== pRow.bitsText[k];
+        const newlyWrong = digit.hasAttribute('data-wrong') && !prevWrong.has(String(k));
+        if ((bitChanged || newlyWrong) && digit.animate) {
+          replyAnimations.push(digit.animate([
+            { opacity: .25, filter: 'blur(2px)', transform: 'translateY(-4px) scale(1.26)' },
+            { opacity: 1, filter: 'blur(0px)', transform: 'none' },
+          ], { duration: 260, easing }));
+        }
+      });
+    });
   }
 
   const mistakes = plate('s14', p => {
@@ -1164,13 +1252,14 @@
       const tone = run.ok ? (tries > 1 ? 'retry' : 'ok') : 'fail';
       if (tapPad) tapPad.dataset.tone = tone;
       if (tapStatus) tapStatus.dataset.tone = tone;
-      p.say(run.ok
+      const readoutText = run.ok
         ? `ID read: ${run.uid.map(hex).join(' ')} ✓${tries > 1 ? ` (a check failed, so the phone asked again ${tries - 1}×)` : ''}`
         : badId
           ? `Checks off: the phone accepted a wrong ID, ${run.uid.map(hex).join(' ')}. The card refused to confirm it: it knows its own ID.`
-          : `${run.reason}${checks ? ' The checks stopped a bad read.' : ''}${!idReply && jamCount ? ' (REQA drowned before ID reply.)' : ''}`);
+          : `${run.reason}${checks ? ' The checks stopped a bad read.' : ''}${!idReply && jamCount ? ' (REQA drowned before ID reply.)' : ''}`;
+      p.say(readoutText);
       showErrorReplies(replies, checkedSignal);
-      animateS14Reveal(p, replies);
+      animateS14Reveal(p, replies, readoutText, tone, checks, jamCount);
     }
     drawErrorSignal(p, checkedSignal.displayReply);
   });
@@ -1203,7 +1292,7 @@
           ? jammedCells.delete(i)
           : (jammedCells.has(i) ? jammedCells.delete(i) : jammedCells.add(i), true);
       if (!changed) return false;
-      revealMode = 'diff';
+      revealMode = 'jam';
       mistakes.dirty = true;
       return true;
     }
@@ -1271,7 +1360,7 @@
           if (!jammedCells.size) return;
           event.preventDefault();
           jammedCells.clear();
-          revealMode = 'diff';
+          revealMode = 'clear';
           mistakes.dirty = true;
         }
       });
@@ -1280,12 +1369,12 @@
     clearBtn?.addEventListener('click', () => {
       if (!jammedCells.size) return;
       jammedCells.clear();
-      revealMode = 'diff';
+      revealMode = 'clear';
       mistakes.dirty = true;
     });
 
     checksInput?.addEventListener('change', () => {
-      revealMode = 'diff';
+      revealMode = 'checks';
       mistakes.dirty = true;
     });
 
