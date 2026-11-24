@@ -531,22 +531,21 @@ function watchFlipping(previous, plate, settlePrevious) {
   function drawPlot(elapsed) {
     const { source, target, width, height, outgoing } = layout;
     const p = stage(200, traceTime, elapsed);
-    const gather = ease(.03, .36, p), travel = ease(.20, .75, p), open = waves ? ease(.67, 1, p) : 0;
-    const lift = gather * (1 - open);
-    const merged = ease(.65, 1, gather) * (1 - ease(0, .38, open));
+    const gather = ease(.03, .29, p);
+    const travel = ease(.32, .61, p);
+    const split = waves ? ease(.64, .78, p) : 0;
+    const bend = waves ? ease(.81, 1, p) : 0;
+    const merged = ease(.65, 1, gather) * (1 - ease(0, .55, split));
     const alpha = ease(200, 410, elapsed) * (1 - targetChart.flippingEntrance.traces);
     ctx.clearRect(0, 0, width, height);
     if (alpha === 0) return;
 
     const center = flow({ x: source.x + source.w * .52, y: source.y + source.h * .49 },
-      { x: target.x + target.w * .53, y: Math.min(target.y + target.h * .51, height * .84) }, travel, Math.min(70, height * .10));
-    const angle = mix(.36, .77, travel);
-    const dx = Math.cos(angle), dy = Math.sin(angle);
+      { x: target.x + target.w * .53, y: Math.min(target.y + target.h * .51, height * .84) }, travel, Math.min(48, height * .07));
     const length = Math.min(width * .60, 284);
-    const bend = Math.min(length * .18, height * .062);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.lineWidth = mix(2, 1.45, lift);
+    ctx.lineWidth = mix(2, 1.45, gather * (1 - bend));
     outgoing.forEach(({ box, points }, index) => {
       if (index === 0 && merged === 1) return;
       const wave = waves?.[index];
@@ -558,13 +557,11 @@ function watchFlipping(previous, plate, settlePrevious) {
         const [ax, ay] = points[j], [bx, by] = points[Math.min(j + 1, points.length - 1)];
         const x = source.x + box.x + mix(ax, bx, sample - j) * box.w;
         const y = source.y + box.y + mix(ay, by, sample - j) * box.h;
-        // Both traces converge on the same curve. Each keeps its own destination wave.
-        const along = (u - .5) * length;
-        const across = Math.sin((u - .5 - travel * .55) * 2 * Math.PI) * bend;
-        const mergeX = mix(x, center.x + along * dx - across * dy, gather);
-        const mergeY = mix(y, center.y + along * dy + across * dx, gather);
-        const px = wave ? mix(mergeX, target.x + wave.box.x + wave.box.w * u, open) : mergeX;
-        const py = wave ? mix(mergeY, target.y + wave.box.y + wave.box.h * wave.yAt(u), open) : mergeY;
+        const mergeX = mix(x, center.x + (u - .5) * length, gather);
+        const mergeY = mix(y, center.y, gather);
+        // Open onto the two baselines first, then give the live waves their height.
+        const px = wave ? mix(mergeX, target.x + wave.box.x + wave.box.w * u, split) : mergeX;
+        const py = wave ? mix(mergeY, target.y + wave.box.y + wave.box.h * mix(.5, wave.yAt(u), bend), split) : mergeY;
         if (i === 0) ctx.moveTo(px, py);
         else ctx.lineTo(px, py);
       }
@@ -631,7 +628,7 @@ function watchFlipping(previous, plate, settlePrevious) {
       }
       sourceChart.style.opacity = 1 - ease(200, 410, elapsed);
       entrance.labels = ease(1990, 2270, elapsed);
-      entrance.traces = ease(2050, traceTime, elapsed);
+      entrance.traces = ease(2130, traceTime, elapsed);
       entrance.guides = ease(2220, guideTime, elapsed);
       if (track.isConnected) {
         pour(elapsed);
