@@ -45,7 +45,13 @@ const track = {
 export const mouthAt = time => smoother(.40, .64, time) * (1 - smoother(.96, 1.20, time));
 export const curlAt = time => smoother(.43, .68, time) * (1 - smoother(.99, MOUTH_CLOSED, time));
 
-// Matching playhead values hold the reading composition over a stretch of scroll.
+// How much scroll the intro takes: each screen in `scrollFrames` below is this many screens of
+// real scrolling. The page scrolls natively, so at 1 every animation needed a page or two of
+// scrolling; at .3 the whole intro plays in under three screens.
+export const PACE = .3;
+
+// Matching playhead values hold the reading composition over a stretch of scroll. The first
+// column is in screens at the first pace; PACE scales it.
 const scrollFrames = [
   [0, 0], [.57, .41], [.71, .41], [.98, .59], [1.29, .76], [1.60, HERO],
   [1.76, HERO], [2.12, MOUTH_CLOSED], [2.34, MOUTH_CLOSED],
@@ -54,7 +60,7 @@ const scrollFrames = [
   // From the definition straight to the X-ray (a "How It Works" title used to hold here).
   [7.05, 4.77], [8.21, 4.77],
   [8.91, END], [9.27, END],
-];
+].map(([screens, time]) => [screens * PACE, time]);
 export const SCROLL_SCREENS = scrollFrames.at(-1)[0];
 const playback = monotone(scrollFrames);
 
