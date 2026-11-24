@@ -8,7 +8,7 @@ function capturePageGesture(canBegin, begin, interrupt) {
 
   function page(event, direction) {
     if (canBegin(event, direction)) begin(event, direction);
-    else if (direction < 0) interrupt(direction);
+    else if (direction < 0) interrupt(direction, event);
   }
 
   addEventListener('wheel', event => {
@@ -47,7 +47,7 @@ function capturePageGesture(canBegin, begin, interrupt) {
       }
     } else if (delta <= -16) {
       touch = { x, y, highest: y };
-      interrupt(direction);
+      interrupt(direction, event);
     }
   }, { passive: false, signal });
 
@@ -244,7 +244,8 @@ function watchCloser(source, plate) {
   }
 
   function canBegin(event, direction) {
-    if (!event.cancelable || event.defaultPrevented || !canPlay() || root.classList.contains('deep-blink-hold')) return false;
+    if (!event.cancelable || event.defaultPrevented || !canPlay() ||
+      root.classList.contains('deep-blink-hold') || root.classList.contains('deep-flipping-hold')) return false;
     const atPart = atPartTitle(scrollY, innerHeight);
     if (direction > 0) return atPart && (!locked() || returning);
     return !returning && (atCloserTitle(scrollY, innerHeight) || (locked() && atPart));
@@ -379,204 +380,316 @@ function watchCloser(source, plate) {
 
 function watchFlipping(previous, plate, settlePrevious) {
   const chapter = plate.closest('.deep');
+  const root = document.documentElement;
+  const previousWords = previous.querySelector('.plate-words');
+  const previousTitle = previous.querySelector('#s6-title');
   const words = plate.querySelector('.plate-words');
-  const title = plate.querySelector('#s7-title');
-  const controls = plate.querySelector('.s7-control');
-  const controlText = controls.querySelector('.s7-control-text');
-  const speed = controls.querySelector('#s7-speed');
+  const wordTargets = [...plate.querySelectorAll('#s7-title > span')];
+  const controlText = plate.querySelector('.s7-control-text');
+  const speed = plate.querySelector('#s7-speed');
   const coil = previous.querySelector('#s6-radius');
-  const card = previous.querySelector('#s6-distance');
   const sourceChart = previous.querySelector('#s6-chart');
   const targetChart = plate.querySelector('#s7-chart');
   const plot = document.createElement('canvas');
+  const track = document.createElement('input');
+  const ctx = plot.getContext('2d');
+  const theme = getComputedStyle(chapter);
+  const colors = ['--ink', '--copper'].map(name => theme.getPropertyValue(name).trim());
+  const paper = theme.getPropertyValue('--paper').trim();
+  const motions = [];
+  const wordsInFlight = [];
+  const traceTime = 2180, guideTime = 2720, readHold = 1000;
+
   plot.className = 's7-plot-copy';
   plot.setAttribute('aria-hidden', 'true');
-  const ctx = plot.getContext('2d');
-  const textMotions = [];
-  let track, layout, lastTop, armed, scrollTop, plotProgress, chartShift;
+  Object.assign(track, { type: 'range', min: '0', max: '1', step: 'any', className: 's7-track-copy', inert: true });
+  track.setAttribute('aria-hidden', 'true');
 
-  function measure(top, height) {
-    const toWords = bounds(words, top);
-    const from = bounds(coil, top);
-    const to = bounds(speed, top);
-    const target = bounds(targetChart, top);
-    const stacked = Math.abs(toWords.x - from.x) < 1;
-    const start = bounds(title, top).y - .98 * height;
-    const textEnd = start + .075 * height;
-    const tracksEnd = Math.max(textEnd + .14 * height, to.y + to.h - .96 * height);
-    const end = Math.max(tracksEnd + .24 * height, target.y + target.h - .88 * height);
-    const rail = from.x + from.w + (stacked ? 4 : 7);
-    return { start, textEnd, tracksEnd, end, from, to, stacked, rail, width: innerWidth, height };
-  }
-
-  function clearTrack() {
-    if (!track) return;
-    track.remove();
-    track = null;
-    coil.style.removeProperty('opacity');
-  }
-
-  function clearPlot() {
-    if (!plot.isConnected) return;
-    plot.remove();
-    delete targetChart.drawHandoff;
-  }
+  let layout, inputListeners, previousTop, targetTop, lockedAt, waves;
+  let armed = false, frame = 0;
+  const active = () => lockedAt !== undefined;
+  const canPlay = () => !reducedMotion.matches && !document.hidden;
 
   function settle() {
-    if (!textMotions.length) return;
-    for (const animation of textMotions) animation.cancel();
-    textMotions.length = 0;
-    clearTrack();
-    clearPlot();
-    sourceChart.style.removeProperty('transform');
-    for (const node of [controlText, speed, sourceChart, targetChart]) node.style.removeProperty('opacity');
+    plate.classList.remove('s7-awaiting', 's7-entering');
+    if (!active()) return;
+    cancelAnimationFrame(frame);
+    for (const motion of motions) motion.cancel();
+    motions.length = 0;
+    for (const { copy, target } of wordsInFlight) {
+      copy.remove();
+      target.style.removeProperty('opacity');
+    }
+    wordsInFlight.length = 0;
+    for (const node of [sourceChart, previousTitle, coil, speed]) node.style.removeProperty('opacity');
+    track.remove();
+    plot.remove();
+    delete targetChart.drawHandoff;
+    delete targetChart.flippingEntrance;
+    lockedAt = undefined;
+    root.classList.remove('deep-flipping-hold');
+    scheduleMotion();
   }
 
-  function enter(top) {
-    settlePrevious();
-    layout.source = bounds(sourceChart, top);
-    const shiftX = layout.stacked ? -8 : -44;
-    const frames = [
-      { opacity: 0, transform: `translate(${shiftX}px, 32px)`, easing: 'cubic-bezier(.32, .08, .33, 1)' },
-      { opacity: 1, transform: 'translate(4px, -5px)', offset: .76, easing: 'ease-out' },
-      { opacity: 1, transform: 'none' },
-    ];
-    for (const node of words.children) {
-      if (node === controls) continue;
-      const animation = node.animate(frames, { duration: 1, fill: 'both' });
-      animation.pause();
-      textMotions.push(animation);
+  function skip() {
+    armed = false;
+    settle();
+  }
+
+  function interrupt(direction, event) {
+    if (!active()) return;
+    skip();
+    if (direction === -1 && event?.cancelable) {
+      event.preventDefault();
+      previous.scrollIntoView({ block: 'start', behavior: 'instant' });
     }
   }
 
-  function moveTrack(progress) {
-    controlText.style.opacity = ease(.45, .85, progress);
-    const reveal = ease(.90, 1, progress);
-    speed.style.opacity = reveal;
-    if (progress <= 0 || progress >= 1) return clearTrack();
-    const { from, to, rail, stacked, source } = layout;
-    if (!track) {
-      const origin = bounds(chapter, scrollTop);
-      track = document.createElement('input');
-      track.type = 'range';
-      track.min = 0;
-      track.max = 1;
-      track.step = 'any';
-      track.className = 's7-track-copy';
-      track.inert = true;
-      track.setAttribute('aria-hidden', 'true');
-      track.style.left = `${from.x - origin.x}px`;
-      track.style.top = `${from.y - origin.y}px`;
-      track.style.width = `${from.w}px`;
-      chapter.append(track);
-      coil.style.opacity = 0;
-    }
-
-    const gather = ease(0, .29, progress);
-    const drop = ease(.26, .78, progress);
-    const open = ease(.75, .93, progress);
-    const railWidth = stacked ? layout.width - rail - 4 : Math.min(56, source.x - rail - 6);
-    const fraction = input => (input.valueAsNumber - Number(input.min)) / (Number(input.max) - Number(input.min));
-    const x = mix(mix(from.x, rail, gather), to.x, open);
-    const y = mix(from.y, to.y, drop);
-    const width = mix(mix(from.w, railWidth, gather), to.w, open);
-    track.value = mix(fraction(coil), fraction(speed), drop);
-    track.style.transform = `translate(${x - from.x}px, ${y - from.y}px) scaleX(${width / from.w})`;
-    track.style.opacity = 1 - reveal;
+  function viewportBox(node, top = scrollY) {
+    const box = bounds(node, scrollY);
+    return { ...box, y: box.y - top };
   }
 
-  function drawPlot(waves) {
-    const { source, target, stacked, rail, width, height } = layout;
-    const progress = plotProgress;
-    const shape = ease(.035, .88, progress);
-    const across = ease(.11, .78, progress);
-    // The narrow route down the mobile margin keeps the curves out of the copy.
-    const tuck = stacked ? ease(.04, .32, progress) * (1 - ease(.73, .90, progress)) : 0;
-    const slide = stacked ? ease(.32, .73, progress) : ease(.48, .90, progress);
+  function ready(top, height) {
+    return top >= Math.max(previousTop, targetTop - height) - 2 && top < targetTop - 1;
+  }
+
+  function canBegin(event, direction) {
+    if (direction < 0 || !event.cancelable || event.defaultPrevented || !canPlay() || !armed || active() ||
+      root.classList.contains('deep-closer-hold')) return false;
+    if (ready(scrollY, innerHeight)) return true;
+    const wheelUnit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
+    return event.type === 'wheel' && scrollY + event.deltaY * wheelUnit >= targetTop;
+  }
+
+  function collectWords() {
+    const text = previousTitle.firstChild;
+    const range = document.createRange();
+    const lineHeight = parseFloat(getComputedStyle(previousTitle).lineHeight);
+    const origins = [...text.data.matchAll(/\S+/g)].map(match => {
+      range.setStart(text, match.index);
+      range.setEnd(text, match.index + match[0].length);
+      const rect = range.getBoundingClientRect();
+      return { word: match[0], x: rect.left, y: rect.top + (rect.height - lineHeight) / 2 };
+    });
+
+    wordTargets.forEach((target, index) => {
+      const to = viewportBox(target, targetTop);
+      const from = origins[Math.min(index, origins.length - 1)];
+      const copy = document.createElement('span');
+      copy.className = 's7-flow-word';
+      copy.setAttribute('aria-hidden', 'true');
+      copy.textContent = from.word;
+      copy.style.left = `${from.x}px`;
+      copy.style.top = `${from.y}px`;
+      target.style.opacity = 0;
+      chapter.append(copy);
+      wordsInFlight.push({ copy, target, to, from, joins: index >= origins.length });
+    });
+    previousTitle.style.opacity = 0;
+  }
+
+  function flow(from, to, t, dip) {
+    return {
+      x: mix(from.x, to.x, t),
+      y: mix(from.y, to.y, t) + Math.sin(Math.PI * t) * dip,
+    };
+  }
+
+  function pour(elapsed) {
+    wordsInFlight.forEach(({ copy, target, to, from, joins }, i) => {
+      const start = 110 + i * 95;
+      const p = stage(start, start + 900, elapsed);
+      const position = flow(from, to, ease(0, 1, p), -32 - i * 12);
+      const earlier = wordsInFlight[i - 1]?.to;
+      if (earlier && Math.abs(earlier.y - to.y) < 2) {
+        const edge = earlier.x + earlier.w;
+        const above = ease(.46, .65, p) * (1 - ease(edge, Math.max(edge + 1, to.x), position.x));
+        const lane = i % 2 === 0 && to.y > 2 * to.h + 10 ? to.h + 5 : 0;
+        position.y = mix(position.y, Math.min(position.y, Math.max(4, to.y - to.h - 3 - lane)), above);
+      }
+      const swap = ease(.28, .48, p) * (1 - ease(.49, .70, p));
+      const content = p < .49 ? from.word : target.textContent;
+      if (copy.textContent !== content) copy.textContent = content;
+      const arrive = ease(.91, 1, p);
+      copy.style.transform = `translate(${position.x - from.x}px, ${position.y - from.y}px) skewX(${-7 * Math.sin(Math.PI * p)}deg)`;
+      copy.style.opacity = (joins ? ease(.37, .63, p) : 1 - .86 * swap) * (1 - arrive);
+      copy.style.filter = `blur(${swap * 3}px)`;
+      target.style.opacity = arrive;
+    });
+
+    const { fromTrack, toTrack, coilValue, speedValue } = layout;
+    const t = ease(360, 1500, elapsed);
+    const placed = ease(1400, 1530, elapsed);
+    const position = flow(fromTrack, toTrack, t, 47);
+    const pinch = 1 - Math.sin(Math.PI * t) * .43;
+    track.value = mix(coilValue, speedValue, ease(.34, .85, t));
+    track.style.transform = `translate(${position.x - fromTrack.x}px, ${position.y - fromTrack.y}px) scaleX(${mix(fromTrack.w, toTrack.w, t) * pinch / fromTrack.w})`;
+    track.style.opacity = 1 - placed;
+    speed.style.opacity = placed;
+  }
+
+  function drawPlot(elapsed) {
+    const { source, target, width, height, outgoing } = layout;
+    const p = stage(200, traceTime, elapsed);
+    const gather = ease(.03, .36, p), travel = ease(.20, .75, p), open = waves ? ease(.67, 1, p) : 0;
+    const lift = gather * (1 - open);
+    const alpha = ease(200, 410, elapsed) * (1 - targetChart.flippingEntrance.traces);
     ctx.clearRect(0, 0, width, height);
-    ctx.lineWidth = 2;
-    waves.forEach(({ box: to, yAt, color }, index) => {
-      const { box: from, points } = sourceChart.handoffPlots[index];
-      const fullHeight = mix(from.h, to.h, slide);
-      const h = fullHeight * mix(1, .4, tuck);
-      const x = mix(mix(source.x + from.x, target.x + to.x, across), rail, tuck);
-      const y = mix(source.y + from.y + chartShift, target.y + to.y, slide) - scrollTop + (fullHeight - h) / 2;
-      const w = mix(mix(from.w, to.w, across), width - rail - 4, tuck);
+    if (alpha === 0) return;
+
+    const center = flow({ x: source.x + source.w * .52, y: source.y + source.h * .49 },
+      { x: target.x + target.w * .53, y: Math.min(target.y + target.h * .51, height * .84) }, travel, Math.min(70, height * .10));
+    const angle = mix(.36, .77, travel);
+    const dx = Math.cos(angle), dy = Math.sin(angle);
+    const length = Math.min(width * .57, 270);
+    const radius = Math.min(width * .102, height * .078, 57);
+    const strands = outgoing.map(({ box, points }, index) => {
+      const wave = waves?.[index];
+      return Array.from({ length: 201 }, (_, i) => {
+        const u = i / 200, sample = u * (points.length - 1), j = Math.floor(sample);
+        const [ax, ay] = points[j], [bx, by] = points[Math.min(j + 1, points.length - 1)];
+        const x = source.x + box.x + mix(ax, bx, sample - j) * box.w;
+        const y = source.y + box.y + mix(ay, by, sample - j) * box.h;
+        // A half-turn offset makes the strands cross as they orbit the same tilted axis.
+        const spin = u * Math.PI * 4.8 - travel * Math.PI * 1.75 + index * Math.PI;
+        const along = (u - .5) * length + Math.sin(spin) * radius * .12;
+        const curl = Math.cos(spin) * radius * (.56 + .44 * Math.sin(u * Math.PI));
+        const helixX = center.x + along * dx - curl * dy, helixY = center.y + along * dy + curl * dx;
+        const mergeX = mix(x, helixX, gather), mergeY = mix(y, helixY, gather);
+        return {
+          x: wave ? mix(mergeX, target.x + wave.box.x + wave.box.w * u, open) : mergeX,
+          y: wave ? mix(mergeY, target.y + wave.box.y + wave.box.h * wave.yAt(u), open) : mergeY,
+          front: Math.sin(spin) > .03,
+        };
+      });
+    });
+
+    function stroke(points, color, width, frontOnly = false) {
       ctx.strokeStyle = color;
+      ctx.lineWidth = width;
       ctx.beginPath();
-      for (let i = 0; i <= 200; i++) {
-        const u = i / 200, sample = u * (points.length - 1), first = Math.floor(sample);
-        const [a, b] = points[first], [c, d] = points[Math.min(first + 1, points.length - 1)];
-        const px = x + mix(mix(a, c, sample - first), u, shape) * w;
-        const py = y + mix(mix(b, d, sample - first), yAt(u), shape) * h;
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
+      let connect = false;
+      for (const point of points) {
+        const visible = !frontOnly || point.front;
+        if (visible) {
+          if (connect) ctx.lineTo(point.x, point.y);
+          else ctx.moveTo(point.x, point.y);
+        }
+        connect = visible;
       }
       ctx.stroke();
-    });
+    }
+
+    ctx.globalAlpha = alpha;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    strands.forEach((points, i) => stroke(points, colors[i], 2));
+    const depth = ease(.30, .68, lift);
+    if (depth) {
+      ctx.globalAlpha = alpha * depth;
+      for (const points of strands) stroke(points, paper, 2 + depth * 5, true);
+      ctx.globalAlpha = alpha;
+      strands.forEach((points, i) => stroke(points, colors[i], 2.1, true));
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function begin(event) {
+    if (!ready(scrollY, innerHeight)) {
+      event.preventDefault();
+      scrollTo({ top: Math.max(previousTop, targetTop - innerHeight), behavior: 'instant' });
+      return;
+    }
+    if (!sourceChart.handoffPlots || !ctx) return;
+    event.preventDefault();
+    settlePrevious();
+    const fromTrack = viewportBox(coil), toTrack = viewportBox(speed, targetTop);
+    const fraction = input => (input.valueAsNumber - Number(input.min)) / (Number(input.max) - Number(input.min));
+    layout = {
+      source: viewportBox(sourceChart), target: viewportBox(targetChart, targetTop),
+      outgoing: sourceChart.handoffPlots, fromTrack, toTrack, width: innerWidth, height: innerHeight,
+      coilValue: fraction(coil), speedValue: fraction(speed),
+    };
+
+    lockedAt = scrollY;
+    waves = null;
+    root.classList.add('deep-flipping-hold');
+    plate.classList.add('s7-entering');
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    plot.width = Math.round(layout.width * dpr);
+    plot.height = Math.round(layout.height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    Object.assign(track.style, { left: `${fromTrack.x}px`, top: `${fromTrack.y}px`, width: `${fromTrack.w}px` });
+    track.value = layout.coilValue;
+    chapter.append(plot, track);
+    collectWords();
+    coil.style.opacity = 0;
+    speed.style.opacity = 0;
+
+    const entrance = { labels: 0, traces: 0, guides: 0 };
+    targetChart.flippingEntrance = entrance;
+    targetChart.drawHandoff = live => { waves = live; };
+    motions.push(previousWords.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 530, fill: 'both' }));
+    const copy = [...words.children].filter(node => node.id !== 's7-title' && !node.contains(speed));
+    copy.splice(2, 0, controlText);
+    for (const [i, node] of copy.entries()) {
+      motions.push(node.animate([
+        { opacity: 0, transform: 'translate(-14px, -28px) skewX(-7deg)', filter: 'blur(2px)' },
+        { opacity: .83, transform: 'translate(3px, 6px) skewX(1deg)', offset: .7, filter: 'none' },
+        { opacity: 1, transform: 'none', filter: 'none' },
+      ], { duration: 550, delay: 750 + i * 91, easing: arrivalEase, fill: 'both' }));
+    }
+    plate.classList.remove('s7-awaiting');
+
+    const started = performance.now();
+    let seated = false;
+    function tick(now) {
+      const elapsed = now - started;
+      if (!seated && elapsed >= 620) {
+        seated = true;
+        plate.scrollIntoView({ block: 'start', behavior: 'instant' });
+        lockedAt = scrollY;
+      }
+      sourceChart.style.opacity = 1 - ease(200, 410, elapsed);
+      entrance.labels = ease(1990, 2270, elapsed);
+      entrance.traces = ease(2050, traceTime, elapsed);
+      entrance.guides = ease(2220, guideTime, elapsed);
+      if (track.isConnected) {
+        pour(elapsed);
+        if (elapsed >= 1530) track.remove();
+      }
+      if (entrance.traces < 1) drawPlot(elapsed);
+      else plot.remove();
+      if (elapsed >= guideTime + readHold) return skip();
+      frame = requestAnimationFrame(tick);
+    }
+    frame = requestAnimationFrame(tick);
   }
 
   watchScrollMotion((top, height, needsMeasure) => {
-    if (reducedMotion.matches || document.hidden) return settle();
-    if (needsMeasure || !layout) {
-      settle();
-      layout = measure(top, height);
-      armed = top <= layout.start;
-      lastTop = top;
+    if (needsMeasure || targetTop === undefined) {
+      targetTop = bounds(plate, top).y;
+      previousTop = bounds(previous, top).y;
     }
-    const { start, textEnd, tracksEnd, end, stacked } = layout;
-    const jumped = Math.abs(top - lastTop) > height * .55;
-    lastTop = top;
-    if (top <= start) {
-      armed = true;
-      return settle();
+    if (!canPlay() || (active() && Math.abs(top - lockedAt) > 2)) skip();
+    if (!active()) {
+      if (!canPlay() || top >= targetTop - 1 || plate.contains(document.activeElement)) armed = false;
+      else if (top >= previousTop - height * .2 && top <= targetTop - height * .65) armed = true;
+      plate.classList.toggle('s7-awaiting', armed && top < targetTop - 1);
     }
-    if (jumped) armed = false;
-    if (!armed || top >= end) return settle();
-
-    if (!textMotions.length) enter(top);
-    scrollTop = top;
-    for (const animation of textMotions) animation.currentTime = stage(start, textEnd, top);
-    moveTrack(stage(textEnd, tracksEnd, top));
-    plotProgress = stage(tracksEnd, end, top);
-    chartShift = stacked ? 0 : top - start;
-    sourceChart.style.transform = `translateY(${chartShift}px)`;
-    const depart = ease(0, .13, plotProgress);
-    const arrive = ease(.90, 1, plotProgress);
-    sourceChart.style.opacity = 1 - depart;
-    targetChart.style.opacity = arrive;
-    if (plotProgress === 0) return clearPlot();
-    if (!sourceChart.handoffPlots) return settle();
-
-    if (!plot.isConnected) {
-      layout.target = bounds(targetChart, top);
-      const dpr = Math.min(devicePixelRatio || 1, 2);
-      plot.width = Math.round(layout.width * dpr);
-      plot.height = Math.round(height * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      chapter.append(plot);
-      targetChart.drawHandoff = drawPlot;
+    if (canPlay() && (active() || (armed && top >= previousTop - 2 && top < targetTop - 1))) {
+      inputListeners ??= capturePageGesture(canBegin, begin, interrupt);
+    } else {
+      inputListeners?.abort();
+      inputListeners = undefined;
     }
-    plot.style.opacity = depart * (1 - arrive);
   });
 
-  for (const input of [coil, card, speed]) {
-    for (const event of ['focus', 'pointerdown', 'input']) input.addEventListener(event, () => {
-      if (textMotions.length) armed = false;
-      settle();
-      if (event === 'input') {
-        layout = null;
-        scheduleMotion();
-      }
-    });
-  }
-
-  const copySize = new ResizeObserver(() => {
-    layout = null;
-    scheduleMotion();
-  });
-  copySize.observe(previous.querySelector('.plate-words'));
-  copySize.observe(words);
+  for (const event of ['pointerdown', 'focusin', 'input']) speed.addEventListener(event, skip);
+  for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, skip);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) skip(); });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) skip(); });
 }
 
 function watchTuning(previous, plate) {
