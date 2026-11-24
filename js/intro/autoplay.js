@@ -15,20 +15,21 @@ import { PACE, SCROLL_SCREENS } from './timeline.js?v=3';
 
 // The card intro's stops: where its picture holds still (from, to), in screens of its scroll at
 // the first pace (`scrollFrames` in timeline.js), and how long the animation into each one plays
-// (seconds).
+// (seconds: 1.3 times the first timings, and the last one, the card moving beside the reader,
+// 2.5 times).
 const INTRO = [
-  [.57, .71, 2],            // the card slides in over the taps and turns to face you
-  [1.60, 1.76, 1.9],        // "RFID": the card opens and the four letters fly out
-  [3.01, 3.85, 2],          // "Radio-Frequency Identification"
-  [4.56, 5.66, 1.4],        // "This technology works by exchanging data using radio waves."
-  [7.05, 8.21, 1.9],        // the X-ray: antenna, chip, "So how does it talk?"
-  [8.91, 9.27, 1.4],        // "Here's how: drag the card to the reader": the last stop
+  [.57, .71, 2.6],          // the card slides in over the taps and turns to face you
+  [1.60, 1.76, 2.5],        // "RFID": the card opens and the four letters fly out
+  [3.01, 3.85, 2.6],        // "Radio-Frequency Identification"
+  [4.56, 5.66, 1.8],        // "This technology works by exchanging data using radio waves."
+  [7.05, 8.21, 2.5],        // the X-ray: antenna, chip, "So how does it talk?"
+  [8.91, 9.27, 3.5],        // "Here's how: drag the card to the reader": the last stop
 ];
 // Still stretches inside an animation (the card's mouth closed, before the letters spell the
 // name): crossed in one jump too, so an animation never pauses half-way.
 const STILL = [[2.12, 2.34]];
 // A stretch of plain page (the landing to the taps): this many seconds per screen, within limits.
-const PER_SCREEN = 1.2, PLAIN_MIN = .8, PLAIN_MAX = 2;
+const PER_SCREEN = 1.56, PLAIN_MIN = 1.04, PLAIN_MAX = 2.6;
 // A new scroll only once the wheel has been still this long (ms), or when it is pushed again
 // much harder (a new swipe while a trackpad still coasts from the last one). The coasting
 // events after a swipe get smaller and smaller, so they never count as a scroll of their own.
