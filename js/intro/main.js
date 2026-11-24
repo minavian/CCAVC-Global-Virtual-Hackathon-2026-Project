@@ -534,7 +534,7 @@ function intro(experience) {
       g.beginPath(); g.moveTo(left, Y(v) + .5); g.lineTo(W - right, Y(v) + .5); g.stroke();
       g.fillText(v + ' V', 2, Y(v) + 3);
     }
-    const ticks = tuning ? [5, 10, 13.56, 20, 30] : [1, 2, 4, 6, 8, 10];
+    const ticks = tuning ? [5, 10, 13.56, 20, 30] : [2, 4, 6, 8, 10];
     for (const v of ticks) g.fillText(tuning ? String(v) : v + ' cm', X(v) - (tuning ? 8 : 10), H - 4);
     // What the chip needs to wake.
     g.strokeStyle = 'rgba(244,241,234,.75)';
@@ -567,8 +567,13 @@ function intro(experience) {
   // Ask in the lab: the question goes out; the card answers only if its chip is awake.
   function labAsk() {
     if (step !== LAB || lab.talk) return;
-    lab.talk = { start: clock, answers: Boolean(lab.m?.awake) };
+    lab.talk = { start: clock, answers: Boolean(lab.m?.awake), still: reduce.matches };
     labUi.ask.disabled = true;
+    // With reduced motion the clock stands still: the outcome shows, still, for a while.
+    if (reduce.matches) {
+      const asked = lab.talk;
+      setTimeout(() => { if (lab.talk === asked) { lab.talk = null; labUi.ask.disabled = false; invalidate(); } }, 5000);
+    }
     invalidate();
   }
 
@@ -624,7 +629,7 @@ function intro(experience) {
         // The lab says what the setting does, or how the conversation is going.
         ({ text, detail } = labStatus(lab.set, lab.m));
         if (lab.talk) {
-          const e = clock - lab.talk.start, asked = TALK.ask.length / SAMPLES_PER_BIT * .15;
+          const e = lab.talk.still ? 99 : clock - lab.talk.start, asked = TALK.ask.length / SAMPLES_PER_BIT * .15;
           if (e < asked) { text = 'The reader asks: who are you?'; detail = 'It flicks its field off and on.'; }
           else if (!lab.talk.answers) { text = 'No answer. The chip has no power.'; detail = 'It needs about 2 volts to wake.'; }
           else if (e < ANSWER_AFTER) { text = 'The chip works out its answer.'; detail = 'In life this takes 86 millionths of a second.'; }

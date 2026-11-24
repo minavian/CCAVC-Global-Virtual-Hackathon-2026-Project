@@ -234,7 +234,9 @@ export function buildEffects() {
   function update(b, cardZ, talk = { amp: 1, load: 0, reader: 0, reading: 0 }) {
     const any = b.field + b.reply + b.thinking + b.power + b.blink + b.read + b.receive + talk.reader;
     table.visible = onCard.visible = any > .003;
-    if (!table.visible) return;
+    // The clock is kept even while nothing shows, so the beads carry on from where they were
+    // when they come back, rather than catching up in one frame.
+    if (!table.visible) { lastClock = b.clock; return; }
     const t = b.clock, said = b.message?.started ? b.message : null;
     const dt = lastClock === null ? 0 : Math.min(.1, Math.max(0, t - lastClock));
     lastClock = t;
