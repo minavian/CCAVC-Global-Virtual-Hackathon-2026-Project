@@ -75,7 +75,7 @@
     <section class="plate" id="s7" aria-labelledby="s7-title">
       <div class="plate-words">
         <p class="plate-num">7</p>
-        <h3 id="s7-title">It has to keep <span id="s7-flipping">flipping</span></h3>
+        <h3 id="s7-title"><span>It</span> <span>has</span> <span>to</span> <span>keep</span> <span id="s7-flipping">flipping</span></h3>
         <p>Only a changing field makes electricity. The reader’s field flips 13.56 million times a second.</p>
         <div class="plate-controls s7-control">
           <div class="s7-control-text">
@@ -93,17 +93,37 @@
     <section class="plate" id="s8" aria-labelledby="s8-title">
       <div class="plate-words">
         <p class="plate-num">8</p>
-        <h3 id="s8-title">The tuning trick</h3>
+        <h3 id="s8-title"><span>The</span> <span>tuning</span> <span>trick</span></h3>
         <p>The coil and the tiny capacitor beside it swing together, like a child on a swing pushed at just the right moment. Tuned right, a weak field is enough.</p>
         <div class="plate-controls">
-          <label>Capacitor <output data-for="s8-cap"></output><input id="s8-cap" type="range" min="0" max="100" value="50"></label>
+          <div class="s8-cap-control">
+            <div>
+              <label for="s8-cap">Capacitor</label>
+              <output for="s8-cap" data-for="s8-cap" aria-live="off"></output>
+              <input id="s8-cap" type="range" min="0" max="100" value="50">
+            </div>
+            <span class="s8-cap-seat" aria-hidden="true">
+              <span class="s8-cap-lift"><span class="s8-capacitor"></span></span>
+            </span>
+          </div>
           <label class="plate-check"><input id="s8-remove" type="checkbox"> Take the capacitor out</label>
-          <span class="plate-switch" role="radiogroup" aria-label="Tag"><label><input type="radio" name="s8-tag" value="card" checked> Card</label><label><input type="radio" name="s8-tag" value="key"> Car key</label></span>
+          <div class="plate-switch s8-tags" role="radiogroup" aria-label="Tag">
+            <label>
+              <input type="radio" name="s8-tag" value="card" checked>
+              <img src="../images/intro/credit-card-face.webp" width="520" height="328" alt="">
+              Card
+            </label>
+            <label>
+              <input type="radio" name="s8-tag" value="key">
+              <span class="s8-key" aria-hidden="true"></span>
+              Car key
+            </label>
+          </div>
         </div>
         <p class="plate-readout" aria-live="polite"></p>
         <p class="plate-real">Real name: resonance, f = 1 / (2π√LC). A card’s chip draws about 5 mW; a key’s about 75 µW, so the key leans on tuning far more.</p>
       </div>
-      <canvas class="plate-canvas" role="img" aria-label="The chip's volts across frequencies, peaking at the reader's frequency"></canvas>
+      <canvas class="plate-canvas" id="s8-chart" role="img" aria-label="The chip's volts across frequencies, with its tuned response for comparison"></canvas>
     </section>
 
     <section class="plate" id="s9" aria-labelledby="s9-title">

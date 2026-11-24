@@ -97,8 +97,20 @@ function watchPartOne(opener, part) {
 
 const scrollMotions = [];
 const arrivalEase = 'cubic-bezier(.16, 1, .3, 1)';
+const clamp = n => Math.min(1, Math.max(0, n));
+const mix = (a, b, t) => a + (b - a) * t;
+const stage = (start, end, value) => clamp((value - start) / (end - start));
+const ease = (start, end, value) => {
+  const t = stage(start, end, value);
+  return t * t * (3 - 2 * t);
+};
 let motionFrame = 0;
 let measureMotions = true;
+
+function bounds(node, top) {
+  const rect = node.getBoundingClientRect();
+  return { x: rect.left, y: rect.top + top, w: rect.width, h: rect.height };
+}
 
 function scheduleMotion() {
   if (motionFrame) return;
@@ -278,19 +290,7 @@ function watchFlipping(previous, plate, settlePrevious) {
   const ctx = plot.getContext('2d');
   const textMotions = [];
   const tracks = [];
-  const clamp = n => Math.min(1, Math.max(0, n));
-  const mix = (a, b, t) => a + (b - a) * t;
-  const stage = (start, end, value) => clamp((value - start) / (end - start));
-  const ease = (start, end, value) => {
-    const t = stage(start, end, value);
-    return t * t * (3 - 2 * t);
-  };
   let layout, lastTop, armed, scrollTop, plotProgress, chartShift;
-
-  function bounds(node, top) {
-    const rect = node.getBoundingClientRect();
-    return { x: rect.left, y: rect.top + top, w: rect.width, h: rect.height };
-  }
 
   function measure(top, height) {
     const toWords = bounds(words, top);
@@ -485,6 +485,201 @@ function watchFlipping(previous, plate, settlePrevious) {
   copySize.observe(words);
 }
 
+function watchTuning(previous, plate) {
+  const chapter = plate.closest('.deep');
+  const flipping = previous.querySelector('#s7-flipping');
+  const sourceChart = previous.querySelector('#s7-chart');
+  const title = plate.querySelector('#s8-title');
+  const targetChart = plate.querySelector('#s8-chart');
+  const plot = document.createElement('canvas');
+  const capacitor = document.createElement('span');
+  plot.className = 's8-plot-copy';
+  capacitor.className = 's8-capacitor s8-pluck';
+  for (const node of [plot, capacitor]) node.setAttribute('aria-hidden', 'true');
+  const ctx = plot.getContext('2d');
+  const turns = [];
+  let layout, lastTop, armed, position, waves;
+
+  function measure(top, height) {
+    const word = bounds(flipping, top), heading = bounds(title, top);
+    const from = bounds(sourceChart, top), to = bounds(targetChart, top);
+    const start = Math.max(bounds(previous, top).y, word.y - height * .24);
+    const flipEnd = Math.max(start + height * .14, word.y + word.h - height * .04);
+    const reveal = Math.max(start + height * .065, heading.y - height * .975);
+    const gatherAt = Math.max(start + height * .045, from.y + from.h - height * .87);
+    const gatherEnd = gatherAt + height * .19;
+    const pluck = Math.max(gatherEnd + height * .19, to.y + to.h * .59 - height * .73);
+    const end = Math.max(pluck + height * .22, reveal + height * .205);
+    return { start, flipEnd, reveal, gatherAt, gatherEnd, pluck, end, from, to, width: innerWidth, height,
+      stacked: Math.abs(from.x - to.x) < 1 };
+  }
+
+  function startWords() {
+    function turn(node, frames, start, end) {
+      const animation = node.animate(frames, { duration: 1, fill: 'both' });
+      animation.pause();
+      turns.push({ animation, start, end });
+    }
+
+    const { start, flipEnd, reveal, height } = layout;
+    const down = [{ transform: 'none', opacity: 1, easing: 'ease-in' },
+      { transform: 'perspective(260px) rotateX(-88deg)', opacity: 0 }];
+    turn(flipping, [down[0],
+      { transform: 'perspective(260px) rotateX(14deg)', opacity: 1, offset: .28, easing: 'ease-in' },
+      down[1]], start, mix(start, flipEnd, .58));
+    [...flipping.parentElement.children].slice(0, -1).reverse().forEach((word, i) => {
+      const offset = .24 + i * .11;
+      turn(word, down, mix(start, flipEnd, offset), mix(start, flipEnd, offset + .42));
+    });
+    [...title.children].forEach((word, i) => {
+      const cue = reveal + i * height * .035;
+      turn(word, [
+        { opacity: 0, transform: 'perspective(260px) rotateX(76deg)', easing: arrivalEase },
+        { opacity: 1, transform: 'perspective(260px) rotateX(-5deg)', offset: .78, easing: 'ease-out' },
+        { opacity: 1, transform: 'none' },
+      ], cue, cue + height * .135);
+    });
+  }
+
+  function clearPlot() {
+    if (!plot.isConnected) return;
+    delete sourceChart.drawOutgoingHandoff;
+    plot.remove();
+    capacitor.remove();
+    capacitor.style.opacity = 0;
+    for (const chart of [sourceChart, targetChart]) chart.style.removeProperty('--s8-plot-opacity');
+    waves = null;
+  }
+
+  function settle() {
+    for (const { animation } of turns) animation.cancel();
+    turns.length = 0;
+    clearPlot();
+  }
+
+  function paintPlot() {
+    const curve = targetChart.resonanceCurve;
+    if (!curve) return;
+    const { from, to, width, height, stacked, gatherAt, gatherEnd, pluck, end } = layout;
+    const merge = ease(gatherAt, gatherEnd, position);
+    if (merge < 1 && !waves) return;
+
+    const travel = ease(gatherEnd, pluck, position);
+    const release = stage(pluck, end, position);
+    const shape = ease(.30, .84, release);
+    const leave = ease(0, .17, merge), arrive = ease(.79, 1, release);
+    const { box, points, X, Y, color } = curve;
+    const middle = mix(from.y + from.h * .52, to.y + box.y + box.h * .72, travel) - position;
+    // While the controls pass through the center on narrow screens, carry the line down the right margin.
+    const tuck = stacked ? ease(.04, .24, travel) * (1 - ease(.73, .98, travel)) : 0;
+    const rail = to.x + to.w + 4;
+    const left = mix(mix(from.x, to.x, travel) + box.x, rail, tuck);
+    const span = mix(box.w + (from.w - to.w) * (1 - travel), width - rail - 3, tuck);
+
+    plot.style.opacity = leave * (1 - arrive);
+    sourceChart.style.setProperty('--s8-plot-opacity', 1 - leave);
+    targetChart.style.setProperty('--s8-plot-opacity', arrive);
+    ctx.clearRect(0, 0, width, height);
+    ctx.globalAlpha = 1;
+    if (merge < 1) {
+      capacitor.style.opacity = 0;
+      waves.forEach(({ box: area, yAt, color: stroke }, i) => {
+        ctx.globalAlpha = i === 0 ? 1 - ease(.5, .95, merge) : 1;
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let j = 0; j <= 200; j++) {
+          const u = j / 200;
+          const x = mix(from.x + area.x + area.w * u, left + span * u, merge);
+          const y = mix(from.y + area.y + area.h * yAt(u) - position, middle, merge);
+          if (j === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      });
+      return;
+    }
+
+    const pull = ease(0, .26, release), spring = ease(.26, .55, release);
+    const bend = 19 * pull * (1 - spring);
+    const chipX = left + span / 2;
+    const chipY = middle + mix(-33, bend, pull) - 22 * spring;
+    capacitor.style.opacity = ease(0, .11, release) * (1 - spring);
+    capacitor.style.transform = `translate(${chipX - 21}px, ${chipY - 9}px) rotate(${mix(-24, 9, pull)}deg) scale(.62)`;
+
+    ctx.save();
+    if (release > 0) {
+      ctx.beginPath();
+      ctx.rect(to.x, to.y - position, to.w, to.h);
+      ctx.clip();
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = mix(2, 2.2, shape);
+    ctx.beginPath();
+    points.forEach(([frequency, volts], i) => {
+      const u = i / (points.length - 1);
+      const x = mix(left + span * u, to.x + X(frequency), shape);
+      const y = mix(middle + bend * (1 - Math.abs(2 * u - 1)), to.y + Y(volts) - position, shape);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function copyWaves(drawn) {
+    waves = drawn;
+    paintPlot();
+  }
+
+  watchScrollMotion((top, height, needsMeasure) => {
+    if (reducedMotion.matches || document.hidden) return settle();
+    if (needsMeasure || !layout) {
+      settle();
+      layout = measure(top, height);
+      armed = top <= layout.start;
+      lastTop = top;
+    }
+    const jumped = Math.abs(top - lastTop) > height * .55;
+    lastTop = top;
+    if (top <= layout.start) {
+      armed = true;
+      return settle();
+    }
+    if (jumped) armed = false;
+    if (!armed || top >= layout.end) return settle();
+
+    if (!turns.length) startWords();
+    for (const { animation, start, end } of turns) animation.currentTime = stage(start, end, top);
+    if (top < layout.gatherAt || sourceChart.drawHandoff) return clearPlot();
+
+    position = top;
+    if (!plot.isConnected) {
+      const dpr = Math.min(devicePixelRatio || 1, 2);
+      plot.width = Math.round(layout.width * dpr);
+      plot.height = Math.round(height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      chapter.append(plot, capacitor);
+    }
+    if (top < layout.gatherEnd) sourceChart.drawOutgoingHandoff = copyWaves;
+    else delete sourceChart.drawOutgoingHandoff;
+    paintPlot();
+  });
+
+  for (const scene of [previous, plate]) {
+    const controls = scene.querySelector('.plate-controls');
+    for (const event of ['focusin', 'pointerdown', 'input', 'change']) controls.addEventListener(event, () => {
+      armed = false;
+      settle();
+    });
+  }
+  const copySize = new ResizeObserver(() => {
+    layout = null;
+    scheduleMotion();
+  });
+  for (const scene of [previous, plate]) copySize.observe(scene.querySelector('.plate-words'));
+}
+
 const opener = document.getElementById('deep-title');
 const partOne = document.getElementById('part-one');
 if (opener && partOne) watchPartOne(opener, partOne);
@@ -496,3 +691,5 @@ if (closer && typeof closer.animate === 'function') {
   if (flipping) watchFlipping(closer, flipping, () => settleCloser?.());
   if (power) settleCloser = watchCloser(power, closer);
 }
+const tuning = document.getElementById('s8');
+if (flipping && tuning && typeof tuning.animate === 'function') watchTuning(flipping, tuning);

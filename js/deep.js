@@ -169,7 +169,8 @@
     const B = { x: 54, y: 30, w: p.w - 72, h: (p.h - 90) / 2 }, V = { x: 54, y: B.y + B.h + 40, w: p.w - 72, h: B.h };
     const emfMax = physics.solve({ tag: 'card', reader: 'phone', distance: .02 }).emf;
     const vAmp = f === 0 ? 0 : clamp(Math.log10(1 + s.emf / emfMax * 1e4) / 4, 0, 1);
-    const handoffPlots = p.canvas.drawHandoff ? [] : null;
+    const { drawHandoff, drawOutgoingHandoff } = p.canvas;
+    const handoffPlots = drawHandoff || drawOutgoingHandoff ? [] : null;
     for (const [bx, label, fn, color] of [
       [B, 'The field through the coil', t => f === 0 ? .7 : Math.sin(t), INK],
       [V, 'The voltage it makes', t => f === 0 ? 0 : vAmp * Math.cos(t), COPPER]]) {
@@ -184,7 +185,8 @@
       ctx.stroke();
       handoffPlots?.push({ box: bx, yAt, color });
     }
-    if (handoffPlots) p.canvas.drawHandoff(handoffPlots);
+    drawHandoff?.(handoffPlots);
+    drawOutgoingHandoff?.(handoffPlots);
     ctx.fillStyle = MUTED; ctx.font = `500 11px ${SANS}`; ctx.textAlign = 'right'; ctx.textBaseline = 'top';
     ctx.fillText('Slowed down. Voltage height uses a log scale.', p.w - 18, p.h - 18);
     p.say(f === 0 ? 'A still magnet: the field is there, but nothing changes, so the coil makes 0 V.'
@@ -194,13 +196,17 @@
   // ---------- 8. The tuning trick ----------
   plate('s8', p => {
     const which = p.radio('tag') || 'card', T = physics.TAGS[which];
-    const removed = p.input('remove').checked;
-    const C = removed ? 0 : T.capacitance * (+p.input('cap').value / 50);
-    p.input('cap').disabled = removed;
-    p.out('cap', removed ? 'taken out' : si(C, 'F', 3));
+    const cap = p.input('cap'), removed = p.input('remove').checked;
+    const setting = cap.valueAsNumber / Number(cap.max);
+    const C = removed ? 0 : T.capacitance * (setting * 2);
+    const capText = removed ? 'taken out' : si(C, 'F', 3);
+    cap.disabled = removed;
+    cap.setAttribute('aria-valuetext', capText);
+    p.out('cap', capText);
+    p.el.style.setProperty('--s8-cap-size', .62 + setting * .48);
     const readerKey = which === 'key' ? 'key' : 'pad', d = which === 'key' ? .025 : .03;
     const opts = { tag: which, reader: readerKey, distance: d, capacitance: C };
-    const f0 = T.frequency, ctx = fit(p), bx = box(p, 26, 44);
+    const f0 = T.frequency, ctx = fit(p), bx = box(p, 26, 44, 54, 28);
     const curveNow = physics.sweep(opts, f0 / 4, f0 * 4, 220), tuned = physics.sweep({ ...opts, capacitance: T.capacitance }, f0 / 4, f0 * 4, 220);
     const top = Math.max(...tuned.map(([, v]) => v)) * 1.12;
     const fmt = v => si(v, 'Hz', 3);
@@ -208,13 +214,15 @@
       { from: 0, to: top, ticks: [0, top / 2, top].map(v => [v, v.toFixed(1) + ' V']), label: 'Volts at the chip' });
     curve(ctx, tuned, a.X, a.Y, FAINT, 1.5, [5, 5]);
     curve(ctx, curveNow, a.X, a.Y, COPPER, 2.2);
+    p.canvas.resonanceCurve = { box: bx, points: curveNow, X: a.X, Y: a.Y, color: COPPER };
     vline(ctx, a.X(f0), bx.y, bx.y + bx.h, INK, 'The reader: ' + fmt(f0));
     const s = physics.solve(opts);
     hline(ctx, a.Y(s.wake), bx.x, bx.x + bx.w, GREEN, 'Wake-up');
     dot(ctx, a.X(f0), a.Y(Math.min(s.rawVolts, top)), s.awake ? GREEN : RED);
     const r = physics.range({ tag: which, reader: readerKey, capacitance: C }), r0 = physics.range({ tag: which, reader: readerKey });
     const tunedRight = Math.abs(r - r0) < .0005;
-    p.say(`${removed ? 'Without its capacitor' : 'Tuned to ' + fmt(s.resonance)}, the ${which === 'key' ? 'key' : 'card'} works up to ${cm(r)} away${tunedRight ? '.' : ` (${cm(r0)} when tuned right).`}`);
+    const tuning = removed ? 'Without its capacitor' : C === 0 ? 'At 0 F' : 'Tuned to ' + fmt(s.resonance);
+    p.say(`${tuning}, the ${which === 'key' ? 'key' : 'card'} works up to ${cm(r)} away${tunedRight ? '.' : ` (${cm(r0)} when tuned right).`}`);
   });
 
   // ---------- 9. Why metal fights back ----------
