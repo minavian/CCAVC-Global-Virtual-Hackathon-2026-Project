@@ -98,7 +98,7 @@ body::after {
   text-wrap: balance;
 }
 #part-one-power { white-space: nowrap; }
-html.deep-blink-hold, html.deep-closer-hold, html.deep-flipping-hold { overflow-y: hidden; }
+html.deep-blink-hold, html.deep-closer-hold, html.deep-flipping-hold, html.deep-tuning-hold { overflow-y: hidden; }
 .deep-blink-cover {
   position: fixed;
   inset: 0;
@@ -269,7 +269,7 @@ html.deep-blink-hold, html.deep-closer-hold, html.deep-flipping-hold { overflow-
 .s7-control label { display: inline; }
 .s7-control output { font-variant-numeric: tabular-nums; }
 #s7-speed { display: block; block-size: 24px; margin: 0; }
-#s7.s7-awaiting:not(:focus-within) > * { opacity: 0; pointer-events: none; }
+#s7.s7-awaiting:not(:focus-within) > *, #s8.s8-awaiting:not(:focus-within) > * { opacity: 0; pointer-events: none; }
 #s6:has(+ .s7-awaiting), #s6:has(+ .s7-entering) { border-block-end-color: transparent; }
 .s7-track-copy, .s7-plot-copy, .s7-flow-word { position: fixed; z-index: 2; pointer-events: none; }
 input.s7-track-copy {
