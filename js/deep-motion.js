@@ -1064,7 +1064,7 @@ function watchSoaking(source, scene) {
 
   let layout, lastTop, armed, entered, introStart = null, entrance = 1;
   let blend = Number(toggle.checked), destination = blend, blendFrom, blendStart, flip;
-  let frame = 0, visible = false, scanStart = null, scannedTrace;
+  let frame = 0, visible = false, scanStart = null, scannedTrace, scanPaused = false;
   const motionAllowed = () => !reducedMotion.matches && !document.hidden;
   const updatePlot = () => plot.setAnswerMotion?.(ease(0, .28, entrance), ease(.28, 1, entrance), blend);
 
@@ -1121,8 +1121,16 @@ function watchSoaking(source, scene) {
   }
 
   function requestFrame() {
-    if (!frame && visible && motionAllowed()) frame = requestAnimationFrame(animate);
+    if (!frame && visible && motionAllowed() && (!scanPaused || introStart !== null || blend !== destination)) {
+      frame = requestAnimationFrame(animate);
+    }
   }
+
+  plot.pauseAnswerScan = paused => {
+    scanPaused = paused;
+    if (paused) hideScan();
+    else requestFrame();
+  };
 
   function animate(now) {
     frame = 0;
@@ -1135,7 +1143,7 @@ function watchSoaking(source, scene) {
     updatePlot();
 
     const trace = plot.answerTrace;
-    if (entrance === 1 && blend === destination && trace?.blend === blend) {
+    if (!scanPaused && entrance === 1 && blend === destination && trace?.blend === blend) {
       const { box, points, X, Y } = trace;
       scanStart ??= now;
       const progress = (now - scanStart) % 2800 / 2800;
@@ -1231,6 +1239,159 @@ function watchSoaking(source, scene) {
   contentSize.observe(scene);
 }
 
+function watchWhispering(previous, scene) {
+  const chapter = scene.closest('.deep');
+  const source = previous.querySelector('#s11-title'), title = scene.querySelector('#s12-title');
+  const sourceChart = previous.querySelector('#s11-chart'), chart = scene.querySelector('#s12-chart');
+  const vortex = document.createElement('div');
+  vortex.className = 's12-vortex';
+  vortex.setAttribute('aria-hidden', 'true');
+  const wave = document.createElement('canvas');
+  wave.className = 's12-wave-copy';
+  const ctx = wave.getContext('2d');
+
+  const bands = Array.from({ length: 5 }, () => {
+    const band = document.createElement('div');
+    band.className = 's12-vortex-band';
+    const faces = Array.from({ length: 2 }, () => {
+      const face = document.createElement('div'), text = document.createElement('span');
+      face.className = 's12-vortex-face';
+      text.className = 's12-vortex-type';
+      face.append(text);
+      band.append(face);
+      return face;
+    });
+    vortex.append(band);
+    return { band, faces };
+  });
+  let layout, copiedTrace;
+  let armed = false, lastTop = scrollY;
+
+  function headingBounds(heading, top) {
+    const rect = bounds(heading, top), range = document.createRange();
+    range.selectNodeContents(heading);
+    return { ...rect, stripWidth: Math.min(rect.w, range.getBoundingClientRect().width + 3) };
+  }
+
+  function measure(top, height) {
+    const stacked = matchMedia('(max-width: 860px)').matches;
+    const to = headingBounds(title, top), from = stacked ? to : headingBounds(source, top);
+    const start = stacked ? to.y - height * .81 : from.y + from.h / 2 - height * .21;
+    const end = stacked ? to.y - height * .51 : Math.max(start + height * .38, to.y + to.h / 2 - height * .68);
+    const captions = [stacked ? title.textContent : source.textContent, title.textContent];
+    vortex.classList.toggle('s12-vortex--stacked', stacked);
+    bands.forEach(({ faces }, i) => {
+      faces.forEach((face, side) => {
+        const rect = side === 0 ? from : to, h = rect.h / bands.length;
+        face.firstChild.textContent = captions[side];
+        Object.assign(face.style, { width: `${rect.stripWidth}px`, height: `${h}px` });
+        Object.assign(face.firstChild.style, { width: `${rect.w}px`, top: `${-i * h}px` });
+      });
+    });
+    return { from, to, start, end, stacked, width: innerWidth, fromChart: bounds(sourceChart, top), toChart: bounds(chart, top) };
+  }
+
+  function settle() {
+    if (!vortex.isConnected) return;
+    vortex.remove();
+    source.classList.remove('s12-title-in-flight');
+    title.classList.remove('s12-title-in-flight');
+    chart.style.removeProperty('opacity');
+    sourceChart.pauseAnswerScan?.(false);
+  }
+
+  function turnHeading(top, height, progress) {
+    const { from, to, stacked, width } = layout;
+    const radius = Math.min(stacked ? 72 : 180, width * .23);
+    const hubY = stacked ? to.y - top + to.h / 2 - 18 : height * .45;
+    const gather = ease(0, .35, progress), open = ease(.53, .94, progress);
+    // Move the stack together so the stagger changes the turn without scattering the bands.
+    const centerX = mix(mix(from.x + from.stripWidth / 2, width / 2, gather), to.x + to.stripWidth / 2, open);
+    const centerY = mix(mix(from.y + from.h / 2 - top, hubY, ease(.17, .44, progress)),
+      to.y + to.h / 2 - top, ease(.45, .73, progress));
+    bands.forEach(({ band }, i) => {
+      const offset = (i + .5) / bands.length - .5, delay = i * .055;
+      const turn = ease(delay, .78 + delay, progress), angle = Math.PI * turn;
+      const fold = Math.sin(angle), orbit = angle + offset * 1.8;
+      const x = centerX + radius * offset * Math.sin(orbit) * fold;
+      const y = centerY + mix(from.h, to.h, open) * offset * (1 + .68 * fold);
+      const depth = radius * .64 * Math.cos(orbit) * fold;
+      const roll = (offset * 44 - 6) * fold;
+      band.style.setProperty('--s12-fold', fold);
+      band.style.transform = `translate3d(${x}px, ${y}px, ${depth}px) rotateZ(${roll}deg) rotateY(${turn * 180}deg)`;
+    });
+  }
+
+  function carryWave(top, height, progress) {
+    const trace = sourceChart.answerTrace, spectrum = chart.spectrumTrace;
+    if (layout.stacked || !trace || !spectrum) return;
+    const { box, X, Y } = trace;
+    if (trace !== copiedTrace) {
+      const dpr = Math.min(devicePixelRatio || 1, 2);
+      wave.width = Math.round(box.w * dpr);
+      wave.height = Math.round(box.h * dpr);
+      Object.assign(wave.style, { width: `${box.w}px`, height: `${box.h}px` });
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.lineWidth = 1.2;
+      ctx.strokeStyle = trace.color;
+      ctx.beginPath();
+      trace.points.forEach(([sample, current], i) => {
+        const x = X(sample) - box.x, y = Y(current) - box.y;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+      copiedTrace = trace;
+    }
+
+    const { fromChart, toChart } = layout;
+    const [frequency, strength] = spectrum.carrier;
+    const travel = ease(.04, .72, progress), pivot = Y(1) - box.y;
+    const x = mix(fromChart.x + box.x + box.w / 2, toChart.x + spectrum.X(frequency), travel);
+    const y = mix(fromChart.y + Y(1), toChart.y + spectrum.Y(strength), travel) - top;
+    const arc = Math.sin(Math.PI * travel) * Math.min(52, height * .064);
+    wave.style.transform = `translate(${x}px, ${y + arc}px) scale(${mix(1, .065, travel)}, ${mix(1, .19, travel)}) translate(${-box.w / 2}px, ${-pivot}px)`;
+    wave.style.opacity = .86 * ease(0, .13, progress) * (1 - ease(.53, .82, progress));
+    chart.style.opacity = ease(.38, .96, progress);
+    if (!wave.isConnected) vortex.prepend(wave);
+  }
+
+  watchScrollMotion((top, height, needsMeasure) => {
+    if (reducedMotion.matches || document.hidden) return settle();
+    if (needsMeasure || !layout) layout = measure(top, height);
+    if (needsMeasure || Math.abs(top - lastTop) > height * .42) armed = false;
+    lastTop = top;
+    if (top <= layout.start) armed = true;
+    if (!armed || top <= layout.start || top >= layout.end) return settle();
+
+    if (!vortex.isConnected) {
+      // The mobile stack leaves the old title in place and turns the new title in its own row.
+      if (!layout.stacked) {
+        source.classList.add('s12-title-in-flight');
+        sourceChart.pauseAnswerScan?.(true);
+      }
+      title.classList.add('s12-title-in-flight');
+      chapter.append(vortex);
+    }
+    const progress = stage(layout.start, layout.end, top);
+    turnHeading(top, height, progress);
+    carryWave(top, height, progress);
+  });
+
+  const copy = [previous, scene].map(plate => plate.querySelector('.plate-words'));
+  const contentSize = new ResizeObserver(() => {
+    layout = undefined;
+    scheduleMotion();
+  });
+  for (const element of [chapter, ...copy]) contentSize.observe(element);
+  for (const controls of [previous, scene].flatMap(plate => [...plate.querySelectorAll('.plate-controls')])) {
+    for (const event of ['focusin', 'pointerdown', 'input']) controls.addEventListener(event, () => {
+      if (vortex.isConnected) armed = false;
+      settle();
+    });
+  }
+}
+
 const opener = document.getElementById('deep-title');
 const partOne = document.getElementById('part-one');
 if (opener && partOne) watchPartOne(opener, partOne);
@@ -1254,3 +1415,5 @@ if (pausesLink && partTwo) watchPartTwo(pausesLink, partTwo);
 const answerLetter = document.getElementById('part-two-answer-s');
 const soaking = document.getElementById('s11');
 if (answerLetter && soaking) watchSoaking(answerLetter, soaking);
+const whispering = document.getElementById('s12');
+if (soaking && whispering) watchWhispering(soaking, whispering);

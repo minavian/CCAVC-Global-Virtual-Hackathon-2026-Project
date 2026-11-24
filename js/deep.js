@@ -69,9 +69,10 @@
     const X = v => map(x, v, box.x, box.x + box.w), Y = v => map(y, v, box.y + box.h, box.y);
     ctx.save();
     ctx.font = `500 11px ${SANS}`; ctx.fillStyle = MUTED; ctx.strokeStyle = GRID; ctx.lineWidth = 1;
-    for (const [v, label] of x.ticks || []) {
+    for (const [i, [v, label]] of (x.ticks || []).entries()) {
       ctx.beginPath(); ctx.moveTo(X(v), box.y); ctx.lineTo(X(v), box.y + box.h); ctx.stroke();
-      ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(label, X(v), box.y + box.h + 6);
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.fillText(label, X(v), box.y + box.h + (x.stagger && i % 2 ? 20 : 6));
     }
     for (const [v, label] of y.ticks || []) {
       ctx.beginPath(); ctx.moveTo(box.x, Y(v)); ctx.lineTo(box.x + box.w, Y(v)); ctx.stroke();
@@ -80,7 +81,7 @@
     ctx.strokeStyle = FAINT;
     ctx.beginPath(); ctx.moveTo(box.x, box.y); ctx.lineTo(box.x, box.y + box.h); ctx.lineTo(box.x + box.w, box.y + box.h); ctx.stroke();
     ctx.fillStyle = INK; ctx.font = `600 11px ${SANS}`;
-    if (x.label) { ctx.textAlign = 'right'; ctx.textBaseline = 'top'; ctx.fillText(x.label, box.x + box.w, box.y + box.h + 22); }
+    if (x.label) { ctx.textAlign = 'right'; ctx.textBaseline = 'top'; ctx.fillText(x.label, box.x + box.w, box.y + box.h + (x.stagger ? 35 : 22)); }
     if (y.label) { ctx.textAlign = 'left'; ctx.textBaseline = 'bottom'; ctx.fillText(y.label, box.x, box.y - 6); }
     ctx.restore();
     return { X, Y };
@@ -509,12 +510,15 @@
       if (Math.abs(f) > 1.5e6) continue;
       spec.push([iso.CARRIER + f, 20 * Math.log10(Math.hypot(re[j], im[j]) / N + 1e-12)]);
     }
-    const ctx = fit(p), bx = box(p, 26, 44);
+    const ctx = fit(p), stagger = p.w < 340, bx = box(p, 26, stagger ? 54 : 44, 42, 32);
     const top = Math.max(...spec.map(([, v]) => v)), floor = top - 110;
-    const a = chart(ctx, bx, { from: iso.CARRIER - 1.5e6, to: iso.CARRIER + 1.5e6, ticks: [-1.5e6, -.8475e6, 0, .8475e6, 1.5e6].map(o => [iso.CARRIER + o, si(iso.CARRIER + o, 'Hz', 4)]), label: 'Pitch' },
+    const a = chart(ctx, bx, { from: iso.CARRIER - 1.5e6, to: iso.CARRIER + 1.5e6, ticks: [-1.5e6, -.8475e6, 0, .8475e6, 1.5e6].map(o => [iso.CARRIER + o, si(iso.CARRIER + o, 'Hz', 4)]), label: 'Pitch', stagger },
       { from: floor, to: top + 6, ticks: [[top, '0 dB'], [top - 50, '−50'], [top - 100, '−100']], label: 'Strength (decibels)' });
+    const points = spec.map(([f, v]) => [f, Math.max(v, floor)]);
+    // Keep the plotted bins and their canvas coordinates available for the next scene.
+    p.canvas.spectrumTrace = { box: bx, points, ...a, color: INK, carrier: points[(points.length - 1) / 2], flicker };
     ctx.save(); ctx.beginPath(); ctx.rect(bx.x, bx.y, bx.w, bx.h); ctx.clip();
-    curve(ctx, spec.map(([f, v]) => [f, Math.max(v, floor)]), a.X, a.Y, INK, 1);
+    curve(ctx, points, a.X, a.Y, INK, 1);
     ctx.restore();
     ctx.fillStyle = INK; ctx.font = `600 11px ${SANS}`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
     ctx.fillText('The phone’s own field', a.X(iso.CARRIER), bx.y + 12);
