@@ -354,5 +354,32 @@ export function buildEffects() {
     die.visible = die.material.opacity > .004;
   }
 
-  return { table, onCard, update, WARM, COOL };
+  // The lab's reach: a dashed outline of the card, lying as the card lies, at the farthest height
+  // the chip still wakes (`b.reachZ`, from lab-model.js `reachOf`), so you can see where the
+  // reader's power runs out, and the card go past it.
+  const reachGeometry = new THREE.BufferGeometry().setFromPoints(Array.from({ length: 121 }, (_, i) => {
+    const [x, y] = rectPoint(.0428, .027, .0032, i / 120);
+    return new THREE.Vector3(x, y, 0);
+  }));
+  const reachLine = new THREE.Line(reachGeometry, new THREE.LineDashedMaterial({
+    color: 0xf4f1ea, dashSize: .003, gapSize: .002, transparent: true, opacity: 0, depthTest: false, depthWrite: false, toneMapped: false,
+  }));
+  reachLine.computeLineDistances();
+  reachLine.renderOrder = 10;
+  reachLine.frustumCulled = false;
+  reachLine.rotation.z = HOVER.spin;
+  table.add(reachLine);
+
+  const baseUpdate = update;
+  function updateAll(b, cardZ, talk) {
+    baseUpdate(b, cardZ, talk);
+    const show = (b.reachShow || 0) * (1 - (b.phone > .02 && b.phone < .98 ? 1 : 0));
+    reachLine.visible = show > .01;
+    if (!reachLine.visible) return;
+    // As far over the coil as the card's coil can be and still wake it.
+    reachLine.position.set(HOVER.x, HOVER.y, COIL_Z + (b.reachZ || 0));
+    reachLine.material.opacity = .55 * show;
+  }
+
+  return { table, onCard, update: updateAll, WARM, COOL, reach: () => reachLine.position };
 }

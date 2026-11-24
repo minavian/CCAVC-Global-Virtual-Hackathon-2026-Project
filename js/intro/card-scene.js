@@ -655,6 +655,8 @@ export async function createCardScene(canvas) {
     phoneCoil: () => point.set(PHONE_COIL.radius * .94, -PHONE_COIL.radius * .34, COIL_Z),
     field: () => point.set(COIL_HALF * 1.08, -COIL_HALF * .3, (COIL_Z + cardTop) / 2),
     cardCoil: () => onCard(.0402, -.008, cardTop),
+    // The right end of the reach's outline (effects.js).
+    reach: () => { const at = fx.reach(); return onCard(.0428, -.012, at.z); },
     cardChip: () => onCard(-.0277, .0031, cardTop + .0004),
     metal: () => onCard(.044, .02, cardTop + plateHeight),
     // The middle of the picture: each label sits out from its part, away from here.

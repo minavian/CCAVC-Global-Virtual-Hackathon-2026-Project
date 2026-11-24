@@ -201,6 +201,10 @@ export function labLevels(s, m) {
     falloff: 1,
     // Which reader shows: the pad (0) or the phone (1). It glides, so the swap is animated.
     phone: readerOf(s) === 'phone' ? 1 : 0,
+    // Where the chip stops waking, drawn in space (not past the lab's 10 cm, and not at all when
+    // it wakes nowhere).
+    reachZ: Math.min(m.reach, 10) / 100,
+    reachShow: m.reach > .05 ? 1 : 0,
   };
 }
 

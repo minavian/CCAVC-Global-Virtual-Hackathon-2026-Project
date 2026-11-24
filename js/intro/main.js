@@ -393,6 +393,12 @@ function intro(experience) {
   const leaderLines = new Map();
   function paintLabels3D(names) {
     const middle = names.length ? scene.anchor('middle') : null;
+    // Beside the lab's panel (on a wide screen it covers the stage's right side), labels stay
+    // left of it.
+    let right = layout.width;
+    if (names.length && !labUi.panel.hidden && !layout.compact) {
+      right = Math.min(right, labUi.panel.getBoundingClientRect().left - stage.getBoundingClientRect().left - 8);
+    }
     for (const [part, label] of Object.entries(film.labels)) {
       const name = part === 'cardChip' ? 'chip' : part;
       const shown = names.includes(name);
@@ -414,7 +420,7 @@ function intro(experience) {
       // Kept whole on the screen, by its own width (a long one, like the phone's coil, ran off
       // a phone's edge when only its middle was kept 70 px in).
       const half = (label.offsetWidth || 120) / 2 + 10;
-      const x = clamp(at.x + dx * reach, half, layout.width - half), y = clamp(at.y + dy * reach - 6, 60, layout.height - 200);
+      const x = clamp(at.x + dx * reach, half, right - half), y = clamp(at.y + dy * reach - 6, 60, layout.height - 200);
       label.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
       line.setAttribute('x1', at.x.toFixed(1));
       line.setAttribute('y1', at.y.toFixed(1));
@@ -990,7 +996,7 @@ function intro(experience) {
     const working = docked && STEPS[step].talk === 'answer' && b.message && !b.message.started;
     const inLab = docked && step === LAB;
     const names = working ? ['chip'] : inLab
-      ? ['chip', ...(lab.set.metal > 0 ? ['metal'] : []), ...(b.phone > .97 ? ['phoneCoil'] : [])]
+      ? ['chip', ...(lab.set.metal > 0 ? ['metal'] : []), ...(b.phone > .97 ? ['phoneCoil'] : []), ...(b.reachShow > .5 ? ['reach'] : [])]
       : STEPS[step]?.labels ?? [];
     paintLabels3D(docked && available ? names : []);
     // The lab's panel shows only in its step, once the readout is in.

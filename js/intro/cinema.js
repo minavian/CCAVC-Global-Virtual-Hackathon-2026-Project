@@ -71,12 +71,13 @@ const WAKE = power(4);   // the old curve's wake, about 9% (only without the phy
 //   a share of a normal tap's (the lab's: a weak current runs slowly). phone: which reader the
 //   lab uses, the card reader (0) or a phone (1); it glides, so the two swap places smoothly.
 //   deny: the reader turning a copied card down (its light, or the phone's screen, goes red).
+//   reachZ, reachShow: the lab's reach, drawn as a dashed outline that high over the coil (m).
 export const IDLE = {
   dock: 0, gap: .034, card: 1, xray: 0, copper: 1, reader: 1, shell: 1,
   emit: 0, field: 0, receive: 0, power: 0, blink: 0, reply: 0, read: 0, thinking: 0,
   check: 0, page: 1, panel: 0, explain: 0, charge: 0, dark: 0,
   tilt: 0, metal: 0, plate: .02, shield: 0, falloff: 0, answerScale: 1, readerPace: 1, cardPace: 1, phone: 0,
-  deny: 0,
+  deny: 0, reachZ: 0, reachShow: 0,
 };
 const DIM = .12;   // what is not being shown fades to this
 
