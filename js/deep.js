@@ -113,8 +113,12 @@
 
   // ---------- 6. Closer is stronger ----------
   plate('s6', p => {
-    const d = +p.input('distance').value / 1000, r = +p.input('radius').value / 1000;
-    p.out('distance', cm(d)); p.out('radius', (2 * r * 100).toFixed(1) + ' cm across');
+    const distance = p.input('distance'), coil = p.input('radius');
+    const d = distance.valueAsNumber / 1000, r = coil.valueAsNumber / 1000;
+    const distanceText = cm(d), coilText = (2 * r * 100).toFixed(1) + ' cm across';
+    p.out('distance', distanceText); p.out('radius', coilText);
+    distance.setAttribute('aria-valuetext', distanceText);
+    coil.setAttribute('aria-valuetext', coilText);
     const ctx = fit(p), opts = { tag: 'card', reader: 'phone', radius: r };
     const half = (p.h - 30) / 2;
     const top = { x: 54, y: 24, w: p.w - 72, h: half - 46 }, bottom = { x: 54, y: half + 30, w: p.w - 72, h: half - 46 };
@@ -128,6 +132,9 @@
     hline(ctx, a.Y(physics.H_MIN), top.x, top.x + top.w, RED, 'The standard’s minimum, 1.5 A/m');
     curve(ctx, field, a.X, a.Y, INK);
     const s = physics.solve({ ...opts, distance: d });
+    p.el.style.setProperty('--card-distance', (distance.valueAsNumber - Number(distance.min)) / (distance.max - distance.min));
+    p.el.style.setProperty('--coil-scale', coil.valueAsNumber / Number(coil.max));
+    p.el.style.setProperty('--field-strength', clamp(s.field / physics.H_MAX, .16, 1));
     dot(ctx, a.X(d), a.Y(s.field), INK);
     const b = chart(ctx, bottom, { ...xr, label: 'Distance from the phone' }, { from: 0, to: 6, ticks: [[0, '0 V'], [2, '2 V'], [4, '4 V'], [6, '6 V']], label: 'Volts the coil can give the chip' });
     hline(ctx, b.Y(s.wake), bottom.x, bottom.x + bottom.w, COPPER, 'Wake-up, ' + s.wake + ' V');
@@ -135,7 +142,7 @@
     dot(ctx, b.X(d), b.Y(Math.min(s.rawVolts, 6)), s.awake ? GREEN : RED);
     const range = physics.range(opts);
     vline(ctx, b.X(range), top.y, bottom.y + bottom.h, MUTED, 'Range ' + cm(range));
-    p.say(`At ${cm(d)}: a field of ${s.field.toFixed(2)} A/m, enough for ${s.rawVolts.toFixed(1)} V at the chip. ${s.awake ? 'Awake.' : 'Asleep.'} This coil reaches ${cm(range)}.`);
+    p.say(`At ${distanceText}: a field of ${s.field.toFixed(2)} A/m, enough for ${s.rawVolts.toFixed(1)} V at the chip. ${s.awake ? 'Awake.' : 'Asleep.'} This coil reaches ${cm(range)}.`);
   });
 
   // ---------- 7. It has to keep flipping ----------

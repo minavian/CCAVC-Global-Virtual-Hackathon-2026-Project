@@ -41,15 +41,35 @@
       <div class="plate-words">
         <p class="plate-num">6</p>
         <h3 id="s6-title">Closer is stronger</h3>
-        <p>The field fades very fast with distance. A bigger coil catches more of it, which is why the card’s coil runs around its whole edge.</p>
+        <p class="s6-intro">The field fades very fast with distance. A bigger coil catches more of it, which is why the card’s coil runs around its whole edge.</p>
         <div class="plate-controls">
-          <label>Distance from the phone <output data-for="s6-distance"></output><input id="s6-distance" type="range" min="2" max="80" value="20"></label>
-          <label>Size of the card’s coil <output data-for="s6-radius"></output><input id="s6-radius" type="range" min="12" max="45" value="36"></label>
+          <div class="s6-control">
+            <div class="s6-control-text">
+              <label for="s6-distance">Distance from the phone</label>
+              <output for="s6-distance" data-for="s6-distance" aria-live="off"></output>
+            </div>
+            <input id="s6-distance" type="range" min="2" max="80" value="20">
+          </div>
+          <div class="s6-control">
+            <div class="s6-control-text">
+              <label for="s6-radius">Size of the card’s coil</label>
+              <output for="s6-radius" data-for="s6-radius" aria-live="off"></output>
+            </div>
+            <input id="s6-radius" type="range" min="12" max="45" value="36">
+          </div>
+        </div>
+        <div class="s6-coupling" aria-hidden="true">
+          <img class="s6-reader" src="../images/intro/reader.webp" width="640" height="512" alt="">
+          <span class="s6-field"></span>
+          <div class="s6-card">
+            <img src="../images/intro/credit-card-face.webp" width="520" height="328" alt="">
+            <span class="s6-coil"></span>
+          </div>
         </div>
         <p class="plate-readout" aria-live="polite"></p>
         <p class="plate-real">Real name: inductive coupling. A card must work in a field from 1.5 to 7.5 A/m (ISO/IEC 14443-2).</p>
       </div>
-      <canvas class="plate-canvas" role="img" aria-label="Graph of the field and the chip's volts against distance"></canvas>
+      <canvas class="plate-canvas" id="s6-chart" role="img" aria-label="Graph of the field and the chip's volts against distance"></canvas>
     </section>
 
     <section class="plate" id="s7" aria-labelledby="s7-title">

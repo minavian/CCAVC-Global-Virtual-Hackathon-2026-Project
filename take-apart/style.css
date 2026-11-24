@@ -157,6 +157,74 @@ body::after {
 .plate > * { min-width: 0; }
 .plate-canvas { width: 100%; max-width: 100%; min-width: 0; height: clamp(300px, 46vh, 460px); height: clamp(300px, 54svh, 560px); display: block; }
 
+/* Scene 6 pairs its existing plots with a small illustration of the two coils. */
+.s6-title-travel {
+  position: absolute;
+  z-index: 1;
+  max-inline-size: none;
+  font-weight: 800;
+  white-space: nowrap;
+  pointer-events: none;
+  transform-origin: top left;
+}
+.s6-title-source { opacity: 0; }
+.s6-control { display: grid; gap: 3px; }
+.s6-control label { display: inline; }
+.s6-control output { font-variant-numeric: tabular-nums; }
+.s6-control input[type="range"] { display: block; block-size: 24px; margin: 0; }
+#s6-title, .s6-control-text { transform-origin: left center; }
+.s6-coupling {
+  display: flex;
+  align-items: center;
+  position: relative;
+  inline-size: min(100%, 300px);
+  block-size: 92px;
+}
+.s6-reader {
+  position: relative;
+  z-index: 1;
+  inline-size: 33%;
+  block-size: auto;
+}
+.s6-field {
+  position: absolute;
+  inset-inline-start: 28%;
+  inline-size: 35%;
+  block-size: 15px;
+  border-block: 1px dotted var(--copper);
+  border-radius: 50%;
+  opacity: var(--field-strength, .51);
+  transform: scaleX(calc(.29 + var(--card-distance, .23) * .7));
+  transform-origin: left center;
+}
+.s6-card {
+  position: absolute;
+  inset-inline-start: 38%;
+  inline-size: 36%;
+  transform: translateX(calc(var(--card-distance, .23) * 67%)) rotate(12deg);
+  transform-origin: left center;
+}
+.s6-card img {
+  display: block;
+  inline-size: 100%;
+  block-size: auto;
+  border-radius: 6% / 9%;
+  box-shadow: 0 3px 8px rgba(13, 13, 12, .17);
+}
+.s6-coil {
+  position: absolute;
+  inset: 7% 5%;
+  border: 1px solid var(--copper);
+  border-radius: 7px;
+  box-shadow: inset 0 0 0 1px var(--paper), inset 0 0 0 2px var(--copper);
+  transform: scale(var(--coil-scale, .8));
+}
+@media (prefers-reduced-motion: no-preference) {
+  .s6-card, .s6-coil, .s6-field {
+    transition: transform .16s cubic-bezier(.2, .75, .35, 1), opacity .16s ease-out;
+  }
+}
+
 .plate-river { display: grid; gap: 14px; }
 .plate-river .plate-canvas { height: clamp(150px, 22vh, 220px); }
 .chat { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; max-height: 300px; overflow: auto; }
