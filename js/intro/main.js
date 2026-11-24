@@ -1473,6 +1473,10 @@ function intro(experience) {
     try { stage.setPointerCapture(event.pointerId); } catch {}
     stage.classList.add('is-orbiting');
   });
+  // The docked stage lets a vertical swipe scroll the page (styles.css `touch-action: pan-y`), so
+  // on a touch screen a finger moving the card would scroll instead: while the card is held, its
+  // touch doesn't scroll. (A swipe that starts off the card still scrolls, as before.)
+  stage.addEventListener('touchmove', event => { if (cardDrag && event.cancelable) event.preventDefault(); }, { passive: false });
   stage.addEventListener('pointermove', event => {
     if (cardDrag?.id === event.pointerId) {
       const distance = Math.round((cardDrag.from + (cardDrag.y - event.clientY) / cardDrag.perCm) * 10) / 10;
