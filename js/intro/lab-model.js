@@ -165,13 +165,17 @@ export function labLevels(s, m) {
     // Into the chip: only once it is awake, as much as it gets (its limiter holds it at 3.3 V).
     power: m.awake ? Math.max(.6, Math.min(1, m.volts / m.clamp)) : 0,
     blink: m.awake ? .3 : 0,
-    charge: Math.min(1, m.raw / m.wake),
+    charge: chipPower(m),
     answerScale: Math.max(.15, Math.min(1.2, m.dip / .06)),
     falloff: 1,
     // Which reader shows: the pad (0) or the phone (1). It glides, so the swap is animated.
     phone: readerOf(s) === 'phone' ? 1 : 0,
   };
 }
+
+// The chip's power as the readout shows it: the power it gets as a share of what it needs to wake.
+// Power goes as the voltage squared, so it is (V / 2 V)², at most 100% (awake).
+export const chipPower = m => Math.min(1, (m.raw / m.wake) ** 2);
 
 // Whether the chip wakes with a setting (no range, so it is quick). The lab's sliders use it to
 // show where along each one the chip wakes (main.js `paintZones`).

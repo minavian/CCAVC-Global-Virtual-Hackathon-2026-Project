@@ -28,9 +28,18 @@ export const TALK_GAP = .03;
 
 // Distance. The drag happens on a flat screen, so how far the card is from the reader's
 // centre (`zone`: 1 is the edge of the drop zone) is turned into centimetres. The drop
-// zone's edge is about 4 cm, where a real card wakes up; the nearest is half a centimetre.
-export const NEAREST = .5, FARTHEST = 10, WAKE_CM = 4;
+// zone's edge is about 4 cm, inside where a real card wakes up; the nearest is half a centimetre.
+export const NEAREST = .5, FARTHEST = 10;
 export const centimetres = zone => clamp(NEAREST + (zone - .25) * 4.75, NEAREST, FARTHEST);
+
+// The drag runs on the same physics as the lab (js/rfid/physics.js, lab-model.js): the card
+// reader at full power, the card facing it. `padAt(cm)` solves it; `NORMAL_VOLTS` is what a
+// normal 3 cm tap induces (the close-up's full strength); `WAKE_CM` is where the chip wakes,
+// about 4.9 cm. Without the engine (it failed to load), the old curve below stands in.
+const physics = globalThis.RFID?.physics;
+const padAt = cm => physics.solve({ tag: 'card', reader: 'pad', distance: cm / 100 });
+const NORMAL_VOLTS = physics ? padAt(3).rawVolts : 4.2;
+export const WAKE_CM = physics ? physics.range({ tag: 'card', reader: 'pad' }, .2) * 100 : 4.9;
 
 // The power that reaches the card at `cm`, as a share of what it gets lying on the reader.
 // On the axis of a round coil of radius R, the field falls as (R² / (R² + d²))^1.5, and the
@@ -38,7 +47,7 @@ export const centimetres = zone => clamp(NEAREST + (zone - .25) * 4.75, NEAREST,
 const R2 = 3.5 ** 2;
 const field = cm => (R2 / (R2 + cm * cm)) ** 1.5;
 export const power = cm => (field(cm) / field(NEAREST)) ** 2;
-export const WAKE = power(WAKE_CM);   // about 9%: the chip needs this much to start
+const WAKE = power(4);   // the old curve's wake, about 9% (only without the physics engine)
 
 // Every level main.js glides, at rest. Opacities and strengths run 0 to 1.
 // dock: the card's place, free (0) or lying over the reader (1); gap: its height above
@@ -69,10 +78,23 @@ export const IDLE = {
 };
 const DIM = .12;   // what is not being shown fades to this
 
-// While the card is dragged: the levels at `cm` from the reader.
+// The chip's power as the readout shows it at `cm`: the power it gets as a share of what it needs
+// to wake (power goes as the voltage squared: (V / 2 V)²), so 100% is awake, and half the voltage
+// is a quarter of the power. The lab means the same (`chipPower` in lab-model.js).
+export function chipShare(cm) {
+  if (!physics) return clamp(power(cm) / WAKE);
+  const r = padAt(cm);
+  return clamp((r.rawVolts / r.wake) ** 2);
+}
+
+// While the card is dragged: the levels at `cm` from the reader. As in the lab, the card's current
+// is drawn as bright as the power it carries and runs as fast as it is strong, and the chip lights
+// only once the physics says it is awake: far away, the card shows next to nothing.
 export function approach(cm) {
   const reach = smoother(9, 6.5, cm);          // the close-up comes in as the card comes near
-  const share = power(cm);
+  const r = physics ? padAt(cm) : null;
+  const current = r ? r.rawVolts / NORMAL_VOLTS : clamp(Math.sqrt(power(cm)) * 1.5);
+  const awake = r ? r.awake : cm <= WAKE_CM;
   return {
     ...IDLE,
     page: 1 - (1 - DIM) * reach,
@@ -81,9 +103,11 @@ export function approach(cm) {
     emit: reach,
     field: reach,
     xray: smoother(7.5, 5, cm),                 // the card shows its coil
-    receive: clamp(Math.sqrt(share) * 1.5) * smoother(8, 5.5, cm),
-    power: smoother(WAKE * .75, WAKE * 2.2, share),
-    blink: smoother(.5, .85, share) * .6,
+    receive: Math.min(1.15, current * current) * smoother(8, 5.5, cm),
+    cardPace: Math.min(1.5, current),
+    power: awake ? 1 : 0,
+    // The chip starts working as it wakes, a little more the closer it comes.
+    blink: awake ? .25 + .35 * smoother(3, 1, cm) : 0,
   };
 }
 

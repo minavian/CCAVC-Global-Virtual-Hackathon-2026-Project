@@ -9,8 +9,8 @@ import { autoplay } from './autoplay.js?v=15';
 import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose, clamp, ease, mix, measureStage, restingFrame, scrollTime } from './timeline.js?v=3';
 import { renderSignals } from './signals.js?v=2';
 import { ANSWER_AFTER, APPROACH_DETAIL, APPROACH_TEXT, ASK, SAMPLES_PER_BIT, CARD_ID, IDLE, LAB, LAST, NEAREST, REAL_MS, SHOTS, STEPS, TALK, approach, approachBand, approachView, centimetres,
-  checkByte, hex, message, power, setCardId, talkLevels, view } from './cinema.js';
-import { LAB_START, PRESETS, READERS, clampSetting, curve, labLevels, measure as measureLab, parseId, startFor, status as labStatus, wakes } from './lab-model.js';
+  checkByte, chipShare, hex, message, setCardId, talkLevels, view } from './cinema.js';
+import { LAB_START, PRESETS, READERS, clampSetting, curve, labLevels, measure as measureLab, parseId, startFor, status as labStatus, wakes, chipPower } from './lab-model.js';
 
 // Resolves once the landing's opening is over (js/landing.js), the visitor scrolls, or
 // `fallback` ms pass, whichever is first: the moment to load 3D without stuttering it.
@@ -844,7 +844,7 @@ function intro(experience) {
       }
       // The chip's own power: none at the start of the tap, full once the current reaches it.
       // In the lab, the physics' own number (the level shown is still gliding toward it).
-      const charge = plan.lab && lab.m ? Math.min(1, lab.m.raw / lab.m.wake) : b.charge;
+      const charge = plan.lab && lab.m ? chipPower(lab.m) : b.charge;
       film.powerValue.textContent = Math.round(charge * 100) + '%';
       film.powerBar.style.setProperty('--to', charge);
       // The radio frequency: off with the lab's reader, and its wave stops.
@@ -864,7 +864,7 @@ function intro(experience) {
       film.middleValue.textContent = cm.toFixed(1) + ' cm';
       film.middleBar.style.setProperty('--from', 0);
       film.middleBar.style.setProperty('--to', 1 - (cm - NEAREST) / (10 - NEAREST));
-      const share = power(cm);
+      const share = chipShare(cm);
       film.powerValue.textContent = Math.round(share * 100) + '%';
       film.powerBar.style.setProperty('--to', share);
     }
