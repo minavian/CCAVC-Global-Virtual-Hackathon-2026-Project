@@ -1,0 +1,85 @@
+// Checks for the close-up's lab (js/intro/lab-model.js): that what it draws always agrees with
+// the physics it is worked out from. Runs with Node's test runner: `node --test` from the
+// project's folder (Node 22.12 or newer, which loads the lab's ES module files as they are).
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+// The lab finds the physics engine where the page puts it.
+globalThis.RFID = { physics: require('../js/rfid/physics.js') };
+const L = await import('../js/intro/lab-model.js');
+
+// Every combination of these, on both readers, genuine and copied.
+function* settings() {
+  for (const reader of ['pad', 'phone']) for (const clone of [false, true])
+    for (const distance of [.5, .8, 1, 2, 2.4, 3, 4.9, 7, 10])
+      for (const angle of [0, 15, 30, 60, 80, 90])
+        for (const metal of [0, 2, 4])
+          for (const drive of [0, 20, 100, 150])
+            for (const tune of [5, 13.56, 30]) yield L.clampSetting({ reader, distance, angle, metal, drive, tune, clone });
+}
+
+const ASLEEP = /^(Asleep|The reader is off|The phone’s NFC is off)/;
+
+test('the lab never draws what is not happening', () => {
+  let count = 0;
+  for (const s of settings()) {
+    const m = L.measure(s), v = L.labLevels(s, m), st = L.status(s, m), at = JSON.stringify(s);
+    count++;
+    if (s.drive === 0) {
+      for (const key of ['emit', 'field', 'receive', 'power', 'readerPace', 'cardPace']) assert.equal(v[key], 0, `reader off, ${key} at ${at}`);
+    }
+    if (!m.awake) assert.ok(!v.power && !v.blink, `asleep but the chip is lit at ${at}`);
+    else assert.ok(v.power > 0, `awake but the chip is dark at ${at}`);
+    // A current carrying under a twentieth of a normal tap's power is not drawn at all.
+    if (m.current ** 2 < .04) assert.equal(v.receive, 0, `negligible current drawn at ${at}`);
+  }
+  assert.ok(count > 7000);
+});
+
+test('the words, the reach and the card agree with the physics', () => {
+  for (const s of settings()) {
+    const m = L.measure(s), st = L.status(s, m), at = JSON.stringify(s);
+    assert.equal(ASLEEP.test(st.text), !m.awake, `sentence "${st.text}" at ${at}`);
+    if (m.awake) assert.ok(m.reach + .05 >= s.distance, `awake beyond its own reach at ${at}`);
+    if (s.reader === 'phone') assert.ok(!/reader/.test(st.text), `the phone called a reader: "${st.text}"`);
+    // A turned card rests its edge on the reader's top; it never sinks into it.
+    const edge = s.distance - 2.7 * Math.sin(s.angle * Math.PI / 180);
+    assert.ok(edge >= L.READERS[s.reader].surface + .05, `card inside the reader at ${at}`);
+  }
+});
+
+test('every situation to try is where it says, for its own reason', () => {
+  const expected = {
+    tap: /^(The chip is awake|The phone powers the chip)/, far: /too far/, side: /turned away/, metal: /metal blocks/,
+    weak: /too weak/, tuned: /tuned wrong/, copy: /^A copy/,
+  };
+  for (const reader of ['pad', 'phone']) {
+    for (const [key, preset] of Object.entries(L.PRESETS[reader])) {
+      const { label, ...set } = preset, s = L.clampSetting(set), m = L.measure(s);
+      assert.equal(s.distance, set.distance, `${reader} ${label} is moved by the clamp`);
+      assert.match(L.status(s, m).text, expected[key], `${reader} ${label}`);
+    }
+  }
+});
+
+test('the numbers the page states', () => {
+  const pad = L.measure(L.startFor('pad')), phone = L.measure(L.startFor('phone'));
+  assert.ok(Math.abs(pad.reach - 4.85) < .05, `card reader reach ${pad.reach}`);
+  assert.ok(Math.abs(phone.reach - 2.38) < .05, `phone reach ${phone.reach}`);
+  assert.ok(Math.abs(pad.watts * 1000 - 13.9) < .1, `power at a normal tap ${pad.watts * 1000} mW`);
+  assert.ok(Math.abs(pad.needs * 1000 - 5.1) < .05, `power to wake ${pad.needs * 1000} mW`);
+  assert.equal(L.chipPower(pad), 1);
+  // The answer is strongest in between: weaker very close, and weaker far off.
+  const dip = cm => L.measure(L.clampSetting({ ...L.startFor('pad'), distance: cm })).dip;
+  assert.ok(dip(2.5) > dip(.5) && dip(2.5) > dip(4.8), 'the answer peaks in between');
+});
+
+test('a copy has the ID but not the key', () => {
+  const key = Array.from({ length: 16 }, (_, i) => i * 17 & 255), copy = key.map(b => b ^ 1);
+  const challenge = [0x5a, 0x13, 0xc2, 0x7e];
+  assert.deepEqual(L.proofCode(key, challenge), L.proofCode(key, challenge), 'the same key gives the same code');
+  assert.notDeepEqual(L.proofCode(copy, challenge), L.proofCode(key, challenge), 'a different key gives another code');
+  assert.notDeepEqual(L.proofCode(key, [0x5a, 0x13, 0xc2, 0x7f]), L.proofCode(key, challenge), 'a new challenge gives a new code');
+});

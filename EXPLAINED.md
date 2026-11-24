@@ -476,7 +476,7 @@ Owner: Mina Vian · 2026-11-21 · Issue #19
 
 **Why it is built this way.** The brief says outputs must be computed from inputs, and the organisers' own example falls short because its receiver could peek at the sender's data. Here the reader is a separate file that only gets samples, and a test checks that it never refers to the tag, the channel or the physics. Every file works both as a plain browser script and in Node, so the same code runs on the site and in the tests.
 
-**How to check it.** Run `node --test tests/` or open `tests/` in the browser. In the console, `RFID.physics.solve({ tag: 'card', distance: .03 })` returns the numbers for a card 3 cm from the pad.
+**How to check it.** Run `node --test` in the project's folder or open `tests/` in the browser. In the console, `RFID.physics.solve({ tag: 'card', distance: .03 })` returns the numbers for a card 3 cm from the pad.
 
 **Likely questions.**
 - Q: Why model the chip as a resistor? A: To the coil, a running chip is a load drawing power. A resistor is the simplest honest model of that. The limiter makes it a smaller resistor when there is extra power, as a real chip's shunt regulator does.
@@ -569,7 +569,7 @@ Owner: Mina Vian · 2026-11-24
 ### The checks (`tests/`)
 Owner: Mina Vian · 2026-11-21 · Issue #19
 
-**What it does.** 24 checks on the simulation, which run in Node (`node --test tests/`) and in the browser (open `tests/`), with the same list (`tests/cases.js`).
+**What it does.** 24 checks on the simulation, which run in Node (`node --test`, in the project's folder) and in the browser (open `tests/`), with the same list (`tests/cases.js`). Since 2026-11-25 (Owner: Mina Vian) five more check the close-up's lab (`tests/lab.test.mjs`, Node only; Node 22.12 or newer). They load the same physics engine and the lab's own model and sweep 7,776 settings (both readers, genuine and copied, every distance, angle, metal gap, power and tuning step listed in the file) to check that the lab never draws what isn't happening: with the reader off nothing moves; the chip lights exactly when it is awake; a current under a twentieth of a normal tap's power is not drawn; the sentence says asleep exactly when it is; an awake chip is never beyond its own reach; a turned card never sinks into the reader; and the phone is never called a reader. They also check that every situation to try sits where it says for its own reason, the numbers the page states (reach 4.85 cm on the card reader and 2.38 cm on the phone, 13.9 mW at a normal tap, 5.1 mW to wake, the answer strongest in between), and that a copy's key gives another code. `node --test` with no folder runs all 32, the bit-river ones too; `node --test tests/` no longer works on recent Node, which reads `tests/` as a file name.
 
 **How it works.** The checks fall into four groups:
 - **The standard's own examples:** CRC_A of 50 00 is 57 CD; of E0 50, BC A5.
@@ -593,7 +593,7 @@ Owner: Mina Vian · 2026-11-21 · Issue #19
 
 **Why it is built this way.** No libraries and no build step: Node's own test runner, and a plain page for the browser. Judges can open the checks themselves.
 
-**How to check it.** `node --test tests/`; or serve the folder and open `/tests/`. Every line should be green.
+**How to check it.** `node --test` in the project's folder (32 checks); or serve the folder and open `/tests/` (the 24 simulation checks). Every line should be green.
 
 ---
 
