@@ -681,7 +681,7 @@ function watchTuning(previous, plate) {
   for (const node of [plot, capacitor]) node.setAttribute('aria-hidden', 'true');
   const ctx = plot.getContext('2d');
   const turns = [];
-  const gatherAt = 380, gatherEnd = 960, pluck = 1900, end = 2750, readHold = 1000;
+  const gatherAt = 380, gatherEnd = 960, pluck = 1900, end = 2950, readHold = 1000;
   let layout, armed, elapsed, waves, inputListeners, previousTop, targetTop, lockedAt, frame;
   const canPlay = () => !reducedMotion.matches && !document.hidden;
   const active = () => lockedAt !== undefined;
@@ -773,8 +773,8 @@ function watchTuning(previous, plate) {
 
     const travel = ease(gatherEnd, pluck, elapsed);
     const release = stage(pluck, end, elapsed);
-    const shape = ease(.30, .84, release);
-    const leave = ease(0, .17, merge), arrive = ease(.79, 1, release);
+    const shape = ease(.55, .92, release);
+    const leave = ease(0, .17, merge), arrive = ease(.83, 1, release);
     const { box, points, X, Y, color } = curve;
     const middle = mix(from.y + from.h * .52, to.y + box.y + box.h * .72, travel) - viewport;
     // While the controls pass through the center on narrow screens, carry the line down the right margin.
@@ -807,12 +807,20 @@ function watchTuning(previous, plate) {
       return;
     }
 
-    const pull = ease(0, .26, release), spring = ease(.26, .55, release);
-    const bend = 19 * pull * (1 - spring);
+    const launch = stage(0, .24, release), fall = stage(.24, .41, release);
+    const pull = ease(.41, .52, release), spring = ease(.52, .66, release);
+    const exit = stage(.52, .79, release);
+    const bend = 21 * pull * (1 - spring);
+    const below = height + 24, contact = middle - 4;
+    const apex = contact - Math.min(26, height * .04);
+    const rise = mix(below, apex, launch * (2 - launch));
+    const landing = mix(rise, contact, fall * fall);
+    // Contact bends the line down. Its recoil sends the capacitor back out of view.
+    const chipY = mix(landing + bend, below, exit * (2 - exit));
     const chipX = left + span / 2;
-    const chipY = middle + mix(-33, bend, pull) - 22 * spring;
-    capacitor.style.opacity = ease(0, .11, release) * (1 - spring);
-    capacitor.style.transform = `translate(${chipX - 21}px, ${chipY - 9}px) rotate(${mix(-24, 9, pull)}deg) scale(.62)`;
+    const angle = mix(-18, 4, launch) + 19 * exit;
+    capacitor.style.opacity = release > 0 && exit < 1 ? 1 : 0;
+    capacitor.style.transform = `translate(${chipX - 21}px, ${chipY - 7.5}px) rotate(${angle}deg) scale(.62)`;
 
     ctx.save();
     if (release > 0) {
