@@ -126,12 +126,64 @@
   const box = (p, top = 26, bottom = 40, left = 54, right = 18) => ({ x: left, y: top, w: p.w - left - right, h: p.h - top - bottom });
 
   // ---------- 6. Closer is stronger ----------
+  function setupCardDistance(scene) {
+    const card = scene.input('distance'), travel = card.parentElement;
+    const diagram = travel.parentElement, demo = diagram.parentElement;
+    const label = demo.querySelector('.s6-distance-value');
+    const min = Number(card.getAttribute('aria-valuemin')), max = Number(card.getAttribute('aria-valuemax'));
+    const span = max - min;
+    let pointer;
+
+    function setDistance(mm) {
+      const value = clamp(Math.round(mm), min, max);
+      if (value === scene.distanceMm) return;
+      scene.distanceMm = value;
+      const text = cm(value / 1000);
+      card.setAttribute('aria-valuenow', value);
+      card.setAttribute('aria-valuetext', text);
+      label.textContent = text;
+      demo.style.setProperty('--card-distance', (value - min) / span);
+      scene.dirty = true;
+    }
+
+    setDistance(Number(card.getAttribute('aria-valuenow')));
+    const steps = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1, PageUp: 10, PageDown: -10, Home: -span, End: span };
+    card.addEventListener('keydown', event => {
+      if (event.altKey || event.ctrlKey || event.metaKey || !Object.hasOwn(steps, event.key)) return;
+      event.preventDefault();
+      setDistance(scene.distanceMm + steps[event.key]);
+    });
+    card.addEventListener('pointerdown', event => {
+      if (!event.isPrimary || event.button !== 0) return;
+      card.setPointerCapture(event.pointerId);
+      pointer = { id: event.pointerId, x: event.clientX, value: scene.distanceMm };
+      card.classList.add('is-grabbed');
+    });
+    card.addEventListener('pointermove', event => {
+      if (event.pointerId !== pointer?.id || !travel.offsetWidth) return;
+      setDistance(pointer.value + (event.clientX - pointer.x) * span / travel.offsetWidth);
+    });
+    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+      card.addEventListener(type, event => {
+        if (event.pointerId !== pointer?.id) return;
+        pointer = undefined;
+        card.classList.remove('is-grabbed');
+      });
+    }
+    diagram.addEventListener('click', event => {
+      if (card.contains(event.target)) return;
+      const track = travel.getBoundingClientRect();
+      if (!track.width) return;
+      const x = event.clientX - track.left - card.offsetWidth / 2;
+      setDistance(min + x * span / track.width);
+    });
+  }
+
   const closer = plate('s6', p => {
-    const distance = p.input('distance'), coil = p.input('radius');
-    const d = distance.valueAsNumber / 1000, r = coil.valueAsNumber / 1000;
+    const coil = p.input('radius');
+    const d = p.distanceMm / 1000, r = coil.valueAsNumber / 1000;
     const distanceText = cm(d), coilText = (2 * r * 100).toFixed(1) + ' cm across';
-    p.out('distance', distanceText); p.out('radius', coilText);
-    distance.setAttribute('aria-valuetext', distanceText);
+    p.out('radius', coilText);
     coil.setAttribute('aria-valuetext', coilText);
     const ctx = fit(p), opts = { tag: 'card', reader: 'phone', radius: r };
     const half = (p.h - 30) / 2;
@@ -158,7 +210,6 @@
     const fieldTrace = stage(.22, .71, progress);
     trace(field, a, top, INK, fieldTrace);
     const s = physics.solve({ ...opts, distance: d });
-    p.el.style.setProperty('--card-distance', (distance.valueAsNumber - Number(distance.min)) / (distance.max - distance.min));
     p.el.style.setProperty('--coil-scale', coil.valueAsNumber / Number(coil.max));
     p.el.style.setProperty('--field-strength', clamp(s.field / physics.H_MAX, .16, 1));
     if (fieldTrace >= d / xr.to) dot(ctx, a.X(d), a.Y(s.field), INK);
@@ -179,11 +230,14 @@
     if (rangeLine) vline(ctx, b.X(range), top.y, top.y + (bottom.y + bottom.h - top.y) * rangeLine, MUTED, rangeLine === 1 ? 'Range ' + cm(range) : '');
     p.say(`At ${distanceText}: a field of ${s.field.toFixed(2)} A/m, enough for ${s.rawVolts.toFixed(1)} V at the chip. ${s.awake ? 'Awake.' : 'Asleep.'} This coil reaches ${cm(range)}.`);
   });
-  if (closer) closer.canvas.setReveal = progress => {
-    if (closer.reveal === progress) return;
-    closer.reveal = progress;
-    closer.dirty = true;
-  };
+  if (closer) {
+    setupCardDistance(closer);
+    closer.canvas.setReveal = progress => {
+      if (closer.reveal === progress) return;
+      closer.reveal = progress;
+      closer.dirty = true;
+    };
+  }
 
   // ---------- 7. It has to keep flipping ----------
   plate('s7', p => {

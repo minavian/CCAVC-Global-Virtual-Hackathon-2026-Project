@@ -165,37 +165,80 @@ html.deep-blink-hold, html.deep-closer-hold { overflow-y: hidden; }
 .s6-control output { font-variant-numeric: tabular-nums; }
 .s6-control input[type="range"] { display: block; block-size: 24px; margin: 0; }
 #s6-title, .s6-control-text { transform-origin: left center; }
+.s6-distance-demo {
+  inline-size: min(100%, 400px);
+  --s6-card-start: 29%;
+  --s6-travel: 40%;
+  --card-distance: .23077;
+}
 .s6-coupling {
   display: flex;
   align-items: center;
   position: relative;
-  inline-size: min(100%, 300px);
-  block-size: 92px;
+  block-size: clamp(84px, 13vw, 110px);
+  padding-block-end: 12px;
+  user-select: none;
 }
 .s6-reader {
   position: relative;
   z-index: 1;
-  inline-size: 33%;
+  inline-size: 25%;
   block-size: auto;
 }
 .s6-field {
   position: absolute;
-  inset-inline-start: 28%;
-  inline-size: 35%;
+  inset-inline-start: 20%;
+  inline-size: calc(17% + var(--card-distance) * var(--s6-travel));
   block-size: 15px;
   border-block: 1px dotted var(--copper);
   border-radius: 50%;
   opacity: var(--field-strength, .51);
-  transform: scaleX(calc(.29 + var(--card-distance, .23) * .7));
-  transform-origin: left center;
+  pointer-events: none;
+}
+.s6-measure {
+  position: absolute;
+  inset-inline-start: 25%;
+  inset-block-end: 4px;
+  inline-size: calc(var(--s6-card-start) - 25% + var(--card-distance) * var(--s6-travel));
+  block-size: 7px;
+  color: var(--muted);
+  border-inline: 1px solid;
+  pointer-events: none;
+}
+.s6-measure::before {
+  content: "";
+  position: absolute;
+  inset: 3px 0 auto;
+  border-block-start: 1px solid;
+}
+.s6-card-travel {
+  display: flex;
+  position: absolute;
+  inset-inline-start: var(--s6-card-start);
+  inline-size: var(--s6-travel);
+  pointer-events: none;
 }
 .s6-card {
-  position: absolute;
-  inset-inline-start: 38%;
-  inline-size: 36%;
-  transform: translateX(calc(var(--card-distance, .23) * 67%)) rotate(12deg);
-  transform-origin: left center;
+  position: relative;
+  flex: 0 0 67%;
+  left: calc(var(--card-distance) * 100%);
+  transform: rotate(9deg);
+  border-radius: 6% / 9%;
+  cursor: grab;
+  touch-action: pan-y pinch-zoom;
+  pointer-events: auto;
 }
+.s6-card.is-grabbed { cursor: grabbing; }
+.s6-card:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+.s6-distance-caption {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-block-start: 3px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.s6-distance-value { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .s6-card img {
   display: block;
   inline-size: 100%;
@@ -212,7 +255,7 @@ html.deep-blink-hold, html.deep-closer-hold { overflow-y: hidden; }
   transform: scale(var(--coil-scale, .8));
 }
 @media (prefers-reduced-motion: no-preference) {
-  .s6-card, .s6-coil, .s6-field {
+  .s6-coil, .s6-field {
     transition: transform .16s cubic-bezier(.2, .75, .35, 1), opacity .16s ease-out;
   }
 }

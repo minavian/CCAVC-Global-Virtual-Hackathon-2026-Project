@@ -44,25 +44,27 @@
         <div class="plate-controls">
           <div class="s6-control">
             <div class="s6-control-text">
-              <label for="s6-distance">Distance from the phone</label>
-              <output for="s6-distance" data-for="s6-distance" aria-live="off"></output>
-            </div>
-            <input id="s6-distance" type="range" min="2" max="80" value="20">
-          </div>
-          <div class="s6-control">
-            <div class="s6-control-text">
               <label for="s6-radius">Size of the card’s coil</label>
               <output for="s6-radius" data-for="s6-radius" aria-live="off"></output>
             </div>
             <input id="s6-radius" type="range" min="12" max="45" value="36">
           </div>
         </div>
-        <div class="s6-coupling" aria-hidden="true">
-          <img class="s6-reader" src="../images/intro/reader.webp" width="640" height="512" alt="">
-          <span class="s6-field"></span>
-          <div class="s6-card">
-            <img src="../images/intro/credit-card-face.webp" width="520" height="328" alt="">
-            <span class="s6-coil"></span>
+        <div class="s6-distance-demo">
+          <div class="s6-coupling">
+            <img class="s6-reader" src="../images/intro/reader.webp" width="640" height="512" alt="" draggable="false">
+            <span class="s6-field" aria-hidden="true"></span>
+            <span class="s6-measure" aria-hidden="true"></span>
+            <div class="s6-card-travel">
+              <div class="s6-card" id="s6-distance" role="slider" tabindex="0" aria-label="Card distance from the phone" aria-describedby="s6-distance-help" aria-valuemin="2" aria-valuemax="80" aria-valuenow="20" aria-valuetext="2.0 cm">
+                <img src="../images/intro/credit-card-face.webp" width="520" height="328" alt="" draggable="false">
+                <span class="s6-coil" aria-hidden="true"></span>
+              </div>
+            </div>
+          </div>
+          <div class="s6-distance-caption">
+            <span id="s6-distance-help">Drag the card or tap to place it</span>
+            <span id="s6-distance-value" class="s6-distance-value" aria-hidden="true">2.0 cm</span>
           </div>
         </div>
         <p class="plate-readout" aria-live="polite"></p>

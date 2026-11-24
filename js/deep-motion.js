@@ -20,14 +20,15 @@ function capturePageGesture(canBegin, begin, interrupt) {
     if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
     const { key } = event;
     if (['Home', 'End', 'Escape'].includes(key)) return interrupt();
-    if (event.target.closest?.('a, button, input, textarea, select, [contenteditable]')) return;
+    if (event.target.closest?.('a, button, input, textarea, select, [role="slider"], [contenteditable]')) return;
     if (['ArrowUp', 'PageUp'].includes(key) || (key === ' ' && event.shiftKey)) page(event, -1);
     else if (['ArrowDown', 'PageDown', ' '].includes(key)) page(event, 1);
   }, { signal });
 
-  addEventListener('touchstart', ({ touches }) => {
+  addEventListener('touchstart', ({ touches, target }) => {
     const finger = touches[0];
-    touch = touches.length === 1 ? { x: finger.clientX, y: finger.clientY, highest: finger.clientY } : null;
+    const onSlider = target.closest?.('input[type="range"], [role="slider"]');
+    touch = touches.length === 1 && !onSlider ? { x: finger.clientX, y: finger.clientY, highest: finger.clientY } : null;
   }, { passive: true, signal });
 
   addEventListener('touchmove', event => {
@@ -201,6 +202,7 @@ function watchCloser(source, plate) {
   const root = document.documentElement;
   const title = plate.querySelector('#s6-title');
   const controls = plate.querySelector('.plate-controls');
+  const distanceDemo = plate.querySelector('.s6-distance-demo');
   const rows = Array.from(controls.querySelectorAll('.s6-control'));
   const chart = plate.querySelector('#s6-chart');
   const drawDuration = 1380;
@@ -311,7 +313,7 @@ function watchCloser(source, plate) {
     ];
     animate(title, turnIn, 380, 744);
     // Start at the heading and let the supporting lines turn outward above and below it.
-    const copy = plate.querySelectorAll('.plate-num, .s6-intro, .s6-control-text, .s6-coupling, .plate-readout, .plate-real');
+    const copy = plate.querySelectorAll('.plate-num, .s6-intro, .s6-control-text, .s6-distance-demo, .plate-readout, .plate-real');
     copy.forEach((node, i) => animate(node, turnIn, 350, 800 + i * 76));
     rows.forEach((row, i) => animate(row.querySelector('input'), [
       { clipPath: 'inset(-5px 100% -5px -5px)' }, { clipPath: 'inset(-5px)' },
@@ -367,6 +369,7 @@ function watchCloser(source, plate) {
   });
 
   for (const event of ['focusin', 'pointerdown', 'input']) controls.addEventListener(event, settle);
+  for (const event of ['focusin', 'pointerdown']) distanceDemo.addEventListener(event, settle);
   for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, settle);
   document.addEventListener('visibilitychange', () => { if (document.hidden) settle(); });
   reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) settle(); });
@@ -381,7 +384,8 @@ function watchFlipping(previous, plate, settlePrevious) {
   const controls = plate.querySelector('.s7-control');
   const controlText = controls.querySelector('.s7-control-text');
   const speed = controls.querySelector('#s7-speed');
-  const ranges = ['#s6-distance', '#s6-radius'].map(selector => previous.querySelector(selector));
+  const coil = previous.querySelector('#s6-radius');
+  const card = previous.querySelector('#s6-distance');
   const sourceChart = previous.querySelector('#s6-chart');
   const targetChart = plate.querySelector('#s7-chart');
   const plot = document.createElement('canvas');
@@ -389,30 +393,27 @@ function watchFlipping(previous, plate, settlePrevious) {
   plot.setAttribute('aria-hidden', 'true');
   const ctx = plot.getContext('2d');
   const textMotions = [];
-  const tracks = [];
-  let layout, lastTop, armed, scrollTop, plotProgress, chartShift;
+  let track, layout, lastTop, armed, scrollTop, plotProgress, chartShift;
 
   function measure(top, height) {
     const toWords = bounds(words, top);
-    const from = ranges.map(input => bounds(input, top));
+    const from = bounds(coil, top);
     const to = bounds(speed, top);
     const target = bounds(targetChart, top);
-    const stacked = Math.abs(toWords.x - from[0].x) < 1;
+    const stacked = Math.abs(toWords.x - from.x) < 1;
     const start = bounds(title, top).y - .98 * height;
     const textEnd = start + .075 * height;
     const tracksEnd = Math.max(textEnd + .14 * height, to.y + to.h - .96 * height);
     const end = Math.max(tracksEnd + .24 * height, target.y + target.h - .88 * height);
-    const rail = from[0].x + from[0].w + (stacked ? 4 : 7);
+    const rail = from.x + from.w + (stacked ? 4 : 7);
     return { start, textEnd, tracksEnd, end, from, to, stacked, rail, width: innerWidth, height };
   }
 
-  function clearTracks() {
-    if (!tracks.length) return;
-    for (const [i, track] of tracks.entries()) {
-      track.remove();
-      ranges[i].style.removeProperty('opacity');
-    }
-    tracks.length = 0;
+  function clearTrack() {
+    if (!track) return;
+    track.remove();
+    track = null;
+    coil.style.removeProperty('opacity');
   }
 
   function clearPlot() {
@@ -425,7 +426,7 @@ function watchFlipping(previous, plate, settlePrevious) {
     if (!textMotions.length) return;
     for (const animation of textMotions) animation.cancel();
     textMotions.length = 0;
-    clearTracks();
+    clearTrack();
     clearPlot();
     sourceChart.style.removeProperty('transform');
     for (const node of [controlText, speed, sourceChart, targetChart]) node.style.removeProperty('opacity');
@@ -448,47 +449,40 @@ function watchFlipping(previous, plate, settlePrevious) {
     }
   }
 
-  function moveTracks(progress) {
+  function moveTrack(progress) {
     controlText.style.opacity = ease(.45, .85, progress);
     const reveal = ease(.90, 1, progress);
     speed.style.opacity = reveal;
-    if (progress <= 0 || progress >= 1) return clearTracks();
+    if (progress <= 0 || progress >= 1) return clearTrack();
     const { from, to, rail, stacked, source } = layout;
-    if (!tracks.length) {
+    if (!track) {
       const origin = bounds(chapter, scrollTop);
-      ranges.forEach((input, i) => {
-        const track = document.createElement('input');
-        track.type = 'range';
-        track.min = 0;
-        track.max = 1;
-        track.step = 'any';
-        track.className = 's7-track-copy';
-        track.inert = true;
-        track.setAttribute('aria-hidden', 'true');
-        track.style.left = `${from[i].x - origin.x}px`;
-        track.style.top = `${from[i].y - origin.y}px`;
-        track.style.width = `${from[i].w}px`;
-        tracks.push(track);
-        chapter.append(track);
-        input.style.opacity = 0;
-      });
+      track = document.createElement('input');
+      track.type = 'range';
+      track.min = 0;
+      track.max = 1;
+      track.step = 'any';
+      track.className = 's7-track-copy';
+      track.inert = true;
+      track.setAttribute('aria-hidden', 'true');
+      track.style.left = `${from.x - origin.x}px`;
+      track.style.top = `${from.y - origin.y}px`;
+      track.style.width = `${from.w}px`;
+      chapter.append(track);
+      coil.style.opacity = 0;
     }
 
     const gather = ease(0, .29, progress);
     const drop = ease(.26, .78, progress);
     const open = ease(.75, .93, progress);
     const railWidth = stacked ? layout.width - rail - 4 : Math.min(56, source.x - rail - 6);
-    const middle = (from[0].y + from[1].y) / 2;
     const fraction = input => (input.valueAsNumber - Number(input.min)) / (Number(input.max) - Number(input.min));
-    tracks.forEach((track, i) => {
-      const rect = from[i];
-      const x = mix(mix(rect.x, rail, gather), to.x, open);
-      const y = mix(mix(rect.y, middle + (i ? 3 : -3), gather), to.y, drop);
-      const width = mix(mix(rect.w, railWidth, gather), to.w, open);
-      track.value = mix(fraction(ranges[i]), fraction(speed), drop);
-      track.style.transform = `translate(${x - rect.x}px, ${y - rect.y}px) scaleX(${width / rect.w})`;
-      track.style.opacity = (1 - reveal) * (i ? 1 - ease(.54, .78, progress) : 1);
-    });
+    const x = mix(mix(from.x, rail, gather), to.x, open);
+    const y = mix(from.y, to.y, drop);
+    const width = mix(mix(from.w, railWidth, gather), to.w, open);
+    track.value = mix(fraction(coil), fraction(speed), drop);
+    track.style.transform = `translate(${x - from.x}px, ${y - from.y}px) scaleX(${width / from.w})`;
+    track.style.opacity = 1 - reveal;
   }
 
   function drawPlot(waves) {
@@ -543,7 +537,7 @@ function watchFlipping(previous, plate, settlePrevious) {
     if (!textMotions.length) enter(top);
     scrollTop = top;
     for (const animation of textMotions) animation.currentTime = stage(start, textEnd, top);
-    moveTracks(stage(textEnd, tracksEnd, top));
+    moveTrack(stage(textEnd, tracksEnd, top));
     plotProgress = stage(tracksEnd, end, top);
     chartShift = stacked ? 0 : top - start;
     sourceChart.style.transform = `translateY(${chartShift}px)`;
@@ -566,7 +560,7 @@ function watchFlipping(previous, plate, settlePrevious) {
     plot.style.opacity = depart * (1 - arrive);
   });
 
-  for (const input of [...ranges, speed]) {
+  for (const input of [coil, card, speed]) {
     for (const event of ['focus', 'pointerdown', 'input']) input.addEventListener(event, () => {
       if (textMotions.length) armed = false;
       settle();
