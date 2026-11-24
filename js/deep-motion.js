@@ -1,98 +1,75 @@
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
-export function blinkWord(heading) {
-  if (reducedMotion.matches || typeof heading.animate !== 'function') return;
+function watchPartOne(word, part) {
+  const chapter = part.closest('.deep');
+  const cover = document.createElement('span');
+  cover.className = 'deep-blink-cover';
+  cover.setAttribute('aria-hidden', 'true');
+  const motionAllowed = () => !reducedMotion.matches && !document.hidden;
+  const normal = { color: 'var(--ink)', backgroundColor: 'transparent' };
+  const inverted = { color: 'var(--paper)', backgroundColor: 'var(--ink)' };
+  let animation, cue, partTop, armed, farthest, arrived, lastTop = scrollY;
 
-  const word = 'blink';
-  const text = heading.lastChild;
-  const start = text?.nodeType === Node.TEXT_NODE ? text.data.lastIndexOf(word) : -1;
-  const chapter = heading.closest('.deep');
-  if (start < 0 || !chapter) return;
+  async function blink() {
+    try {
+      animation = word.animate([
+        normal, { ...inverted, offset: .09 }, { ...inverted, offset: .23 },
+        { ...normal, offset: .32 }, { ...normal, offset: .47 },
+        { ...inverted, offset: .56 }, { ...inverted, offset: .72 },
+        { ...normal, offset: .81 }, normal,
+      ], { duration: 330 });
+      await animation.finished;
+      if (!motionAllowed()) return;
 
-  const range = document.createRange();
-  range.setStart(text, start);
-  range.setEnd(text, start + word.length);
-  const rect = range.getBoundingClientRect();
-  if (!rect.width || rect.bottom <= 0 || rect.top >= innerHeight) return;
+      chapter.append(cover);
+      const close = cover.animate({ opacity: [0, 1] }, { duration: 75, easing: 'ease-in', fill: 'forwards' });
+      animation = close;
+      await close.finished;
+      if (!motionAllowed() || scrollY >= partTop) return;
 
-  // The accent tracks the word in document space without touching the heading.
-  const bounds = chapter.getBoundingClientRect();
-  const accent = document.createElement('span');
-  accent.className = 'deep-blink-accent';
-  accent.setAttribute('aria-hidden', 'true');
-  Object.assign(accent.style, {
-    left: `${rect.left - bounds.left}px`,
-    top: `${rect.top - bounds.top}px`,
-    width: `${rect.width}px`,
-    height: `${rect.height}px`,
-  });
-  chapter.append(accent);
-
-  const blink = accent.animate([
-    { opacity: 0, transform: 'scale(1.25, .1)' },
-    { opacity: .46, transform: 'scale(1.25, 1)', offset: .22 },
-    { opacity: 0, transform: 'scale(1.25, .1)', offset: .47 },
-    { opacity: .28, transform: 'scale(1.25, .8)', offset: .68 },
-    { opacity: 0, transform: 'scale(1.25, .1)' },
-  ], { duration: 190, easing: 'ease-in-out' });
-  blink.onfinish = blink.oncancel = () => accent.remove();
-  return blink;
-}
-
-function settleTitle(element, travel, delay) {
-  return element.animate([
-    { opacity: 1, transform: 'none' },
-    { opacity: .84, transform: `translateY(${travel}px)`, offset: .24, easing: 'cubic-bezier(.16, 1, .3, 1)' },
-    { opacity: 1, transform: 'none' },
-  ], { delay, duration: 205 });
-}
-
-function watchPartOne(opener, part) {
-  const label = part.firstElementChild;
-  const title = part.querySelector('.deep-part-title');
-  const sweep = part.querySelector('.deep-part-sweep');
-  const animations = [];
-  let cue;
-  let armed;
-
-  function stop() {
-    for (const animation of animations) animation.cancel();
-    animations.length = 0;
+      // Move to the existing title while the viewport is fully covered.
+      arrived = true;
+      part.scrollIntoView({ block: 'start', behavior: 'instant' });
+      animation = cover.animate([
+        { opacity: 1 }, { opacity: 1, offset: .16, easing: 'ease-out' }, { opacity: 0 },
+      ], { duration: 165, fill: 'both' });
+      close.cancel();
+      await animation.finished;
+    } catch (error) {
+      if (error.name !== 'AbortError') throw error;
+    } finally {
+      animation?.cancel();
+      cover.remove();
+      animation = null;
+    }
   }
 
-  function reset() {
-    stop();
-    cue = Math.max(24, part.getBoundingClientRect().top + scrollY - innerHeight * .42);
-    armed = scrollY < cue;
-  }
+  watchScrollMotion((top, height, needsMeasure) => {
+    if (needsMeasure || cue === undefined) {
+      partTop = bounds(part, top).y;
+      cue = Math.max(0, partTop - height) + Math.min(80, height * .12);
+      if (!animation) armed = top < cue;
+    }
+    const jumped = top - lastTop > height * .5;
+    lastTop = top;
+    if (!motionAllowed()) return animation?.cancel();
+    if (top < cue - 12) armed = true;
 
-  function onScroll() {
-    const distance = scrollY - cue;
-    if (distance < -20) armed = true;
-    if (distance < 0 || distance > innerHeight * .4) stop();
-    if (!armed || distance < 0) return;
+    if (animation) {
+      if (!arrived && (top < farthest - 24 || top >= partTop)) animation.cancel();
+      farthest = Math.max(farthest, top);
+      return;
+    }
+    if (!armed || top < cue) return;
 
     armed = false;
-    if (distance > innerHeight * .24 || document.hidden) return;
-    const blink = blinkWord(opener);
-    if (!blink) return;
-
-    animations.push(blink, sweep.animate([
-      { opacity: 0, transform: 'translateY(-30%) scaleY(.1)' },
-      { opacity: .15, transform: 'translateY(0) scaleY(.38)', offset: .48 },
-      { opacity: 0, transform: 'translateY(27%) scaleY(.62)' },
-    ], { delay: 151, duration: 170 }),
-    settleTitle(label, 3, 185), settleTitle(title, 7, 205));
-  }
-
-  reset();
-  addEventListener('scroll', onScroll, { passive: true });
-  addEventListener('resize', reset);
-  addEventListener('pageshow', reset);
-  addEventListener('hashchange', reset);
-  document.addEventListener('visibilitychange', reset);
-  document.fonts?.ready.then(reset);
-  reducedMotion.addEventListener('change', reset);
+    const wordBox = word.getBoundingClientRect();
+    if (jumped || top >= partTop || wordBox.top < 0 || wordBox.bottom > height) return;
+    farthest = top;
+    arrived = false;
+    void blink();
+  });
+  addEventListener('hashchange', () => animation?.cancel());
 }
 
 const scrollMotions = [];
@@ -1579,9 +1556,9 @@ function watchMistakes(previous, scene) {
   }
 }
 
-const opener = document.getElementById('deep-title');
+const blink = document.getElementById('deep-blink-word');
 const partOne = document.getElementById('part-one');
-if (opener && partOne) watchPartOne(opener, partOne);
+if (blink?.animate && partOne) watchPartOne(blink, partOne);
 const power = document.getElementById('part-one-power');
 const closer = document.getElementById('s6');
 const flipping = document.getElementById('s7');

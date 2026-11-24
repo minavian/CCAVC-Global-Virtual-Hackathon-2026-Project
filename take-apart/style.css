@@ -67,7 +67,7 @@ body::after {
 }
 .deep-head-words { display: flow-root; }
 @media (prefers-reduced-motion: no-preference) {
-  /* Keep the source word in view as the next full-height scene enters. */
+  /* Keep the source word in view while the opening handoff plays. */
   .deep-head-words { position: sticky; inset-block-start: clamp(22px, 7svh, 80px); }
 }
 .deep-head h2 {
@@ -101,19 +101,13 @@ body::after {
   text-wrap: balance;
 }
 #part-one-power { white-space: nowrap; }
-.deep-blink-accent, .deep-part-sweep {
-  position: absolute;
+.deep-blink-cover {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  background: var(--ink);
   pointer-events: none;
   opacity: 0;
-}
-.deep-blink-accent {
-  z-index: 1;
-  background: radial-gradient(ellipse, var(--copper) 40%, transparent 76%);
-  mix-blend-mode: screen;
-}
-.deep-part-sweep {
-  inset: 0;
-  background: radial-gradient(ellipse closest-side, var(--copper), transparent);
 }
 
 .plate {
