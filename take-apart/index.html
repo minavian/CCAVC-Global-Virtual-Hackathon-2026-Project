@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
-  <link rel="stylesheet" href="style.css?v=part-two-ripple-1">
+  <link rel="stylesheet" href="style.css?v=soaking-scope-1">
   <script src="../js/rfid/physics.js" defer></script>
   <script src="../js/rfid/iso14443a.js" defer></script>
   <script src="../js/rfid/lf.js" defer></script>
@@ -18,8 +18,8 @@
   <script src="../js/rfid/air.js" defer></script>
   <script src="../js/rfid/reader.js" defer></script>
   <script src="../js/rfid/channel.js" defer></script>
-  <script src="../js/deep.js?v=part-two-ripple-1" defer></script>
-  <script type="module" src="../js/deep-motion.js?v=part-two-ripple-1"></script>
+  <script src="../js/deep.js?v=soaking-scope-1" defer></script>
+  <script type="module" src="../js/deep-motion.js?v=soaking-scope-1"></script>
 </head>
 <body>
   <main class="deep" id="take-apart" aria-labelledby="deep-title">
@@ -179,13 +179,13 @@
 
     <h2 class="deep-part" id="part-two" tabindex="-1">
       <span id="part-two-label">Part two</span>
-      <span class="deep-part-title">The an<span id="part-two-answer-s">s</span>wer: how a chip with no radio talks back</span>
+      <span class="deep-part-title">The answer: how a chip with no radio talks back</span>
     </h2>
 
     <section class="plate" id="s11" aria-labelledby="s11-title">
       <div class="plate-words">
         <p class="plate-num">11</p>
-        <h3 id="s11-title"><span id="s11-soaking-s">S</span>oaking up more, then less</h3>
+        <h3 id="s11-title">Soaking up more, then less</h3>
         <p>The chip never sends anything. It changes how much of the field it soaks up, and the reader feels the difference in its own coil.</p>
         <div class="plate-controls">
           <label class="s11-switch-label" for="s11-switch"><input id="s11-switch" type="checkbox" role="switch" checked> The chip’s answer switch</label>
@@ -194,16 +194,20 @@
         <p class="plate-real">Real name: load modulation.</p>
       </div>
       <div class="s11-instrument">
+        <div class="plate-controls s11-capture">
+          <span id="s11-capture-name">Presence reply</span>
+          <button id="s11-playback" type="button" aria-label="Pause captures" hidden>Pause</button>
+        </div>
         <div class="s11-plot">
-          <canvas class="plate-canvas" id="s11-chart" role="img" aria-label="The reader's coil current while the card answers"></canvas>
-          <span class="s11-scan" aria-hidden="true" hidden></span>
+          <canvas class="plate-canvas" id="s11-chart" role="img" aria-label="The reader's coil current while the card answers" aria-describedby="s11-capture-name"></canvas>
+          <span class="s11-scan" aria-hidden="true" hidden>
+            <span class="s11-scan-value"></span>
+          </span>
         </div>
         <div class="plate-controls s11-zoom">
-          <div class="s11-zoom-label">
-            <label for="s11-zoom">Zoom</label>
-            <output for="s11-zoom" data-for="s11-zoom" aria-live="off">true size</output>
-          </div>
-          <input id="s11-zoom" type="range" min="0" max="100" value="0" aria-valuetext="true size">
+          <label for="s11-zoom">Zoom</label>
+          <input id="s11-zoom" type="range" min="0" max="100" value="0" aria-orientation="vertical" aria-valuetext="true size">
+          <output for="s11-zoom" data-for="s11-zoom" aria-live="off">true size</output>
         </div>
       </div>
     </section>

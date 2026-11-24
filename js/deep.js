@@ -601,13 +601,19 @@
   };
 
   // ---------- 11. Soaking up more, then less ----------
-  const answerMotion = { axes: 1, reveal: 1, blend: undefined };
+  const answerMotion = { axes: 1, reveal: 1, blend: undefined, from: 0, to: 0, arrival: 1 };
+  const captureNames = ['Presence reply', 'Start of card ID', 'ID after 8 known bits', 'ID after 16 known bits',
+    'ID after 24 known bits', 'Selection confirmed'];
+  const captureLabel = document.getElementById('s11-capture-name');
   let answerRecording;
   function answerSamples(depth) {
-    const link = channel.cardChannel([{ chip: tags.cardChip(), depth, awake: true }], { noise: .001, seed: 3 });
+    const chip = tags.cardChip(), link = channel.cardChannel([{ chip, depth, awake: true }], { noise: .001, seed: 3 });
+    const uid = iso.dataBits(chip.uid);
     link.send(iso.shortFrame(iso.REQA));
-    const { begin, samples } = link.recording[0];
-    return samples.subarray(begin - 64, begin + 21 * iso.BIT);
+    for (const known of [0, 8, 16, 24]) link.send(iso.anticollisionBits(uid.slice(0, known)));
+    const selection = iso.withCrc([iso.SEL1, iso.NVB_SELECT, ...chip.uid, iso.bcc(chip.uid)]);
+    link.send(iso.standardFrame(selection));
+    return link.recording.map(({ begin, samples }) => samples.subarray(begin - 64, begin + 21 * iso.BIT));
   }
   const answerScene = plate('s11', p => {
     if (!answerRecording) {
@@ -625,8 +631,8 @@
     p.say(checked ? `Each time the chip closes its switch, the reader’s current changes by ${(dip * 100).toFixed(1)}%. Those are the dips.`
       : 'Switch removed: the reader’s current never changes. It hears nothing at all.');
 
-    const ctx = fit(p), bx = box(p, 26, 40);
-    const { axes, reveal, blend = Number(checked) } = answerMotion;
+    const ctx = fit(p), compact = p.w < 330, bx = box(p, 26, 40, compact ? 38 : 54, compact ? 14 : 18);
+    const { axes, reveal, blend = Number(checked), from, to, arrival } = answerMotion;
     if (axes < 1) {
       const base = bx.y + bx.h;
       ctx.strokeStyle = FAINT; ctx.lineWidth = 1;
@@ -635,14 +641,25 @@
       return;
     }
     const lo = 1 - 1 / z, hi = 1 + .08 / z;
-    const { X, Y } = chart(ctx, bx, { from: 0, to: on.length, ticks: [[0, '0']], label: 'Time (the card answering “Here!”, about 200 µs)' },
+    const finalSample = on[to].length - 1;
+    const duration = Math.round(finalSample / iso.SAMPLE_RATE * 1e6);
+    const { X, Y } = chart(ctx, bx, { from: 0, to: finalSample, ticks: [[0, '0']], label: `Time · ${duration} µs shown` },
       { from: lo, to: hi, ticks: [[1, '100%'], [lo, Math.round(lo * 100) + '%']], label: 'The reader’s coil current' });
+    const currentAt = i => {
+      const before = off[from][i] + (on[from][i] - off[from][i]) * blend;
+      if (from === to) return before;
+      const after = off[to][i] + (on[to][i] - off[to][i]) * blend;
+      return before + (after - before) * arrival;
+    };
     const previous = p.canvas.answerTrace;
-    const points = previous?.zoom === zoom && previous.blend === blend ? previous.points
-      : Array.from(on, (v, i) => [i, clamp(off[i] + (v - off[i]) * blend, lo, hi)]);
+    const points = previous?.zoom === zoom && previous.blend === blend && previous.from === from &&
+      previous.to === to && previous.arrival === arrival ? previous.points
+      : Array.from(on[to], (_, i) => [i, clamp(currentAt(i), lo, hi)]);
     const color = blend === 1 ? COPPER : blend === 0 ? INK : `color-mix(in srgb, ${COPPER} ${blend * 100}%, ${INK})`;
+    const capture = captureNames[arrival < .5 ? from : to];
+    if (captureLabel.textContent !== capture) captureLabel.textContent = capture;
     // The sweep and the next scene both follow the same coordinates as the drawn trace.
-    p.canvas.answerTrace = { box: bx, points, X, Y, color, zoom, blend };
+    p.canvas.answerTrace = { box: bx, points, X, Y, color, zoom, blend, from, to, arrival, currentAt };
     if (!reveal) return;
     ctx.save();
     if (reveal < 1) {
@@ -651,11 +668,15 @@
     curve(ctx, points, X, Y, color, 1.2);
     ctx.restore();
   });
-  if (answerScene) answerScene.canvas.setAnswerMotion = (axes, reveal, blend) => {
-    if (axes === answerMotion.axes && reveal === answerMotion.reveal && blend === answerMotion.blend) return;
-    Object.assign(answerMotion, { axes, reveal, blend });
-    answerScene.dirty = true;
-  };
+  if (answerScene) {
+    answerScene.canvas.answerCaptureCount = captureNames.length;
+    answerScene.canvas.setAnswerMotion = (axes, reveal, blend, from, to, arrival) => {
+      if (axes === answerMotion.axes && reveal === answerMotion.reveal && blend === answerMotion.blend &&
+        from === answerMotion.from && to === answerMotion.to && arrival === answerMotion.arrival) return;
+      Object.assign(answerMotion, { axes, reveal, blend, from, to, arrival });
+      answerScene.dirty = true;
+    };
+  }
 
   // ---------- 12. Whispering next to a shout ----------
   function fft(re, im) {

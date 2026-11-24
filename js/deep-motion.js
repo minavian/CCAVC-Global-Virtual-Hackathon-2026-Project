@@ -1493,168 +1493,224 @@ function watchPartTwo(source, part) {
   reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) release(true); });
 }
 
-function watchSoaking(source, scene) {
-  const chapter = scene.closest('.deep'), part = source.closest('.deep-part');
-  const target = scene.querySelector('#s11-soaking-s');
+function watchSoaking(part, scene) {
+  const root = document.documentElement, chapter = scene.closest('.deep');
+  const partTitle = part.querySelector('.deep-part-title');
   const plot = scene.querySelector('#s11-chart'), scan = scene.querySelector('.s11-scan');
+  const sample = scan.firstElementChild, playback = scene.querySelector('#s11-playback');
   const toggle = scene.querySelector('#s11-switch'), readout = scene.querySelector('.plate-readout');
-  const letter = document.createElement('span'), lower = document.createElement('span'), upper = document.createElement('span');
-  letter.className = 's11-letter-flight';
-  letter.setAttribute('aria-hidden', 'true');
-  lower.textContent = source.textContent;
-  upper.textContent = target.textContent;
-  letter.append(lower, upper);
+  const words = scene.querySelector('.plate-words'), instrument = scene.querySelector('.s11-instrument');
+  const filament = document.createElement('span');
+  filament.className = 's11-filament';
+  filament.setAttribute('aria-hidden', 'true');
 
-  let layout, lastTop, armed, entered, introStart = null, entrance = 1;
+  const cut = 490, entranceEnd = 2080, readHold = 1000, sweepTime = 4000;
+  let intro, listeners, frame = 0, visible = false, scanPaused = false, userPaused = false;
+  let axes = 1, reveal = 1;
   let blend = Number(toggle.checked), destination = blend, blendFrom, blendStart, flip;
-  let frame = 0, visible = false, scanStart = null, scannedTrace, scanPaused = false;
+  let capture = 0, previousCapture = 0, scanElapsed = 0, scanFrame;
   const motionAllowed = () => !reducedMotion.matches && !document.hidden;
-  const updatePlot = () => plot.setAnswerMotion?.(ease(0, .28, entrance), ease(.28, 1, entrance), blend);
+  const canScan = () => visible && !scanPaused && !userPaused && (!intro || intro.reading);
+  const updatePlot = () => plot.setAnswerMotion?.(axes, reveal, blend, previousCapture, capture,
+    previousCapture === capture ? 1 : ease(0, 540, scanElapsed));
 
-  function clearLetter() {
-    if (!letter.isConnected) return;
-    letter.remove();
-    source.classList.remove('s11-letter-in-flight');
-    target.classList.remove('s11-letter-in-flight');
-  }
-
-  function settleEntrance() {
-    clearLetter();
-    introStart = null;
-    entrance = 1;
+  function finishIntro() {
+    if (!intro) return;
+    intro.outgoing.cancel();
+    intro.incoming.forEach(animation => animation.cancel());
+    filament.remove();
+    intro = undefined;
+    axes = reveal = 1;
+    root.classList.remove('deep-soaking-hold');
+    scene.classList.remove('s11-staged');
     updatePlot();
+    scheduleMotion();
+    requestFrame();
   }
 
-  function measure(top, height) {
-    const from = bounds(source, top), to = bounds(target, top);
-    const fromType = getComputedStyle(source), toType = getComputedStyle(target);
-    const size = parseFloat(fromType.fontSize);
-    const start = Math.max(bounds(part, top).y, from.y + from.h / 2 - height * .42);
-    const end = Math.max(start + height * .24, to.y + to.h / 2 - height * .64);
-    const cue = Math.max(end, bounds(plot, top).y - height * .82);
-    const deadline = scene.getBoundingClientRect().bottom + top;
-    letter.style.fontSize = fromType.fontSize;
-    return { from, to, start, end, cue, deadline, scale: parseFloat(toType.fontSize) / size };
-  }
-
-  function carryLetter(top, height) {
-    const { from, to, start, end, scale } = layout;
-    const progress = stage(start, end, top), travel = ease(0, 1, progress);
-    const x = mix(from.x + from.w / 2, to.x + to.w / 2, travel);
-    const y = mix(from.y + from.h / 2, to.y + to.h / 2, travel) - top;
-    const arc = Math.sin(Math.PI * progress);
-    const size = mix(1, scale, ease(.17, 1, progress)) * (1 + .28 * arc);
-    const capital = ease(.3, .72, progress);
-    letter.style.transform = `translate3d(${x}px, ${y - height * .045 * arc}px, 0) translate(-50%, -50%) scale(${size})`;
-    letter.style.color = `color-mix(in srgb, var(--copper) ${30 * arc}%, var(--ink))`;
-    lower.style.opacity = 1 - capital;
-    upper.style.opacity = capital;
-    lower.style.transform = `scaleY(${mix(1, 1.24, capital)})`;
-    upper.style.transform = `scaleY(${mix(.8, 1, capital)})`;
-    if (!letter.isConnected) {
-      chapter.append(letter);
-      source.classList.add('s11-letter-in-flight');
-      target.classList.add('s11-letter-in-flight');
+  function land() {
+    const targetTop = bounds(scene, scrollY).y, chart = bounds(plot, scrollY);
+    const extra = Math.max(0, Math.min(chart.y + chart.h + 6 - targetTop - innerHeight, scene.offsetHeight - innerHeight));
+    scrollTo({ top: targetTop + extra, behavior: 'instant' });
+    intro.top = scrollY;
+    intro.outgoing.cancel();
+    scene.classList.remove('s11-staged');
+    const rect = plot.getBoundingClientRect(), margin = rect.width < 330 ? 38 : 54;
+    intro.to = { x: rect.left + margin, y: rect.top + 26 + (rect.height - 66) * .08 / 1.08,
+      w: rect.width - margin - (rect.width < 330 ? 14 : 18) };
+    intro.incoming = Array.from(words.children, (node, i) => node.animate([
+      { clipPath: 'inset(0 100% 0 0)', filter: 'blur(2px)', opacity: .4 },
+      { clipPath: 'inset(-8px -8px -8px -8px)', filter: 'blur(0)', opacity: 1 },
+    ], { delay: 50 + 75 * i, duration: 555, easing: arrivalEase, fill: 'both' }));
+    for (const node of instrument.querySelectorAll('.plate-controls')) {
+      intro.incoming.push(node.animate([{ opacity: 0 }, { opacity: 1 }],
+        { delay: 510, duration: 330, easing: arrivalEase, fill: 'both' }));
     }
   }
 
-  function hideScan() {
-    scan.hidden = true;
-    scanStart = null;
+  function animateIntro(now) {
+    const elapsed = now - intro.start;
+    if (elapsed >= cut && !intro.to) land();
+    const { from, to } = intro;
+    const travel = ease(cut, 965, elapsed);
+    const width = to ? mix(from.w, to.w, travel) : from.w * ease(80, cut, elapsed);
+    const x = to ? mix(from.x, to.x, travel) : from.x + (from.w - width) / 2;
+    const y = to ? mix(from.y, to.y, travel) : from.y;
+    if (filament.isConnected) {
+      filament.style.inlineSize = `${width}px`;
+      filament.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+      filament.style.opacity = ease(130, 390, elapsed) * (1 - ease(875, 1150, elapsed));
+      if (elapsed >= 1150) filament.remove();
+    }
+
+    axes = ease(545, 1100, elapsed);
+    reveal = ease(1110, entranceEnd, elapsed);
+    intro.reading = reveal === 1;
+    if (elapsed >= entranceEnd + readHold) finishIntro();
   }
 
   function requestFrame() {
-    if (!frame && visible && motionAllowed() && (!scanPaused || introStart !== null || blend !== destination)) {
+    if (!frame && motionAllowed() && (intro || canScan() || (visible && blend !== destination))) {
       frame = requestAnimationFrame(animate);
     }
   }
 
-  plot.pauseAnswerScan = paused => {
-    scanPaused = paused;
-    if (paused) hideScan();
-    else requestFrame();
-  };
+  function drawScan(now) {
+    const trace = plot.answerTrace;
+    if (!trace) return;
+    if (scanFrame !== undefined) scanElapsed += Math.min(64, now - scanFrame);
+    scanFrame = now;
+    if (scanElapsed >= sweepTime) {
+      scanElapsed -= sweepTime;
+      previousCapture = capture;
+      capture = (capture + 1) % plot.answerCaptureCount;
+    }
+
+    const { box, points, X, Y, currentAt } = trace;
+    const progress = scanElapsed / sweepTime;
+    const index = progress * points[points.length - 1][0];
+    const i = Math.floor(index), fraction = index - i;
+    const y = Y(mix(points[i][1], points[i + 1][1], fraction)) - box.y;
+    const current = mix(currentAt(i), currentAt(i + 1), fraction);
+    const percent = `${(current * 100).toFixed(1)}%`;
+    if (sample.textContent !== percent) sample.textContent = percent;
+    scan.style.blockSize = `${box.h}px`;
+    scan.style.transform = `translate3d(${X(index)}px, ${box.y}px, 0)`;
+    scan.style.setProperty('--s11-scan-point', `${y}px`);
+    scan.style.opacity = ease(0, .045, progress) * (1 - ease(.965, 1, progress));
+    scan.toggleAttribute('data-dip', current < .99);
+    scan.toggleAttribute('data-near-edge', progress > 1 - 59 / box.w);
+    scan.toggleAttribute('data-near-bottom', y > box.h - 32);
+    scan.hidden = false;
+  }
+
+  function hideScan() {
+    scan.hidden = true;
+    scanFrame = undefined;
+  }
 
   function animate(now) {
     frame = 0;
-    if (!visible || !motionAllowed()) return;
-    if (introStart !== null) {
-      entrance = stage(0, 620, now - introStart);
-      if (entrance === 1) introStart = null;
-    }
-    if (blend !== destination) blend = mix(blendFrom, destination, ease(0, 280, now - blendStart));
+    if (!motionAllowed()) return;
+    if (intro) animateIntro(now);
+    if (blend !== destination) blend = mix(blendFrom, destination, ease(0, 320, now - blendStart));
+    if (canScan()) drawScan(now);
+    else hideScan();
     updatePlot();
-
-    const trace = plot.answerTrace;
-    if (!scanPaused && entrance === 1 && blend === destination && trace?.blend === blend) {
-      const { box, points, X, Y } = trace;
-      scanStart ??= now;
-      const progress = (now - scanStart) % 2800 / 2800;
-      const index = progress * (points.length - 1), i = Math.floor(index);
-      const value = mix(points[i][1], points[i + 1][1], index - i);
-      if (trace !== scannedTrace) {
-        scan.style.blockSize = `${box.h}px`;
-        scannedTrace = trace;
-      }
-      scan.style.transform = `translate3d(${X(index)}px, ${box.y}px, 0)`;
-      scan.style.setProperty('--s11-scan-point', `${Y(value) - box.y}px`);
-      scan.style.opacity = .86 * ease(0, .055, progress) * (1 - ease(.89, 1, progress));
-      scan.hidden = false;
-    } else hideScan();
     requestFrame();
   }
 
   function refreshLoop() {
-    if (visible && motionAllowed()) return requestFrame();
-    cancelAnimationFrame(frame);
-    frame = 0;
-    hideScan();
-    blend = destination;
-    if (introStart !== null || !motionAllowed()) settleEntrance();
-    else updatePlot();
-    if (!motionAllowed()) flip?.cancel();
+    if (!canScan() || !motionAllowed()) hideScan();
+    if (!visible || !motionAllowed()) {
+      blend = destination;
+      updatePlot();
+    }
+    if (!motionAllowed()) {
+      cancelAnimationFrame(frame);
+      frame = 0;
+      finishIntro();
+      flip?.cancel();
+    }
+    requestFrame();
   }
 
-  watchScrollMotion((top, height, needsMeasure) => {
-    if (!motionAllowed()) return settleEntrance();
-    if (needsMeasure || !layout) {
-      layout = measure(top, height);
-      armed = top <= layout.start;
-      lastTop = top;
-    }
-    const { start, end, cue, deadline } = layout;
-    const jumped = Math.abs(top - lastTop) > height * .48;
-    lastTop = top;
-    if (top <= start) {
-      armed = !scene.contains(document.activeElement);
-      entered = false;
-      return settleEntrance();
-    }
-    if (jumped || top >= deadline) armed = false;
-    if (!armed) return settleEntrance();
+  plot.pauseAnswerScan = paused => {
+    scanPaused = paused;
+    refreshLoop();
+  };
 
-    if (top < end) carryLetter(top, height);
-    else clearLetter();
-    if (!entered) {
-      entrance = 0;
-      updatePlot();
-      if (top >= cue) {
-        entered = true;
-        introStart = performance.now();
-        requestFrame();
-      }
+  function canBegin(event, direction) {
+    if (direction < 0 || event.defaultPrevented || !event.cancelable || !motionAllowed()) return false;
+    if (intro) return true;
+    return !root.classList.contains('deep-part-two-hold') && plot.setAnswerMotion &&
+      scrollY >= bounds(part, scrollY).y - 2 && scrollY < bounds(scene, scrollY).y - 1;
+  }
+
+  function begin(event) {
+    event.preventDefault();
+    if (intro) return;
+    const rect = partTitle.getBoundingClientRect(), slide = part.getBoundingClientRect();
+    const from = { x: rect.left, y: Math.max(12, rect.top + rect.height / 2), w: rect.width };
+    const center = from.y - slide.top;
+    const above = Math.max(0, part.firstElementChild.getBoundingClientRect().top - slide.top - 14);
+    const below = Math.max(0, slide.bottom - rect.bottom - 14);
+    const outgoing = part.animate([
+      { clipPath: `inset(${above}px 0 ${below}px 0)`, filter: 'blur(0)' },
+      { clipPath: `inset(${center}px 0 ${slide.height - center}px 0)`, filter: 'blur(1.5px)' },
+    ], { duration: cut, easing: 'cubic-bezier(.39, .08, .65, .88)', fill: 'both' });
+    intro = { top: scrollY, start: performance.now(), from, outgoing, incoming: [] };
+    root.classList.add('deep-soaking-hold');
+    scene.classList.add('s11-staged');
+    filament.style.opacity = 0;
+    chapter.append(filament);
+    axes = reveal = 0;
+    scanElapsed = 0;
+    previousCapture = capture;
+    updatePlot();
+    requestFrame();
+  }
+
+  function interrupt(direction, event) {
+    if (intro && !intro.to && direction === -1 && event.cancelable) event.preventDefault();
+    finishIntro();
+  }
+
+  watchScrollMotion(top => {
+    if (intro && Math.abs(top - intro.top) > 2) finishIntro();
+    const start = bounds(part, top).y, end = bounds(scene, top).y;
+    if (motionAllowed() && (intro || (top >= start - 2 && top < end - 1))) {
+      listeners ??= capturePageGesture(canBegin, begin, interrupt);
+    } else {
+      listeners?.abort();
+      listeners = undefined;
     }
   });
 
+  function showPlaybackAction() {
+    const action = reducedMotion.matches ? 'Next' : userPaused ? 'Play' : 'Pause';
+    playback.textContent = action;
+    playback.setAttribute('aria-label', action + (action === 'Next' ? ' capture' : ' captures'));
+  }
+
+  playback.hidden = false;
+  showPlaybackAction();
+  playback.addEventListener('click', () => {
+    if (reducedMotion.matches) {
+      capture = (capture + 1) % plot.answerCaptureCount;
+      previousCapture = capture;
+      updatePlot();
+    } else userPaused = !userPaused;
+    showPlaybackAction();
+    refreshLoop();
+  });
   for (const event of ['focusin', 'pointerdown', 'input']) scene.addEventListener(event, ({ target }) => {
-    if (!target.closest('.plate-controls')) return;
-    armed = false;
-    settleEntrance();
+    if (target.closest('.plate-controls')) finishIntro();
   });
   toggle.addEventListener('change', () => {
     destination = Number(toggle.checked);
     flip?.cancel();
-    if (motionAllowed()) flip = readout.animate?.([
+    if (motionAllowed()) flip = readout.animate([
       { transform: 'perspective(440px) rotateX(-28deg)', opacity: .66 },
       { transform: 'none', opacity: 1 },
     ], { duration: 230, easing: arrivalEase });
@@ -1671,15 +1727,14 @@ function watchSoaking(source, scene) {
     refreshLoop();
   }, { threshold: .04 });
   viewport.observe(plot);
+  for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, finishIntro);
   document.addEventListener('visibilitychange', refreshLoop);
-  reducedMotion.addEventListener('change', refreshLoop);
-
-  const contentSize = new ResizeObserver(() => {
-    layout = undefined;
-    scheduleMotion();
+  reducedMotion.addEventListener('change', () => {
+    previousCapture = capture;
+    scanElapsed = 0;
+    showPlaybackAction();
+    refreshLoop();
   });
-  contentSize.observe(chapter);
-  contentSize.observe(scene);
 }
 
 function watchWhispering(previous, scene) {
@@ -2042,9 +2097,8 @@ if (metal && pauses) watchPauses(metal, pauses);
 const pausesLink = document.getElementById('s10-pauses');
 const partTwo = document.getElementById('part-two');
 if (pausesLink && partTwo) watchPartTwo(pausesLink, partTwo);
-const answerLetter = document.getElementById('part-two-answer-s');
 const soaking = document.getElementById('s11');
-if (answerLetter && soaking) watchSoaking(answerLetter, soaking);
+if (partTwo && soaking) watchSoaking(partTwo, soaking);
 const whispering = document.getElementById('s12');
 if (soaking && whispering) watchWhispering(soaking, whispering);
 const counting = document.getElementById('s13');
