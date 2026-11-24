@@ -345,9 +345,12 @@
   if (metalFigure) setupMetal(metalFigure);
 
   // ---------- 10. Getting through the pauses ----------
-  plate('s10', p => {
-    const v = +p.input('cap').value, Cs = v / 20 * 1e-9;
-    p.out('cap', v === 0 ? 'taken out' : si(Cs, 'F', 2));
+  const pauseHandoff = { sweep: 1, dip: 1, limit: 1 };
+  const pauseScene = plate('s10', p => {
+    const cap = p.input('cap'), v = cap.valueAsNumber, Cs = v / 20 * 1e-9;
+    const capText = v === 0 ? 'taken out' : si(Cs, 'F', 2);
+    p.out('cap', capText);
+    cap.setAttribute('aria-valuetext', capText);
     const bits = iso.shortFrame(iso.REQA), { pauses, length } = iso.millerPauses(bits);
     const lead = 24, n = lead + length + 24, at = pauses.map(q => q + lead);
     const field = air.fieldAtTag(n, at, iso.PAUSE);
@@ -360,25 +363,45 @@
       if (volts < RESET && reset < 0) reset = i;
       V[i] = volts;
     }
-    const ctx = fit(p), F = { x: 54, y: 28, w: p.w - 72, h: (p.h - 100) * .4 }, Q = { x: 54, y: F.y + F.h + 44, w: p.w - 72, h: (p.h - 100) * .6 };
-    const X = i => F.x + i / n * F.w;
-    ctx.fillStyle = INK; ctx.font = `600 11px ${SANS}`; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
-    ctx.fillText('The phone’s field: “Anyone there?” as pauses', F.x, F.y - 6);
-    ctx.strokeStyle = INK; ctx.lineWidth = 1.6; ctx.beginPath();
-    for (let i = 0; i < n; i++) { const y = F.y + F.h - field[i] * F.h; i ? ctx.lineTo(X(i), y) : ctx.moveTo(X(i), y); }
-    ctx.stroke();
-    ctx.fillText('The chip’s stored volts', Q.x, Q.y - 6);
-    const Y = v2 => Q.y + Q.h - v2 / 3.4 * Q.h;
-    hline(ctx, Y(RESET), Q.x, Q.x + Q.w, RED, 'Below this, the chip resets');
-    ctx.strokeStyle = reset >= 0 ? RED : COPPER; ctx.lineWidth = 2; ctx.beginPath();
-    for (let i = 0; i < n; i++) { const y = Y(V[i]); i ? ctx.lineTo(X(i), y) : ctx.moveTo(X(i), y); }
-    ctx.stroke();
-    ctx.fillStyle = MUTED; ctx.font = `500 11px ${SANS}`; ctx.textAlign = 'right'; ctx.textBaseline = 'top';
-    ctx.fillText('About 70 µs in all', p.w - 18, p.h - 18);
     const lowest = Math.min(...V);
     p.say(reset >= 0 ? `The chip resets in the first pause and forgets what it heard. It can’t answer.`
       : `The chip rides through all ${pauses.length} pauses, dipping to ${lowest.toFixed(2)} V, and hears “Anyone there?”.`);
+
+    const ctx = fit(p), F = { x: 54, y: 28, w: p.w - 72, h: (p.h - 100) * .4 }, Q = { x: 54, y: F.y + F.h + 44, w: p.w - 72, h: (p.h - 100) * .6 };
+    const X = i => F.x + i / n * F.w;
+    const { sweep, dip, limit } = pauseHandoff;
+    if (!sweep) return;
+    function trace(samples, flat, Y, color, width) {
+      ctx.strokeStyle = color; ctx.lineWidth = width;
+      ctx.beginPath();
+      if (sweep < 1) {
+        ctx.moveTo(X(0), Y(flat));
+        ctx.lineTo(X((n - 1) * sweep), Y(flat));
+      } else {
+        for (let i = 0; i < n; i++) {
+          const y = Y(dip === 1 ? samples[i] : flat + (samples[i] - flat) * dip);
+          if (i === 0) ctx.moveTo(X(i), y);
+          else ctx.lineTo(X(i), y);
+        }
+      }
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = INK; ctx.font = `600 11px ${SANS}`; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+    ctx.fillText('The phone’s field: “Anyone there?” as pauses', F.x, F.y - 6);
+    trace(field, 1, field => F.y + F.h - field * F.h, INK, 1.6);
+    ctx.fillText('The chip’s stored volts', Q.x, Q.y - 6);
+    const Y = v2 => Q.y + Q.h - v2 / 3.4 * Q.h;
+    trace(V, VMAX, Y, reset >= 0 ? RED : COPPER, 2);
+    ctx.fillStyle = MUTED; ctx.font = `500 11px ${SANS}`; ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+    ctx.fillText('About 70 µs in all', p.w - 18, p.h - 18);
+    if (limit) hline(ctx, Y(RESET), Q.x, Q.x + Q.w * limit, RED, limit === 1 ? 'Below this, the chip resets' : '');
   });
+  if (pauseScene) pauseScene.canvas.setPauseHandoff = (sweep, dip, limit) => {
+    if (sweep === pauseHandoff.sweep && dip === pauseHandoff.dip && limit === pauseHandoff.limit) return;
+    Object.assign(pauseHandoff, { sweep, dip, limit });
+    pauseScene.dirty = true;
+  };
 
   // ---------- 11. Soaking up more, then less ----------
   plate('s11', p => {

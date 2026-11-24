@@ -156,15 +156,22 @@
     <section class="plate" id="s10" aria-labelledby="s10-title">
       <div class="plate-words">
         <p class="plate-num">10</p>
-        <h3 id="s10-title">Getting through the pauses</h3>
+        <h3 id="s10-title"><span class="s10-title-text">Getting through the <span id="s10-pauses">pauses</span></span></h3>
         <p>The phone talks by switching its field off for an instant. A chip with no battery has to survive every pause, a few millionths of a second long, on saved energy.</p>
-        <div class="plate-controls">
-          <label>Storage capacitor <output data-for="s10-cap"></output><input id="s10-cap" type="range" min="0" max="40" value="20"></label>
+        <div class="plate-controls s10-control">
+          <div class="s10-control-text">
+            <label for="s10-cap">Storage capacitor</label>
+            <output for="s10-cap" data-for="s10-cap" aria-live="off">1 nF</output>
+          </div>
+          <div class="s10-range">
+            <span class="s10-track" aria-hidden="true"></span>
+            <input id="s10-cap" type="range" min="0" max="40" value="20" aria-valuetext="1 nF">
+          </div>
         </div>
         <p class="plate-readout" aria-live="polite"></p>
         <p class="plate-real">Real name: 100% ASK pauses, modified Miller coding. Each pause lasts about 2.4 µs.</p>
       </div>
-      <canvas class="plate-canvas" role="img" aria-label="The field with its pauses, and the chip's stored voltage"></canvas>
+      <canvas class="plate-canvas" id="s10-chart" role="img" aria-label="The field with its pauses, and the chip's stored voltage"></canvas>
     </section>
 
     <h2 class="deep-part" id="part-two">
