@@ -353,7 +353,9 @@ The card is held 3 cm over the reader (a realistic tap), so the two coils are cl
 ---
 
 ### The story: a film played by scrolling (`js/story.js`, `js/landing.js`)
-Owner: Mina Vian · 2026-11-21, updated 2026-11-21 · Issues #9, #19
+Owner: Mina Vian · 2026-11-21, updated 2026-11-21, then taken off the page's path 2026-11-24 · Issues #9, #19
+
+**Off the page's path, for now.** The page explained the mechanism twice: here, with the key fob, and in the card close-up (What RFID is), with different objects, looks and controls, both opening with "The reader makes a magnetic field." For a two-minute demo that is one story too many, so the page now tells it once, with the card: the landing, the everyday taps, the card intro and its close-up (whose lab does what this story's lab did: distance, turning, metal), then Take it apart. `js/landing.js` removes this story's markup (`#story` and its `.track`) and never creates it or its lab (`STORY`) unless the address has `?story`, which brings everything below back exactly as it was. Without it, scrolling never plays the story, so the landing's objects stay where they are; the page is about a third shorter. Nothing here was deleted.
 
 **What it does.** After the first screen, scrolling plays the first two minutes of `SCRIPT.md`. One plain sentence is on screen at a time, always top left, and a part is labelled only while the sentence names it:
 - **Inside:** "They all use RFID." Then the objects turn to glass: "Inside each one: a coil and a chip." Each object gets `Coil` and `Chip` labels.

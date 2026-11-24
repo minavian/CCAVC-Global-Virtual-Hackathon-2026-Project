@@ -40,7 +40,7 @@
   <script src="js/story.js?v=5" defer></script>
   <script src="js/lab.js" defer></script>
   <script src="js/deep.js" defer></script>
-  <script src="js/landing.js?v=6" defer></script>
+  <script src="js/landing.js?v=7" defer></script>
   <script type="module" src="js/taps.js"></script>
   <script type="module" src="js/intro/main.js?v=26"></script>
 </head>
@@ -102,7 +102,7 @@
       </div>
       <p class="meaning">RFID spells <strong>Radio-Frequency Identification.</strong></p>
       <div class="definition">
-        <p class="definition-lead">This technology works by exchanging data through radio wave.</p>
+        <p class="definition-lead">It swaps data without touching.</p>
         <p class="aside">That’s literally it.</p>
       </div>
       <h2 class="cinema-title"><span>How It</span> <em>Works</em></h2>
@@ -122,7 +122,7 @@
         <span class="antenna-label">Antenna</span>
         <span class="chip-label">Chip</span>
       </div>
-      <p class="question"><span>The card aint having any battery init</span> <strong>how the hell is it supposed to exchange data?</strong></p>
+      <p class="question"><span>The card has no battery.</span> <strong>So how does it talk?</strong></p>
       <div class="instruction">
         <h2>Here's how:</h2>
         <p id="drag-instruction">Drag the card to the reader</p>
@@ -250,8 +250,9 @@
     <div id="try-it"></div>
   </section>
 
-  <!-- The story after the hero. It is pinned over the stage and played by scrolling
-       (see js/story.js); the empty track below only gives the page its scroll length. -->
+  <!-- The key-fob story, played by scrolling (js/story.js). It is off the page's path:
+       js/landing.js removes it unless the address has ?story, because the card close-up
+       above tells the mechanism once. The empty track gives it its scroll length. -->
   <div class="story" id="story">
     <!-- One plain sentence at a time, always in the same place (js/story.js). -->
     <p class="say" id="say" aria-live="polite"></p>
@@ -295,7 +296,7 @@
     <header class="deep-head">
       <p class="kicker">Take it apart</p>
       <h2 id="deep-title">Everything you just saw happens faster than a blink.</h2>
-      <p>Here it is, slowed down and taken apart. From here on, the card is the tag and the phone is the reader. Every number below is calculated as you change things.</p>
+      <p>Here it is, slowed down and taken apart. Engineers call the card a tag. Every number below is calculated as you change things.</p>
     </header>
 
     <h2 class="deep-part"><span>Part one</span> The power: how a field makes electricity</h2>
