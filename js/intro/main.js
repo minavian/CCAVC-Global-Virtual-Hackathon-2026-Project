@@ -10,7 +10,7 @@ import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose
 import { renderSignals } from './signals.js?v=2';
 import { ANSWER_AFTER, APPROACH_DETAIL, APPROACH_TEXT, ASK, SAMPLES_PER_BIT, CARD_ID, IDLE, LAB, LAST, NEAREST, REAL_MS, SHOTS, STEPS, TALK, approach, approachBand, approachView, centimetres,
   checkByte, chipShare, hex, message, proofSeconds, proofTalk, setCardId, talkLevels, view } from './cinema.js';
-import { LAB_START, PRESETS, READERS, clampSetting, curve, labLevels, measure as measureLab, parseId, proofCode, startFor, status as labStatus, wakes, chipPower } from './lab-model.js';
+import { LAB_START, PRESETS, READERS, clampSetting, curve, labLevels, measure as measureLab, nearestFor, parseId, proofCode, startFor, status as labStatus, wakes, chipPower } from './lab-model.js';
 
 // Resolves once the landing's opening is over (js/landing.js), the visitor scrolls, or
 // `fallback` ms pass, whichever is first: the moment to load 3D without stuttering it.
@@ -490,7 +490,8 @@ function intro(experience) {
       if (next.reader === 'phone' && available) scene.usePhone();
       // Only once the phone is there to show (still loading, or failed to: the pad stays).
       if (next.reader === 'phone' && !(available && scene.phoneLoaded())) next.reader = 'pad';
-      if (Object.keys(next).some(key => next[key] !== lab.set[key])) setLab(next);
+      const want = clampSetting({ ...lab.set, ...next });
+      if (Object.keys(next).some(key => want[key] !== lab.set[key])) setLab(next);
       if (auto.held >= plan.hold) go(step + 1);
     } else if (auto.held >= plan.hold) go(step + 1);
   }
@@ -514,7 +515,9 @@ function intro(experience) {
     lab.points = curve(lab.set, lab.chart);
     lab.pointsChart = lab.chart;
     paintZones();
-    if (!fromControl) syncControls();
+    // Always: turning the card can lift it (a tilted card's edge rests on the reader), so the
+    // distance can change while the angle is moved.
+    syncControls();
     paintLabOutputs();
     paintLabPanel();
     invalidate();
@@ -529,8 +532,10 @@ function intro(experience) {
       const min = +input.min, max = +input.max, n = name === 'metal' ? max - min : 60;
       const on = [];
       for (let i = 0; i <= n; i++) {
-        const at = min + (max - min) * i / n;
-        on.push(wakes({ ...s, [name]: name === 'tune' ? sliderToTune(at) : at }));
+        const at = min + (max - min) * i / n, value = name === 'tune' ? sliderToTune(at) : at;
+        const real = clampSetting({ ...s, [name]: value });
+        // Closer than a turned card can come: neither amber nor dim, just the track.
+        on.push(name === 'distance' && real.distance > value + .05 ? null : wakes(real));
       }
       // Each sample stands for the stretch of the track around it.
       const stops = [];
@@ -538,7 +543,7 @@ function intro(experience) {
       let from = 0;
       for (let i = 1; i <= n + 1; i++) {
         if (i <= n && on[i] === on[from]) continue;
-        const color = on[from] ? 'rgba(255, 181, 46, .9)' : 'rgba(255, 255, 255, .09)';
+        const color = on[from] === null ? 'rgba(255, 255, 255, 0)' : on[from] ? 'rgba(255, 181, 46, .9)' : 'rgba(255, 255, 255, .09)';
         stops.push(`${color} ${edge(from).toFixed(2)}%`, `${color} ${edge(i).toFixed(2)}%`);
         from = i;
       }

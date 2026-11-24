@@ -22,10 +22,21 @@ export const LIMITS = {
 // 21 mm against the pad's 35 mm, 0.21 A against 0.525 A), so it only reaches about 2.4 cm and a
 // normal tap is about 1 cm. Its camera island stands 7 mm proud of its coil (phone-reader.js),
 // so a card can't come closer than 0.8 cm.
+// `surface`: how far the reader's top stands above its coil (cm): the pad's glass, the phone's
+// camera island (phone-reader.js ISLAND_TOP).
 export const READERS = {
-  pad: { label: 'Card reader', noun: 'reader', start: 3, nearest: .5 },
-  phone: { label: 'Phone', noun: 'phone', start: 1, nearest: .8 },
+  pad: { label: 'Card reader', noun: 'reader', start: 3, nearest: .5, surface: .24 },
+  phone: { label: 'Phone', noun: 'phone', start: 1, nearest: .8, surface: .71 },
 };
+// A turned card can't come as close: one edge rests on the reader's top and its middle (where its
+// coil's centre is) rises by half its height (27 mm) × sin(angle). So the nearest it can be, with
+// a millimetre to spare. Turned 80°, the pad's nearest is 3.0 cm, and the phone's 3.5 cm: tilted
+// even 30° on a phone, the card's own edge holds it out at 2.2 cm, past where it can wake.
+const CARD_HALF_CM = 2.7;
+export function nearestFor(s) {
+  const r = READERS[readerOf(s)];
+  return Math.max(r.nearest, CARD_HALF_CM * Math.sin((s.angle || 0) * Math.PI / 180) + r.surface + .1);
+}
 const readerOf = s => READERS[s.reader] ? s.reader : 'pad';
 // Where a setting starts for a reader: everything normal, the card at that reader's normal tap.
 export const startFor = reader => ({ ...LAB_START, reader, distance: READERS[reader].start });
@@ -35,7 +46,7 @@ export const PRESETS = {
   pad: {
     tap: { label: 'Normal tap', ...startFor('pad') },
     far: { label: 'Too far', ...startFor('pad'), distance: 7 },
-    side: { label: 'Side-on', ...startFor('pad'), distance: 2, angle: 80 },
+    side: { label: 'Side-on', ...startFor('pad'), distance: 3, angle: 80 },
     metal: { label: 'On metal', ...startFor('pad'), distance: 2.5, metal: 4 },
     weak: { label: 'Weak reader', ...startFor('pad'), distance: 3.5, drive: 40 },
     tuned: { label: 'Badly tuned', ...startFor('pad'), distance: 2, tune: 6 },
@@ -44,7 +55,7 @@ export const PRESETS = {
   phone: {
     tap: { label: 'Normal tap', ...startFor('phone') },
     far: { label: 'Too far', ...startFor('phone'), distance: 3.5 },
-    side: { label: 'Side-on', ...startFor('phone'), angle: 80 },
+    side: { label: 'Side-on', ...startFor('phone'), distance: 2.2, angle: 30 },
     metal: { label: 'On metal', ...startFor('phone'), metal: 4 },
     weak: { label: 'Weak phone', ...startFor('phone'), distance: 1.2, drive: 50 },
     tuned: { label: 'Badly tuned', ...startFor('phone'), tune: 6 },
@@ -206,7 +217,8 @@ export function wakes(s) {
 const CAUSES = ['drive', 'angle', 'metal', 'tune', 'distance'];
 function cause(s) {
   const normal = startFor(readerOf(s));
-  for (const key of CAUSES) if (s[key] !== normal[key] && wakes({ ...s, [key]: normal[key] })) return key;
+  // (Each as it could really be: a turned card stays lifted by its edge.)
+  for (const key of CAUSES) if (s[key] !== normal[key] && wakes(clampSetting({ ...s, [key]: normal[key] }))) return key;
   return null;
 }
 
@@ -238,7 +250,8 @@ export function status(s, m) {
     : { text: 'The reader is off. No field, no power.', detail: 'Turn the reader’s power up.' };
   switch (cause(s)) {
     case 'drive': return { text: `Asleep: the ${noun} is too weak.`, detail: reach };
-    case 'angle': return { text: 'Asleep: the card is turned away.', detail: 'Little field passes through a tilted coil.' };
+    case 'angle': return { text: 'Asleep: the card is turned away.', detail: s.angle > 10 && s.distance <= nearestFor(s) + .05
+      ? `Its edge on the ${noun} holds it further off too.` : 'Little field passes through a tilted coil.' };
     case 'metal': return { text: 'Asleep: the metal blocks the field.', detail: 'Metal makes currents that cancel the field.' };
     case 'tune': return { text: 'Asleep: the card is tuned wrong.', detail: 'Its coil must be tuned to 13.56 MHz.' };
     case 'distance': return { text: `Asleep: too far from the ${noun}.`, detail: phone ? `${reach} A phone reaches less than a reader.` : reach };
@@ -250,7 +263,7 @@ export function status(s, m) {
 export function clampSetting(s) {
   const out = { ...s, reader: readerOf(s), clone: Boolean(s.clone) };
   for (const key in LIMITS) out[key] = clampTo(+out[key], LIMITS[key]);
-  out.distance = Math.max(out.distance, READERS[out.reader].nearest);
+  out.distance = Math.max(out.distance, nearestFor(out));
   return out;
 }
 
