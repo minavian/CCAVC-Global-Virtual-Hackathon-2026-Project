@@ -13,6 +13,8 @@
 //   tune      the frequency the card's coil is tuned to, MHz (5 to 30; real cards: 13.56)
 //   reader    which reader: 'pad', a shop's card reader, or 'phone', a phone's NFC
 //   clone     the card is a copy: the same ID, but not the secret key (see `proofCode`)
+import { shownPower } from './easing.js';
+
 export const METAL_GAPS = [null, .02, .01, .005, .002];
 export const LAB_START = { distance: 3, angle: 0, metal: 0, drive: 100, tune: 13.56, reader: 'pad', clone: false };
 export const LIMITS = {
@@ -189,7 +191,7 @@ export function labLevels(s, m) {
     // The card's current is drawn as bright as the power it carries (the current squared), so
     // a fifth of the current shows a twenty-fifth as bright, and its light runs as fast as the
     // current is strong: a weak current is a faint crawl, not electricity at full flow.
-    receive: Math.min(1.15, current * current),
+    receive: shownPower(current * current),
     cardPace: Math.min(1.5, current),
     // Into the chip: only once it is awake, as much as it gets (its limiter holds it at 3.3 V).
     power: m.awake ? Math.max(.6, Math.min(1, m.volts / m.clamp)) : 0,

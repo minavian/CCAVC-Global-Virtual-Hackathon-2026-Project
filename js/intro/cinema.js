@@ -13,7 +13,7 @@
 // Both give a set of target levels (`IDLE` lists them) and a camera (`view`); main.js
 // glides what is shown toward them, card-scene.js draws the 3D, and effects.js the rings
 // and the current.
-import { clamp, smoother } from './easing.js';
+import { clamp, shownPower, smoother } from './easing.js';
 import { TOP, COIL_Z, CHIP as READER_CHIP } from './reader-size.js';
 
 export const MHZ = '13.56';   // the carrier of bank and metro cards (ISO 14443), in MHz
@@ -105,7 +105,7 @@ export function approach(cm) {
     emit: reach,
     field: reach,
     xray: smoother(7.5, 5, cm),                 // the card shows its coil
-    receive: Math.min(1.15, current * current) * smoother(8, 5.5, cm),
+    receive: shownPower(current * current) * smoother(8, 5.5, cm),
     cardPace: Math.min(1.5, current),
     power: awake ? 1 : 0,
     // The chip starts working as it wakes, a little more the closer it comes.
