@@ -18,6 +18,18 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
+// Resolves once the landing's opening is over (js/landing.js), the visitor scrolls, or
+// `fallback` ms pass, whichever is first: the moment to load 3D without stuttering it.
+function afterOpening(fallback = 11000) {
+  return new Promise(resolve => {
+    if (window.__openingDone) { resolve(); return; }
+    document.addEventListener('rfid:opening-done', resolve, { once: true });
+    const onScroll = () => { if (scrollY > 40) { removeEventListener('scroll', onScroll); resolve(); } };
+    addEventListener('scroll', onScroll, { passive: true });
+    setTimeout(resolve, fallback);
+  });
+}
+
 const section = document.getElementById('taps');
 
 // ---------- Timing (seconds). Everything about pacing lives here. ----------
@@ -79,11 +91,12 @@ function init() {
   watch.observe(section);
   views.forEach(view => watch.observe(view));
 
-  // Load a little before the section scrolls in, so the models are ready when it arrives.
+  // Load a little before the section scrolls in, so the models are ready when it arrives,
+  // but not while the landing's opening plays: loading then made the opening stutter.
   const approach = new IntersectionObserver(([entry]) => {
     if (!entry.isIntersecting) return;
     approach.disconnect();
-    load();
+    afterOpening().then(load);
   }, { rootMargin: '120% 0px' });
   approach.observe(section);
 

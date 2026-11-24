@@ -11,6 +11,18 @@ import { ANSWER_AFTER, APPROACH_DETAIL, APPROACH_TEXT, ASK, SAMPLES_PER_BIT, CAR
   checkByte, hex, message, power, setCardId, talkLevels, view } from './cinema.js';
 import { LAB_START, PRESETS, clampSetting, curve, labLevels, measure as measureLab, parseId, status as labStatus } from './lab-model.js';
 
+// Resolves once the landing's opening is over (js/landing.js), the visitor scrolls, or
+// `fallback` ms pass, whichever is first: the moment to load 3D without stuttering it.
+function afterOpening(fallback = 11000) {
+  return new Promise(resolve => {
+    if (window.__openingDone) { resolve(); return; }
+    document.addEventListener('rfid:opening-done', resolve, { once: true });
+    const onScroll = () => { if (scrollY > 40) { removeEventListener('scroll', onScroll); resolve(); } };
+    addEventListener('scroll', onScroll, { passive: true });
+    setTimeout(resolve, fallback);
+  });
+}
+
 const root = document.querySelector('.intro');
 if (root) intro(root);
 
@@ -1234,14 +1246,11 @@ function intro(experience) {
   }).observe(stage);
 
   // Load the 3D card shortly before the section scrolls into view, but not while the
-  // landing's opening plays (about 8 s): building it then would make the opening stutter. It
-  // starts once the opening is over, or as soon as the visitor scrolls, whichever is first.
+  // landing's opening plays: building it then would make the opening stutter. It starts once
+  // the opening is over (js/landing.js announces it), or as soon as the visitor scrolls.
   let near = false, calm = false, begun = false;
   const begin = () => { if (near && calm && !begun) { begun = true; start(); } };
-  const settle = () => { calm = true; removeEventListener('scroll', onScroll); begin(); };
-  const onScroll = () => { if (scrollY > 40) settle(); };
-  addEventListener('scroll', onScroll, { passive: true });
-  setTimeout(settle, 9000);
+  afterOpening().then(() => { calm = true; begin(); });
   const loader = new IntersectionObserver(([entry]) => {
     if (!entry.isIntersecting) return;
     loader.disconnect();
@@ -1256,6 +1265,9 @@ function intro(experience) {
       scene = await createCardScene(sceneCanvas);
       available = true;
       stage.classList.add('has-card');
+      // Measure and size the 3D now, while the section is still off screen, rather than on
+      // its first frame on screen, which would hitch as it scrolls in.
+      measure();
       remeasure();
     } catch (error) {
       console.warn('Could not start the 3D card.', error);

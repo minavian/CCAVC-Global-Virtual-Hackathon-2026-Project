@@ -12,9 +12,9 @@
   // The card intro's reading holds, in screens of its scroll (js/intro/timeline.js
   // scrollFrames): the middle of each, and how long to stay (seconds).
   const INTRO_HOLDS = [[.64, 2.4], [1.68, 2.6], [2.23, 1.6], [3.43, 3], [5.1, 3.2], [6.67, 2.6], [8.3, 3], [9.8, 0]];
-  // The landing's opening (js/landing.js TIMELINE.end, 8.3 s), then a little longer while
-  // the card intro's 3D loads behind it (js/intro/main.js waits for the opening to end).
-  const OPENING = 10.8;
+  // After the landing's opening (js/landing.js announces its end), a little longer while the
+  // taps' and the card intro's 3D load behind it (they wait for the opening to end).
+  const LOADING = 2.6;
   const TAPS = 14.2;         // the everyday taps, all three once (js/taps.js LOOP_ALL)
 
   let run = null;
@@ -30,7 +30,7 @@
   // Where each stop is, worked out from the page as it is laid out now.
   function plan() {
     const taps = document.getElementById('taps'), intro = document.getElementById('what-is-rfid');
-    const stops = [{ y: () => 0, hold: OPENING }];
+    const stops = [{ y: () => 0, hold: LOADING, afterOpening: true }];
     if (taps) stops.push({ y: () => taps.offsetTop, hold: TAPS, travel: 1.8 });
     if (intro) for (const [screens, hold] of INTRO_HOLDS) {
       stops.push({ y: () => intro.offsetTop + screens * innerHeight, hold, travel: 1.3 });
@@ -63,6 +63,8 @@
       const k = duration ? Math.min(1, elapsed / duration) : 1;
       scrollTo(0, run.from + (run.to - run.from) * smoother(k));
       if (k >= 1) { run.phase = 'hold'; run.since = now; }
+    } else if (stop_.afterOpening && !window.__openingDone) {
+      run.since = now;   // the hold counts from the end of the landing's opening
     } else if (elapsed >= stop_.hold) {
       run.i++;
       if (run.i >= run.stops.length) { stop(); return; }
