@@ -1760,3 +1760,20 @@ html[data-intro] .chapters { opacity: 0; pointer-events: none; }
   .story .callout b { font-size: calc(15 * var(--u, 1px)); }
   .story .callout { max-width: calc(150 * var(--u, 1px)); }
 }
+
+/* Presenter mode (js/present.js): while the page plays itself, a small note says how to stop it. */
+.presenting {
+  position: fixed;
+  left: 50%;
+  top: .7rem;
+  z-index: 50;
+  margin: 0;
+  padding: .3rem .8rem;
+  border-radius: 999px;
+  font-size: .72rem;
+  font-weight: 650;
+  color: #f4f1ea;
+  background: rgba(13, 13, 12, .62);
+  transform: translateX(-50%);
+  pointer-events: none;
+}

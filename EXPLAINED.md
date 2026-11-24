@@ -42,6 +42,7 @@ Written by <who> · <date> · Issue #<n>
 - [The simulation: physics, protocol and reader](#the-simulation-physics-protocol-and-reader-jsrfid)
 - [The lab: Power, Reply, Break it](#the-lab-power-reply-break-it-jslabjs)
 - [Take it apart: scenes 6 to 17](#take-it-apart-scenes-6-to-17-jsdeepjs)
+- [Presenter mode](#presenter-mode-jspresentjs)
 - [The checks](#the-checks-tests)
 
 ---
@@ -481,6 +482,23 @@ Owner: Mina Vian · 2026-11-21 · Issue #19
 **Likely questions.**
 - Q: Scene 8 says the card's range only shrinks, but the key starves. Why the difference? A: A bank card's chip draws about 5 mW, so even with tuning it uses most of what arrives. The key's chip draws about 75 µW and depends on tuning to build up enough voltage. Without the capacitor, its range falls from 4 cm to under 1 cm.
 - Q: In scene 14, why doesn't a wrong ID get all the way through with the checks off? A: Because the card checks its own ID when the phone selects it, and refuses a wrong one. That second layer of checking is real.
+
+---
+
+### Presenter mode (`js/present.js`)
+Owner: Mina Vian · 2026-11-24
+
+**What it does.** For a live demo, the page plays itself from the top. Open it with `?play` in the address (or press P): it waits for the landing's opening, scrolls to the everyday taps and lets them play once, then scrolls through the card intro, pausing on each of its reading holds, and stops where the card can be dropped. From there the close-up plays by itself (the tap, then the lab), so the whole thing runs hands-free: about a minute to the close-up, a little over two minutes to the end. A small note at the top says "Playing by itself. Press P to stop." Any wheel, touch, click or key other than P hands the page back.
+
+**How it works.** `plan` lists the stops, read from the page as it is laid out: the top (held 10.8 s: the landing's 8.3 s opening, and long enough for the card intro's 3D to load while nothing moves), the everyday taps (held 14.2 s, one full round of the three taps, `LOOP_ALL` in `js/taps.js`), then the card intro's eight reading holds (`INTRO_HOLDS`, in screens of its scroll, from `scrollFrames` in `js/intro/timeline.js`), each held a few seconds. `tick` glides between stops with a smootherstep (soft in and out), reading each stop's position once per glide, then waits out the hold. With reduced motion it jumps instead of gliding.
+
+**Why it is built this way.** The demo's plan is to let the page play while the presenter talks: about a minute on what RFID is and what it is for, then the mechanism. The landing, the taps and the close-up already play by themselves; only the card intro needed scrolling. Scrolling the real page (rather than a separate video) keeps it live, so the presenter can stop at any moment and take over. It is a separate file and off unless asked for, so a visitor never gets scrolled.
+
+**How to check it.** Open the page with `?play` and touch nothing: the landing's opening plays, the page glides to the taps, which play once, then through the card intro with a pause on each composition, until the card is carried to the reader and the close-up plays through its steps and its lab to the explanation. Press P at any point to stop (or press it again to start). A rehearsal in an ordinary Chrome window, timing every frame, had no frame over 100 ms after the page loaded.
+
+**Likely questions.**
+- Q: Why not just autoplay for everyone? A: A visitor reading at their own pace should never be scrolled for. It is for presenting.
+- Q: What if the presenter wants to stop on something? A: Any wheel, touch, click or key hands it back; P starts it again from the next stop.
 
 ---
 
