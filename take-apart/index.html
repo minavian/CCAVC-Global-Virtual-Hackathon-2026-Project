@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>The Reader Is the Battery</title>
+  <meta name="description" content="Your bank card has no battery. The card reader powers it: its magnetic field wakes the chip, and the chip answers by soaking up more or less of that field.">
+  <meta name="theme-color" content="#f5f2ec">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23f5f2ec'/%3E%3Cpath d='M11 22a8 8 0 0 1 0-12M15.5 19.5a4.5 4.5 0 0 0 0-7' fill='none' stroke='%230d0d0c' stroke-width='2.4' stroke-linecap='round'/%3E%3Ccircle cx='21' cy='16' r='2.6' fill='%230d0d0c'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
+  <link rel="stylesheet" href="style.css">
+  <script src="../js/rfid/physics.js" defer></script>
+  <script src="../js/rfid/iso14443a.js" defer></script>
+  <script src="../js/rfid/lf.js" defer></script>
+  <script src="../js/rfid/tag.js" defer></script>
+  <script src="../js/rfid/air.js" defer></script>
+  <script src="../js/rfid/reader.js" defer></script>
+  <script src="../js/rfid/channel.js" defer></script>
+  <script src="../js/deep.js" defer></script>
+</head>
+<body>
+  <main class="deep" id="take-apart" aria-labelledby="deep-title">
+    <header class="deep-head">
+      <p class="kicker">Take it apart</p>
+      <h2 id="deep-title">Everything you just saw happens faster than a blink.</h2>
+      <p>Here it is, slowed down and taken apart. From here on, the card is the tag and the phone is the reader. Every number below is calculated as you change things.</p>
+    </header>
+
+    <h2 class="deep-part"><span>Part one</span> The power: how a field makes electricity</h2>
+
+    <section class="plate" id="s6" aria-labelledby="s6-title">
+      <div class="plate-words">
+        <p class="plate-num">6</p>
+        <h3 id="s6-title">Closer is stronger</h3>
+        <p>The field fades very fast with distance. A bigger coil catches more of it, which is why the card’s coil runs around its whole edge.</p>
+        <div class="plate-controls">
+          <label>Distance from the phone <output data-for="s6-distance"></output><input id="s6-distance" type="range" min="2" max="80" value="20"></label>
+          <label>Size of the card’s coil <output data-for="s6-radius"></output><input id="s6-radius" type="range" min="12" max="45" value="36"></label>
+        </div>
+        <p class="plate-readout" aria-live="polite"></p>
+        <p class="plate-real">Real name: inductive coupling. A card must work in a field from 1.5 to 7.5 A/m (ISO/IEC 14443-2).</p>
+      </div>
+      <canvas class="plate-canvas" role="img" aria-label="Graph of the field and the chip's volts against distance"></canvas>
+    </section>
+
+    <section class="plate" id="s7" aria-labelledby="s7-title">
+      <div class="plate-words">
+        <p class="plate-num">7</p>
+        <h3 id="s7-title">It has to keep flipping</h3>
+        <p>Only a changing field makes electricity. The reader’s field flips 13.56 million times a second.</p>
+        <div class="plate-controls">
+          <label>How fast the field flips <output data-for="s7-speed"></output><input id="s7-speed" type="range" min="0" max="100" value="100"></label>
+        </div>
+        <p class="plate-readout" aria-live="polite"></p>
+        <p class="plate-real">Real name: Faraday’s law of induction. The voltage is the speed of the change: V = ω · M · I.</p>
+      </div>
+      <canvas class="plate-canvas" role="img" aria-label="The field through the coil and the voltage it makes, over time"></canvas>
+    </section>
+
+    <section class="plate" id="s8" aria-labelledby="s8-title">
+      <div class="plate-words">
+        <p class="plate-num">8</p>
+        <h3 id="s8-title">The tuning trick</h3>
+        <p>The coil and the tiny capacitor beside it swing together, like a child on a swing pushed at just the right moment. Tuned right, a weak field is enough.</p>
+        <div class="plate-controls">
+          <label>Capacitor <output data-for="s8-cap"></output><input id="s8-cap" type="range" min="0" max="100" value="50"></label>
+          <label class="plate-check"><input id="s8-remove" type="checkbox"> Take the capacitor out</label>
+          <span class="plate-switch" role="radiogroup" aria-label="Tag"><label><input type="radio" name="s8-tag" value="card" checked> Card</label><label><input type="radio" name="s8-tag" value="key"> Car key</label></span>
+        </div>
+        <p class="plate-readout" aria-live="polite"></p>
+        <p class="plate-real">Real name: resonance, f = 1 / (2π√LC). A card’s chip draws about 5 mW; a key’s about 75 µW, so the key leans on tuning far more.</p>
+      </div>
+      <canvas class="plate-canvas" role="img" aria-label="The chip's volts across frequencies, peaking at the reader's frequency"></canvas>
+    </section>
+
+    <section class="plate" id="s9" aria-labelledby="s9-title">
+      <div class="plate-words">
+        <p class="plate-num">9</p>
+        <h3 id="s9-title">Why metal fights back</h3>
+        <p>Metal makes its own currents that push against the field, and it knocks the coil out of tune.</p>
+        <div class="plate-controls">
+          <label>Metal behind the card <output data-for="s9-gap"></output><input id="s9-gap" type="range" min="1" max="61" value="61"></label>
+        </div>
+        <p class="plate-readout" aria-live="polite"></p>
+        <p class="plate-real">Real name: eddy currents and detuning. Modelled as a perfect conductor: a mirror image of the reader’s coil, with the current reversed.</p>
+      </div>
+      <canvas class="plate-canvas" role="img" aria-label="Field lines bending away from a metal plate"></canvas>
+    </section>
+
+    <section class="plate" id="s10" aria-labelledby="s10-title">
+      <div class="plate-words">
+        <p class="plate-num">10</p>
+        <h3 id="s10-title">Getting through the pauses</h3>
+        <p>The phone talks by switching its field off for an instant. A chip with no battery has to survive every pause, a few millionths of a second long, on saved energy.</p>
+        <div class="plate-controls">
+          <label>Storage capacitor <output data-for="s10-cap"></output><input id="s10-cap" type="range" min="0" max="40" value="20"></label>
+        </div>
+        <p class="plate-readout" aria-live="polite"></p>
+        <p class="plate-real">Real name: 100% ASK pauses, modified Miller coding. Each pause lasts about 2.4 µs.</p>
+      </div>
+      <canvas class="plate-canvas" role="img" aria-label="The field with its pauses, and the chip's stored voltage"></canvas>
+    </section>
+
+    <h2 class="deep-part"><span>Part two</span> The answer: how a chip with no radio talks back</h2>
+
+    <section class="plate" id="s11" aria-labelledby="s11-title">
+      <div class="plate-words">
+        <p class="plate-num">11</p>
+        <h3 id="s11-title">Soaking up more, then less</h3>
+        <p>The chip never sends anything. It changes how much of the field it soaks up, and the reader feels the difference in its own coil.</p>
+        <div class="plate-controls">
+          <label class="plate-check"><input id="s11-switch" type="checkbox" checked> The chip’s answer switch</label>
+          <label>Zoom <output data-for="s11-zoom"></output><input id="s11-zoom" type="range" min="0" max="100" value="0"></label>
+        </div>
+        <p class="plate-readout" aria-live="polite"></p>
+        <p class="plate-real">Real name: load modulation.</p>
+      </div>
+      <canvas class="plate-canvas" role="img" aria-label="The reader's coil current while the card answers"></canvas>
+    </section>
+
+    <section class="plate" id="s12" aria-labelledby="s12-title">
+      <div class="plate-words">
+        <p class="plate-num">12</p>
+        <h3 id="s12-title">Whispering next to a shout</h3>
+        <p>The card’s answer is tiny next to the reader’s own field. So the chip flickers its dips 847,500 times a second. That moves its answer to a pitch the reader can pick out.</p>
+        <div class="plate-controls">
+          <label class="plate-check"><input id="s12-flicker" type="checkbox" checked> The chip’s fast flicker</label>
+        </div>
+        <p class="plate-readout" aria-live="polite"></p>
+        <p class="plate-real">Real name: the subcarrier, 13.56 MHz ÷ 16 = 847.5 kHz.</p>
+      </div>
+      <canvas class="plate-canvas" role="img" aria-label="The reader's signal sorted by pitch"></canvas>
+    </section>
+
+    <section class="plate" id="s13" aria-labelledby="s13-title">
+      <div class="plate-words">
+        <p class="plate-num">13</p>
+        <h3 id="s13-title">Keeping count</h3>
+        <p>With “dip for 1, quiet for 0”, a run of zeros is a flat line, and a reader whose clock runs a little fast loses count. With “every bit changes in its middle”, the count never slips.</p>
+        <div class="plate-controls">
+          <label>A letter <input id="s13-letter" type="text" maxlength="1" value="A" autocomplete="off"></label>
+          <span class="plate-switch" role="radiogroup" aria-label="How bits are written"><label><input type="radio" name="s13-code" value="simple"> Dip for 1</label><label><input type="radio" name="s13-code" value="manchester" checked> Change in the middle</label></span>
+          <label>The reader’s clock <output data-for="s13-drift"></output><input id="s13-drift" type="range" min="-12" max="12" value="7"></label>
+        </div>
+        <p class="plate-readout" aria-live="polite"></p>
+        <p class="plate-real">Real name: Manchester coding.</p>
+      </div>
+      <canvas class="plate-canvas" role="img" aria-label="A letter's bits, how they look on the air, and where the reader counts them"></canvas>
+    </section>
+
+    <section class="plate" id="s14" aria-labelledby="s14-title">
+      <div class="plate-words">
+        <p class="plate-num">14</p>
+        <h3 id="s14-title">Catching mistakes</h3>
+        <p>A dip drowns and a 1 becomes a 0. A check bit on every byte and a check number on every message catch it, and the phone asks again.</p>
+        <div class="plate-controls">
+          <label>Noise <output data-for="s14-noise"></output><input id="s14-noise" type="range" min="0" max="100" value="35"></label>
+          <label class="plate-check"><input id="s14-checks" type="checkbox" checked> Checks</label>
+          <button type="button" id="s14-tap">Tap again</button>
+        </div>
+        <p class="plate-readout" aria-live="polite"></p>
+        <p class="plate-real">Real name: odd parity bits and CRC_A (ISO/IEC 14443-3). The card also checks its own ID when the phone selects it.</p>
+      </div>
+      <canvas class="plate-canvas" role="img" aria-label="The bits the phone heard, with errors marked"></canvas>
+    </section>
+
+    <section class="plate" id="s15" aria-labelledby="s15-title">
+      <div class="plate-words">
+        <p class="plate-num">15</p>
+        <h3 id="s15-title">The whole conversation</h3>
+        <p class="plate-gate">You’re not supposed to see this… But just this once, we’ll make an exception.</p>
+        <p>Every tap starts with the same six messages. The phone works out every bit from the dips alone: it never peeks at the card’s memory.</p>
+        <div class="plate-controls">
+          <button type="button" id="s15-tap">Tap the card</button>
+          <label class="plate-check"><input id="s15-random" type="checkbox" checked> New ID every tap</label>
+          <button type="button" id="s15-steal">Steal a packet</button>
+        </div>
+        <p class="plate-readout" aria-live="polite"></p>
+        <p class="plate-real">Real name: ISO/IEC 14443-3: REQA, ATQA, anticollision, UID, SELECT, SAK.</p>
+      </div>
+      <div class="plate-river">
+        <canvas class="plate-canvas" role="img" aria-label="Messages flowing between the phone and the card"></canvas>
+        <ol class="chat" aria-label="The phone's log"></ol>
+      </div>
+    </section>
+
+    <section class="plate" id="s16" aria-labelledby="s16-title">
+      <div class="plate-words">
+        <p class="plate-num">16</p>
+        <h3 id="s16-title">Two cards in one field</h3>
+        <p>Both cards answer at once. Where their IDs differ, the reader hears a 1 and a 0 together: a clash. It picks one side, and the other card goes quiet. That’s why tapping a whole wallet can charge the wrong card.</p>
+        <div class="plate-controls">
+          <label>Cards on the phone <output data-for="s16-cards"></output><input id="s16-cards" type="range" min="1" max="3" value="2"></label>
+          <span class="plate-switch" role="radiogroup" aria-label="At a clash, the reader picks"><label><input type="radio" name="s16-pick" value="1" checked> 1s first</label><label><input type="radio" name="s16-pick" value="0"> 0s first</label></span>
+          <button type="button" id="s16-tap">New cards</button>
+        </div>
+        <p class="plate-readout" aria-live="polite"></p>
+        <p class="plate-real">Real name: bit-wise anticollision (ISO/IEC 14443-3). Transport for London calls it “card clash”.</p>
+      </div>
+      <canvas class="plate-canvas" role="img" aria-label="The cards' IDs, the clash and the reader's choice"></canvas>
+    </section>
+
+    <section class="plate" id="s17" aria-labelledby="s17-title">
+      <div class="plate-words">
+        <p class="plate-num">17</p>
+        <h3 id="s17-title">Why your phone can’t read your car key</h3>
+        <p>A reader and a tag have to be tuned to each other. The key is tuned to 125 kHz; the phone’s field flips at 13.56 MHz, about 100 times faster.</p>
+        <div class="plate-controls">
+          <span class="plate-switch" role="radiogroup" aria-label="Reader"><label><input type="radio" name="s17-reader" value="phone" checked> Phone</label><label><input type="radio" name="s17-reader" value="key"> Car’s reader</label></span>
+          <span class="plate-switch" role="radiogroup" aria-label="Tag"><label><input type="radio" name="s17-tag" value="key" checked> Car key</label><label><input type="radio" name="s17-tag" value="card"> Card</label></span>
+        </div>
+        <p class="plate-readout" aria-live="polite"></p>
+        <p class="plate-real">Real name: low frequency (LF, 125 kHz) and high frequency (HF, 13.56 MHz).</p>
+      </div>
+      <canvas class="plate-canvas" role="img" aria-label="The tag's tuning curve and the reader's frequency"></canvas>
+    </section>
+
+    <footer class="deep-end">
+      <p class="deep-last">Every tap does all of this, in less time than a blink.</p>
+      <p>Everything on this page is computed by its own code: the coils from Maxwell’s formula, the card and phone from the ISO/IEC 14443 standard, and a reader that decodes only the signal it receives. <a href="../tests/">See the checks run</a>.</p>
+      <p class="deep-fine">Sources: ISO/IEC 14443-2 and -3; NIST SP 800-98; NXP NTAG21x and PN7462 datasheets; TI TMS37145 datasheet; EM4100 format; Transport for London, “card clash”. 3D models made by our team. Built with Three.js.</p>
+    </footer>
+  </main>
+</body>
+</html>

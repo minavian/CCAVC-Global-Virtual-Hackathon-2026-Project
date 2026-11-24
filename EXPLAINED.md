@@ -46,6 +46,8 @@ Written by <who> · <date> · Issue #<n>
 
 ---
 
+While the introduction is being built, the root page previews the standalone [Take it apart chapter](#take-it-apart-scenes-6-to-17-jsdeepjs). The opening entries below describe the introduction.
+
 ### Landing page layout and style (`index.html`, `styles.css`)
 Owner: Mina Vian · 2026-11-20, updated 2026-11-21 · Issues #3, #5, #9
 
@@ -372,7 +374,7 @@ Owner: Mina Vian · 2026-11-21, updated 2026-11-21 · Issue #19
 ---
 
 ### Take it apart: scenes 6 to 17 (`js/deep.js`)
-Owner: Mina Vian · 2026-11-21 · Issue #19
+Owner: Mina Vian · 2026-11-21 · Issue #19. Separated by Codex for the Issue #26 contributor · 2026-11-24.
 
 **What it does.** Twelve scenes after the film, each one layer deeper into the same idea, each with one thing to try:
 - **6** Distance and coil size against field and volts.
@@ -394,7 +396,9 @@ Owner: Mina Vian · 2026-11-21 · Issue #19
 
 **Why it is built this way.** The brief asks for one idea taken as far as possible. Each scene takes away or changes one part of the same mechanism, so the explanation comes from what the visitor sees break. That is what the organisers' example says a winning entry would do.
 
-**How to check it.** Scroll past the film, then try each control. Every readout should change.
+**How to check it.** Serve the repository with `python -m http.server` and open `/take-apart/`. Scroll through the chapter and try the original controls.
+
+**How to join the introduction.** The original scene markup and styles are in `take-apart/index.html` and `take-apart/style.css`. The page uses the original `js/deep.js` and shared simulation. The root page forwards to this chapter while the introduction is being built. When the introduction takes over the root, its ending can link to `./take-apart/#take-apart`. If `js/scan.js` reveals that handoff, give its link `id="take-apart"` on the introduction page.
 
 **Likely questions.**
 - Q: Scene 8 says the card's range only shrinks, but the key starves. Why the difference? A: A bank card's chip draws about 5 mW, so even with tuning it uses most of what arrives. The key's chip draws about 75 µW and depends on tuning to build up enough voltage. Without the capacitor, its range falls from 4 cm to under 1 cm.
