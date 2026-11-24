@@ -1,0 +1,45 @@
+# Publishes the site with GitHub Pages every time main changes.
+# It is served at https://hackathon.minavian.com/ccavc/RFIDtechnology/
+# (see "Publishing the site" in EXPLAINED.md).
+name: Publish the site
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One publish at a time; a newer one waits for the one running.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}ccavc/RFIDtechnology/
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Put the site in ccavc/RFIDtechnology
+        run: |
+          site=_site/ccavc/RFIDtechnology
+          mkdir -p "$site"
+          # Every tracked file, except dot-folders, notes (.md) and hosting/.
+          git ls-files -z | grep -zvE '^(\.|hosting/)|\.md$' | xargs -0 cp --parents -t "$site"
+          # The domain's own root page and its "not found" page.
+          cp hosting/index.html hosting/404.html _site/
+          test -f "$site/index.html"
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v5

@@ -44,6 +44,7 @@ Written by <who> · <date> · Issue #<n>
 - [Take it apart: scenes 6 to 17](#take-it-apart-scenes-6-to-17-jsdeepjs)
 - [Presenter mode](#presenter-mode-jspresentjs)
 - [The checks](#the-checks-tests)
+- [Publishing the site](#publishing-the-site-githubworkflowspagesyml-hosting)
 
 ---
 
@@ -534,3 +535,26 @@ Owner: Mina Vian · 2026-11-21 · Issue #19
 **Why it is built this way.** No libraries and no build step: Node's own test runner, and a plain page for the browser. Judges can open the checks themselves.
 
 **How to check it.** `node --test tests/`; or serve the folder and open `/tests/`. Every line should be green.
+
+---
+
+### Publishing the site (`.github/workflows/pages.yml`, `hosting/`)
+Owner: Mina Vian · 2026-11-24 · Issue #33
+
+**What it does.** Puts the site online at https://hackathon.minavian.com/ccavc/RFIDtechnology/, the public link the judges open. Every merge into `main` goes live by itself in about a minute. Nobody uploads anything by hand.
+
+**How it works.**
+- `.github/workflows/pages.yml` runs on GitHub's servers each time `main` changes (or from the Actions tab, "Run workflow").
+- It copies every file Git tracks into `_site/ccavc/RFIDtechnology/`, except the dot-folders (`.github`, `.claude`), the notes (`*.md`) and `hosting/`. The site needs no build, so the files go up as they are.
+- It adds the domain's own two pages from `hosting/` to the top of `_site`:
+  - `index.html` sends the bare domain to the site, keeping anything after the address (so `hackathon.minavian.com/?play` starts presenter mode).
+  - `404.html` is what GitHub Pages shows for an address it has no file for. Addresses are case-sensitive there, so it sends `/ccavc`, `/ccavc/` and any other spelling of `/ccavc/rfidtechnology/…` to the exact one. Anything else says "Nothing here." with a link to the site.
+- GitHub Pages publishes `_site`. The repo's Pages settings give it the custom domain `hackathon.minavian.com`, and one DNS record in Cloudflare (`CNAME hackathon → minavian.github.io`) points the name at GitHub.
+
+**Why it is built this way.** The site is plain files that run from any folder, because every path in it is relative (`js/lab.js`, never `/js/lab.js`). So it can sit two folders deep with no changes. GitHub Pages is free for a public repo, needs no keys or passwords in the repo, and the publish runs in the open where judges can see it. The folder `ccavc/RFIDtechnology/` leaves room for other hackathon projects on the same domain later. We looked at Cloudflare (where minavian.com lives), but publishing there from GitHub would need a Cloudflare key stored as a secret.
+
+**How to check it.** Open the live link: the page should look the same as when you serve the folder yourself. In the repo, the Actions tab shows a green "Publish the site" run for each merge. To try the copy step locally, run the workflow's commands, then serve `_site` (`python -m http.server --directory _site`) and open the root. You should land on `/ccavc/RFIDtechnology/`.
+
+**Likely questions.**
+- Q: Why are the Markdown notes left out? A: They are for the team. They stay readable in the public repo, but the site doesn't need them.
+- Q: What if GitHub is down? A: The site is down too. Any static host would work as a backup, because there is no server code.

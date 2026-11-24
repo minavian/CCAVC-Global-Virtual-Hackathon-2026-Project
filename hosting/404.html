@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Not found · The Reader Is the Battery</title>
+  <meta name="theme-color" content="#f5f2ec">
+  <script>
+    // GitHub Pages serves this page for any address it has no file for.
+    // Addresses are case-sensitive there, so a hand-typed /ccavc/rfidtechnology
+    // (or plain /ccavc) would miss the site: send those to its exact spelling.
+    (function () {
+      var m = location.pathname.match(/^(.*?)\/ccavc(?:\/(?:rfidtechnology(?:\/(.*))?)?)?$/i);
+      if (!m) return;
+      var target = m[1] + '/ccavc/RFIDtechnology/' + (m[2] || '');
+      if (target !== location.pathname) location.replace(target + location.search + location.hash);
+    })();
+  </script>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-content: center; gap: 0.5em; text-align: center; background: #f5f2ec; color: #0d0d0c; font: 18px/1.4 system-ui, sans-serif; }
+    h1 { margin: 0; font-size: 2em; }
+    a { color: inherit; }
+    a:focus-visible { outline: 3px solid #0d0d0c; outline-offset: 3px; }
+  </style>
+</head>
+<body>
+  <h1>Nothing here.</h1>
+  <p><a href="/ccavc/RFIDtechnology/">Open the site</a></p>
+</body>
+</html>
