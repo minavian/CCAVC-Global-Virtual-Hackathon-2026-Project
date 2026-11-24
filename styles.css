@@ -1021,6 +1021,13 @@ html[data-intro] .stage-light { opacity: 0; }
 .intro .try-check { margin: 0 0 .5rem; font-size: .72rem; color: rgba(244, 241, 234, .6); white-space: nowrap; }
 .intro .try-check b { font-family: "Inter Tight", system-ui, sans-serif; font-weight: 700; font-variant-numeric: tabular-nums; color: #f4f1ea; }
 .intro .try-actions { display: grid; grid-template-columns: 1fr 1fr auto; gap: .5rem; }
+/* Pinned to the panel's bottom edge: on a short screen the panel scrolls, and Ask, Prove it and
+   Reset stay in reach, over a fade so what scrolls under them doesn't show through. */
+.intro .try-actions {
+  position: sticky; bottom: -1rem; z-index: 2; margin: 0 -1rem -1rem; padding: .6rem 1rem 1rem;
+  background: linear-gradient(rgba(22, 20, 17, 0), rgba(22, 20, 17, .96) .55rem);
+}
+.intro .try-actions button { white-space: nowrap; }
 .intro .try-actions button, .intro .try-presets button {
   min-height: 2.4rem; padding: .4rem .9rem; border-radius: 999px; font: inherit; font-size: .82rem; font-weight: 650; cursor: pointer;
 }
@@ -1207,12 +1214,32 @@ html[data-intro] .stage-light { opacity: 0; }
   .intro .try-readings { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .4rem; }
   .intro .try-reading dt { font-size: .54rem; }
   .intro .try-reading b { font-size: .86rem; }
+  /* Four readings across: the power's line wraps under its own reading instead of running on. */
+  .intro .try-watts { white-space: normal; font-size: .58rem; line-height: 1.2; }
   .intro .try-plot { height: 5.6rem; }
   .intro .intro-stage.is-lab .readout { right: 0; width: min(34rem, calc(100% - 2 * var(--gutter))); }
   /* While the lab talks on a phone, the message's label sits under its panel. */
   .intro .intro-stage.is-lab .talk-tag:is([data-kind="ask"], [data-kind="answer"]) { top: calc(47dvh + 1.1rem); }
   .intro .cine-explain h3 { font-size: clamp(1.8rem, 8.4vw, 2.6rem); }
   .intro .cine-explain p { font-size: clamp(.95rem, 4vw, 1.08rem); }
+}
+
+/* The lab on a shorter laptop screen (a 1366 × 768 or 1024 × 768 one): everything a little
+   tighter, so the whole panel fits without scrolling. */
+@media (min-width: 701px) and (min-aspect-ratio: 17/20) and (max-height: 860px) {
+  .intro .try { gap: .45rem; padding-top: .8rem; }
+  .intro .try-readings { gap: .3rem .8rem; }
+  .intro .try-reading b { font-size: 1rem; }
+  .intro .try-plot { height: 4rem; }
+  .intro .try-reader button { min-height: 1.75rem; padding: .2rem .7rem; }
+  .intro .try-controls { gap: .2rem; }
+  .intro .try-control { font-size: .76rem; }
+  .intro .try-control input { height: .95rem; }
+  .intro .try-id input { padding: .3rem .55rem; }
+  .intro .try-id label { grid-template-columns: auto 1fr; align-items: center; gap: .5rem; }
+  .intro .try-check { margin: 0 0 .4rem; }
+  .intro .try-presets button { min-height: 1.75rem; padding: .15rem .55rem; font-size: .7rem; }
+  .intro .try-actions button { min-height: 2.15rem; }
 }
 
 @media (max-height: 480px) {

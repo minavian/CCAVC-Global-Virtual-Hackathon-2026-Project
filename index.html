@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
-  <link rel="stylesheet" href="styles.css?v=25">
+  <link rel="stylesheet" href="styles.css?v=26">
   <script type="importmap">
     {"imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -43,7 +43,7 @@
   <script src="js/landing.js?v=7" defer></script>
   <script src="js/present.js?v=5" defer></script>
   <script type="module" src="js/taps.js"></script>
-  <script type="module" src="js/intro/main.js?v=56"></script>
+  <script type="module" src="js/intro/main.js?v=57"></script>
 </head>
 <body>
   <main class="hero">
@@ -209,12 +209,13 @@
             <label><span>Card’s ID</span><input type="text" name="id" value="04 7B 21 9E" maxlength="11" spellcheck="false" autocomplete="off" aria-describedby="try-check"></label>
             <p class="try-check" id="try-check">Check byte <b>C0</b></p>
           </div>
+          <div class="try-presets" role="group" aria-label="Try a situation"></div>
+          <!-- Last, and pinned to the panel's bottom edge, so they never scroll out of reach. -->
           <div class="try-actions">
             <button class="try-ask" type="button">Ask the card</button>
-            <button class="try-prove" type="button">Prove it’s real</button>
+            <button class="try-prove" type="button">Prove it</button>
             <button class="try-reset" type="button">Reset</button>
           </div>
-          <div class="try-presets" role="group" aria-label="Try a situation"></div>
         </section>
         <!-- It plays by itself until the visitor steps in; this pauses or plays it again. -->
         <button class="cine-auto is-on" type="button" aria-pressed="true" hidden><i aria-hidden="true"></i><span class="cine-auto-text">Pause</span></button>

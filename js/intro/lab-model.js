@@ -229,7 +229,7 @@ export function status(s, m) {
     // The point of it all, in numbers: the power comes through the air.
     const runs = `It runs on ${(m.watts * 1000).toFixed(1)} mW from the ${noun}.`;
     // A copy wakes and answers with the same ID: only asking it to prove itself catches it.
-    if (s.clone) return { text: 'A copy: the same ID, no secret key.', detail: 'Press Prove it’s real to catch it.' };
+    if (s.clone) return { text: 'A copy: the same ID, no secret key.', detail: 'Press Prove it to catch it.' };
     if (phone) return { text: 'The phone powers the chip. It can answer.', detail: runs };
     return { text: 'The chip is awake. It can answer.', detail: runs };
   }

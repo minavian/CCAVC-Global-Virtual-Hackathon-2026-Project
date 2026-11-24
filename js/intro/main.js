@@ -721,7 +721,9 @@ function intro(experience) {
     g.fillStyle = 'rgba(244,241,234,.5)';
     g.strokeStyle = 'rgba(255,255,255,.1)';
     g.lineWidth = 1;
-    for (const v of answer ? [0, 4, 8, 12] : [0, 2, 4, 6, 8]) {
+    // A short chart (a laptop screen) keeps every other line, so its labels never crowd.
+    const short = H < 90;
+    for (const v of answer ? (short ? [0, 6, 12] : [0, 4, 8, 12]) : (short ? [0, 4, 8] : [0, 2, 4, 6, 8])) {
       g.beginPath(); g.moveTo(left, Y(v) + .5); g.lineTo(W - right, Y(v) + .5); g.stroke();
       g.fillText(v + unit, 2, Y(v) + 3);
     }
