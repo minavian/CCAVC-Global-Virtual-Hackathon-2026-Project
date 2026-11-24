@@ -154,6 +154,17 @@ function init() {
         // Draw every set once, hidden, so no shader compiles in the middle of a motion.
         for (const set of sets) set.apply(PLAY, 0, 0);
         renderer.compile(scene, sets[0].camera);
+        // Chrome on Windows (Direct3D) only finishes a shader the first time something is
+        // really drawn with it, so draw everything once too, before the section is seen, and
+        // clear it again. Otherwise the first frame on screen stalls as it scrolls in.
+        // Every part is shown for this one draw (some wait hidden until their moment), with
+        // nothing culled, from each panel's own view.
+        const kept = [];
+        scene.traverse(object => { kept.push([object, object.visible, object.frustumCulled]); object.visible = true; object.frustumCulled = false; });
+        renderer.setScissorTest(false);
+        for (const set of sets) renderer.render(scene, set.camera);
+        for (const [object, visible, culled] of kept) { object.visible = visible; object.frustumCulled = culled; }
+        renderer.clear();
         ready = true;
         canvas.addEventListener('webglcontextlost', event => {
           event.preventDefault();
