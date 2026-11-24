@@ -1,6 +1,7 @@
-// The page moves one animation at a time, and the visitor's scroll is in charge. The stops,
-// in order: the landing, the three everyday taps, then each screen of the card intro
-// (index.html `.intro`) down to the card's drop. Started by main.js.
+// Inside the card intro (index.html `.intro`) the page moves one animation at a time, and the
+// visitor's scroll is in charge. The stops are each screen of the intro, down to the card's
+// drop. The landing, the everyday taps and the way from the taps into the intro scroll as
+// usual: no assist there. Started by main.js.
 // One rule: one small scroll goes to the next animation at once (or back one, scrolling up),
 // whatever is playing. A glide under way is dropped and the page heads straight for the next
 // stop. Nothing waits and nothing is locked.
@@ -11,9 +12,6 @@
 // page its own way. See EXPLAINED.md.
 import { SCROLL_SCREENS } from './timeline.js?v=2';
 
-// The landing, then the everyday taps (rest: one round of all three, LOOP_ALL in js/taps.js).
-const LANDING = { glide: 1.2, rest: 0 };
-const TAPS = { glide: 1.6, rest: 14.2 };
 // The card intro's screens, in screens of its scroll (`scrollFrames` in timeline.js):
 // where (screens), the glide there (seconds: the pace its animation is made for, whether the
 // visitor scrolled or it moves on by itself), then rest (seconds).
@@ -49,7 +47,9 @@ export function autoplay({ experience, stage, reduce }) {
   let restLeft = null;      // seconds until it moves on by itself, or null
   let onward = false;       // moving on by itself after each rest (after a scroll down)
   let ticking = false, then = 0;
-  let endY = Infinity;      // the last stop: below it, the page is the browser's own
+  // Where the intro's stage pins, and its last stop: outside them the page is the browser's own.
+  // Read again whenever the page's size changes.
+  let startY = Infinity, endY = -Infinity, stale = true;
   let armed = false;
   let burst = { at: 0, dir: 0, handled: false };
   let touch = null;
@@ -57,7 +57,8 @@ export function autoplay({ experience, stage, reduce }) {
   const on = () => !reduce.matches && !window.__presenting;
 
   addEventListener('scroll', onScroll, { passive: true });
-  addEventListener('resize', () => { endY = Infinity; arm(); }, { passive: true });
+  addEventListener('resize', () => { stale = true; arm(); }, { passive: true });
+  new ResizeObserver(() => { stale = true; }).observe(document.body);
   addEventListener('keydown', onKey, { capture: true });
   addEventListener('pointerdown', onPointer, { passive: true, capture: true });
   addEventListener('touchstart', onTouchStart, { passive: true, capture: true });
@@ -65,11 +66,13 @@ export function autoplay({ experience, stage, reduce }) {
   addEventListener('touchcancel', () => { touch = null; }, { passive: true, capture: true });
   arm();
 
-  // Down to the last stop, a scroll is caught before the page moves, so it can go to the next
-  // animation instead. That needs listeners that may cancel it; below the last stop they come
-  // off, so the rest of the page keeps the browser's fastest scrolling.
+  // Inside the intro, a scroll is caught before the page moves, so it can go to the next
+  // animation instead. That needs listeners that may cancel it; everywhere else they come off,
+  // so the page scrolls as usual.
+  function inside() { return scrollY >= startY - 4 && scrollY <= endY + 4; }
   function arm() {
-    const want = scrollY <= endY + 4;
+    if (stale) stops();
+    const want = inside();
     if (want === armed) return;
     armed = want;
     const toggle = want ? addEventListener : removeEventListener;
@@ -80,13 +83,12 @@ export function autoplay({ experience, stage, reduce }) {
   // Every stop's place on the page, read now (the layout can change with the window).
   function stops() {
     const top = node => node.getBoundingClientRect().top + scrollY;
-    list = [{ y: 0, ...LANDING }];
-    const taps = document.getElementById('taps');
-    if (taps) list.push({ y: top(taps), ...TAPS });
     const start = top(experience);
     const length = Math.max(experience.offsetHeight - stage.clientHeight, 1);
-    for (const [screens, glide, rest] of INTRO) list.push({ y: start + screens / SCROLL_SCREENS * length, glide, rest });
+    list = INTRO.map(([screens, glide, rest]) => ({ y: start + screens / SCROLL_SCREENS * length, glide, rest }));
+    startY = start;
     endY = list.at(-1).y;
+    stale = false;
     return list;
   }
 
@@ -96,6 +98,7 @@ export function autoplay({ experience, stage, reduce }) {
   function step(dir) {
     if (!on()) return false;
     stops();
+    if (!glide && !inside()) return false;                      // outside the intro: as usual
     const y = scrollY;
     let i;
     if (glide) i = cur + dir;                                   // on from where it was heading
@@ -178,7 +181,7 @@ export function autoplay({ experience, stage, reduce }) {
   }
 
   function onTouchMove(event) {
-    if (!touch || event.touches.length !== 1 || !on()) return;
+    if (!touch || event.touches.length !== 1 || !on() || !inside()) return;
     const dx = event.touches[0].clientX - touch.x, dy = event.touches[0].clientY - touch.y;
     const vertical = Math.abs(dy) > Math.abs(dx);
     // At the last stop, a swipe up (scrolling down) leaves for the rest of the page as usual.
@@ -204,7 +207,7 @@ export function autoplay({ experience, stage, reduce }) {
       if (event.key === 'Home' || event.key === 'End') settle();
       return;
     }
-    if (scrollY > endY + 4) return;                         // below the last stop: as usual
+    if (!inside()) return;                                  // outside the intro: as usual
     if (step(down ? 1 : -1)) event.preventDefault();
   }
 
