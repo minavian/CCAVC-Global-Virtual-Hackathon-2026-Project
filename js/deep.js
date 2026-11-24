@@ -529,10 +529,10 @@
   });
 
   // ---------- 13. Keeping count ----------
-  plate('s13', p => {
+  let clockDrift = 7;
+  const counting = plate('s13', p => {
     const letter = (p.input('letter').value || 'A').slice(0, 1), code = p.radio('code') || 'manchester';
-    const drift = +p.input('drift').value / 100;
-    p.out('drift', drift === 0 ? 'exact' : (drift > 0 ? drift * 100 + '% fast' : -drift * 100 + '% slow'));
+    const drift = clockDrift / 100;
     const byte = letter.charCodeAt(0) & 0xff, sent = [...Array.from({ length: 8 }, (_, i) => (byte >> (7 - i)) & 1), 0, 0, 0, 0, 0, 0, 0, 0];
     const H = 40;   // samples per half bit
     const level = [];
@@ -563,6 +563,7 @@
     const right = read.length === sent.length && read.every((b, i) => b === sent[i]);
     const ctx = fit(p), bx = { x: 24, y: 46, w: p.w - 48, h: p.h - 120 };
     const X = i => bx.x + i / level.length * bx.w, Y = v => bx.y + bx.h - v * bx.h * .8;
+    p.canvas.timingTrace = { box: bx, X, Y, sent, level, read, ticks, samplesPerBit: 2 * H, color: INK };
     ctx.font = `600 14px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
     sent.forEach((b, i) => { ctx.fillStyle = i < 8 ? INK : MUTED; ctx.fillText(String(b), X((i + .5) * 2 * H), bx.y - 8); });
     ctx.font = `600 11px ${SANS}`; ctx.textAlign = 'left'; ctx.fillStyle = MUTED; ctx.fillText(`“${letter}” then eight zeros`, bx.x, bx.y - 28);
@@ -579,6 +580,28 @@
     p.say(right ? `The reader counted all ${sent.length} bits right.`
       : `The reader counted ${read.length} bits instead of ${sent.length}: ${read.filter(b => b === 0).length} zeros where there were ${sent.filter(b => b === 0).length}.`);
   });
+  const clock = counting?.el.querySelector('.s13-clock');
+  if (clock) {
+    const slower = counting.input('slower'), faster = counting.input('faster');
+    const limit = 12;
+    function showDrift() {
+      counting.out('drift', clockDrift > 0 ? `+${clockDrift}% fast` : clockDrift < 0 ? `−${-clockDrift}% slow` : '0% exact');
+      clock.style.setProperty('--s13-clock-angle', `${clockDrift * 7}deg`);
+      slower.setAttribute('aria-disabled', clockDrift === -limit);
+      faster.setAttribute('aria-disabled', clockDrift === limit);
+    }
+    showDrift();
+    clock.addEventListener('click', event => {
+      const button = event.target.closest('button[data-drift-step]');
+      if (!button) return;
+      const step = Number(button.dataset.driftStep);
+      const next = step === 0 ? 0 : clamp(clockDrift + step, -limit, limit);
+      if (next === clockDrift) return;
+      clockDrift = next;
+      showDrift();
+      clock.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  }
 
   // ---------- 14. Catching mistakes ----------
   let s14seed = 1;

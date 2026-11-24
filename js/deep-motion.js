@@ -1392,6 +1392,104 @@ function watchWhispering(previous, scene) {
   }
 }
 
+function watchCounting(previous, scene) {
+  const chapter = scene.closest('.deep');
+  const source = previous.querySelector('#s12-chart'), chart = scene.querySelector('#s13-chart');
+  const copy = document.createElement('canvas');
+  copy.className = 's13-spectrum-copy';
+  copy.setAttribute('aria-hidden', 'true');
+  const ctx = copy.getContext('2d');
+  let layout, copiedTrace, armed = false, lastTop = scrollY;
+
+  function settle() {
+    if (!copy.isConnected) return;
+    copy.remove();
+    source.style.removeProperty('--s13-spectrum-opacity');
+    chart.style.removeProperty('clip-path');
+  }
+
+  function copySpectrum(trace) {
+    if (copiedTrace === trace) return;
+    const { box, X, Y, points, color } = trace;
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    copy.width = Math.round(box.w * dpr);
+    copy.height = Math.round(box.h * dpr);
+    Object.assign(copy.style, { width: `${box.w}px`, height: `${box.h}px` });
+    ctx.setTransform(dpr, 0, 0, dpr, -box.x * dpr, -box.y * dpr);
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+    points.forEach(([frequency, strength], i) => {
+      const x = X(frequency), y = Y(strength);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    copiedTrace = trace;
+  }
+
+  watchScrollMotion((top, height, needsMeasure) => {
+    if (reducedMotion.matches || document.hidden) return settle();
+    if (needsMeasure || !layout) {
+      const from = bounds(source, top), to = bounds(chart, top);
+      const stacked = matchMedia('(max-width: 860px)').matches;
+      const start = Math.max(from.y + from.h * .36 - height * .27, to.y - height * 1.04);
+      const end = Math.max(start + height * .24, to.y + to.h * .8 - height * .64);
+      layout = { from, to, stacked, start, end };
+      armed = false;
+    }
+    if (Math.abs(top - lastTop) > height * .42) armed = false;
+    lastTop = top;
+    const { from, to, stacked, start, end } = layout;
+    if (top <= start) armed = true;
+    if (!armed || top <= start || top >= end || chapter.querySelector('.s12-vortex')) return settle();
+
+    const spectrum = source.spectrumTrace, timing = chart.timingTrace;
+    if (!spectrum || !timing) return settle();
+    const progress = stage(start, end, top);
+    const count = timing.sent.length;
+    const arriving = stage(.34, .99, progress) * count;
+    if (arriving >= count) return settle();
+
+    copySpectrum(spectrum);
+    if (!copy.isConnected) chapter.append(copy);
+    const fromBox = spectrum.box, toBox = timing.box;
+    const travel = stacked ? 1 : ease(.05, .34, progress);
+    const sideways = stacked ? 1 : ease(.03, .34, progress);
+    const x = mix(from.x + fromBox.x, to.x + toBox.x, sideways);
+    const y = mix(from.y + fromBox.y, to.y + timing.Y(1), travel) - top;
+    const width = mix(fromBox.w, toBox.w, sideways);
+    const plotHeight = mix(fromBox.h, timing.Y(0) - timing.Y(1), travel);
+    copy.style.transform = `translate(${x}px, ${y}px) scale(${width / fromBox.w}, ${plotHeight / fromBox.h})`;
+    const fade = ease(0, stacked ? .25 : .16, progress);
+    copy.style.opacity = fade;
+    source.style.setProperty('--s13-spectrum-opacity', 1 - (stacked ? ease(.3, .52, progress) : fade));
+
+    // The number leads its column so each bit has time to register before the next arrives.
+    const whole = Math.floor(arriving), fraction = arriving - whole;
+    const labels = (whole + ease(0, .36, fraction)) / count;
+    const replaced = (whole + ease(.24, 1, fraction)) / count;
+    const digitsX = labels ? toBox.x + toBox.w * labels : 0;
+    const waveX = replaced ? toBox.x + toBox.w * replaced : 0;
+    const caption = toBox.y - 24, row = toBox.y;
+    copy.style.clipPath = `inset(0 0 0 ${replaced * 100}%)`;
+    chart.style.clipPath = `polygon(0 0, 100% 0, 100% ${caption}px, ${digitsX}px ${caption}px,
+      ${digitsX}px ${row}px, ${waveX}px ${row}px, ${waveX}px 100%, 0 100%)`;
+  });
+
+  const contentSize = new ResizeObserver(() => {
+    layout = undefined;
+    scheduleMotion();
+  });
+  for (const node of [chapter, source, chart]) contentSize.observe(node);
+  for (const plate of [previous, scene]) {
+    const controls = plate.querySelector('.plate-controls');
+    for (const event of ['focusin', 'pointerdown', 'input']) controls.addEventListener(event, () => {
+      if (copy.isConnected) armed = false;
+      settle();
+    });
+  }
+}
+
 const opener = document.getElementById('deep-title');
 const partOne = document.getElementById('part-one');
 if (opener && partOne) watchPartOne(opener, partOne);
@@ -1417,3 +1515,5 @@ const soaking = document.getElementById('s11');
 if (answerLetter && soaking) watchSoaking(answerLetter, soaking);
 const whispering = document.getElementById('s12');
 if (soaking && whispering) watchWhispering(soaking, whispering);
+const counting = document.getElementById('s13');
+if (whispering && counting) watchCounting(whispering, counting);

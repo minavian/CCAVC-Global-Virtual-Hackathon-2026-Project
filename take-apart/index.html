@@ -227,12 +227,20 @@
         <div class="plate-controls">
           <label>A letter <input id="s13-letter" type="text" maxlength="1" value="A" autocomplete="off"></label>
           <span class="plate-switch" role="radiogroup" aria-label="How bits are written"><label><input type="radio" name="s13-code" value="simple"> Dip for 1</label><label><input type="radio" name="s13-code" value="manchester" checked> Change in the middle</label></span>
-          <label>The reader’s clock <output data-for="s13-drift"></output><input id="s13-drift" type="range" min="-12" max="12" value="7"></label>
+          <fieldset class="s13-clock">
+            <legend>The reader’s clock</legend>
+            <div class="s13-clock-steps">
+              <button id="s13-slower" type="button" data-drift-step="-1" aria-label="Slow the reader’s clock">−</button>
+              <button id="s13-exact" type="button" data-drift-step="0" aria-label="Reset clock drift to 0%"><span class="s13-clock-face" aria-hidden="true"></span>0%</button>
+              <button id="s13-faster" type="button" data-drift-step="1" aria-label="Speed up the reader’s clock">+</button>
+              <output id="s13-drift" data-for="s13-drift" for="s13-slower s13-exact s13-faster">+7% fast</output>
+            </div>
+          </fieldset>
         </div>
         <p class="plate-readout" aria-live="polite"></p>
         <p class="plate-real">Real name: Manchester coding.</p>
       </div>
-      <canvas class="plate-canvas" role="img" aria-label="A letter's bits, how they look on the air, and where the reader counts them"></canvas>
+      <canvas class="plate-canvas" id="s13-chart" role="img" aria-label="A letter's bits, how they look on the air, and where the reader counts them"></canvas>
     </section>
 
     <section class="plate" id="s14" aria-labelledby="s14-title">
