@@ -10,16 +10,18 @@
 // presenter mode (js/present.js), which plays the page its own way. See EXPLAINED.md.
 import { SCROLL_SCREENS } from './timeline.js?v=2';
 
-// The card intro's screens, in screens of its scroll (`scrollFrames` in timeline.js):
-// where (screens), and the glide there (seconds: the pace its animation is made for).
+// The card intro's screens, in screens of its scroll (`scrollFrames` in timeline.js).
 const INTRO = [
-  [.64, 2.0],               // the card
-  [1.68, 2.2],              // "RFID": the card opens and the four letters fly out
-  [3.43, 2.6],              // "Radio-Frequency Identification"
-  [5.10, 2.4],              // "This technology works by exchanging data using radio waves."
-  [7.63, 2.8],              // the X-ray: antenna, chip, "So how does it talk?"
-  [9.10, 2.2],              // "Here's how: drag the card to the reader": the last stop
+  .64,                      // the card
+  1.68,                     // "RFID": the card opens and the four letters fly out
+  3.43,                     // "Radio-Frequency Identification"
+  5.10,                     // "This technology works by exchanging data using radio waves."
+  7.63,                     // the X-ray: antenna, chip, "So how does it talk?"
+  9.10,                     // "Here's how: drag the card to the reader": the last stop
 ];
+// Every step takes exactly this long (seconds), however hard or lightly the visitor scrolled,
+// so an animation always plays the same way.
+const GLIDE = 1;
 // A new scroll only once the wheel has been still this long (ms). A trackpad keeps sending
 // small wheel events for a second or so after a swipe (its momentum); they arrive every few
 // milliseconds, so they all belong to the swipe that started them and never count again.
@@ -71,7 +73,7 @@ export function autoplay({ experience, stage, reduce }) {
     const top = node => node.getBoundingClientRect().top + scrollY;
     const start = top(experience);
     const length = Math.max(experience.offsetHeight - stage.clientHeight, 1);
-    list = INTRO.map(([screens, glide]) => ({ y: start + screens / SCROLL_SCREENS * length, glide }));
+    list = INTRO.map(screens => ({ y: start + screens / SCROLL_SCREENS * length }));
     startY = start;
     endY = list.at(-1).y;
     stale = false;
@@ -91,11 +93,8 @@ export function autoplay({ experience, stage, reduce }) {
     else if (dir > 0) i = list.findIndex(stop => stop.y > y + 4);
     else i = list.findLastIndex(stop => stop.y < y - 4);
     if (i < 0 || i >= list.length) return Boolean(glide);       // mid-glide: still going there
-    const from = list[i - dir]?.y ?? y;
     cur = i;
-    const to = list[i].y;
-    const share = Math.min(1, Math.abs(to - y) / Math.max(Math.abs(to - from), 1));
-    glide = { from: y, to, y, t: 0, length: Math.max(.6, list[i].glide * share) };
+    glide = { from: y, to: list[i].y, y, t: 0, length: GLIDE };
     run();
     return true;
   }
@@ -115,8 +114,9 @@ export function autoplay({ experience, stage, reduce }) {
   function tick(now) {
     ticking = false;
     if (!on()) { settle(); return; }
-    // Frame time, capped, so a hidden tab picks up where it left off instead of jumping.
-    const dt = Math.min(.05, (now - then) / 1000);
+    // Real frame time, so a step lasts one second even when frames are slow (capped only so a
+    // tab that was hidden for long does not jump).
+    const dt = Math.min(.25, (now - then) / 1000);
     then = now;
     if (glide) {
       glide.t += dt;
