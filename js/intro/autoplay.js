@@ -2,12 +2,14 @@
 // visitor's scroll is in charge: the landing, the everyday taps (index.html `.taps`) and each
 // screen of the card intro (`.intro`). Started by main.js. See EXPLAINED.md.
 // The rules:
-// - A scroll, however small, moves the page to the next animation at once (scrolling up goes
-//   back one). It starts moving on the next frame, and the animation with it: where the picture
-//   holds still, the page jumps over that stretch, because nothing on screen changes there.
+// - A scroll down, however small, moves the page to the next animation at once. It starts moving
+//   on the next frame, and the animation with it: where the picture holds still, the page jumps
+//   over that stretch, because nothing on screen changes there.
 // - One scroll is one animation. However hard or fast the scroll, it plays the next animation
 //   only, for that animation's own time, then stops. A trackpad's momentum never counts again.
 // - A new scroll while an animation plays finishes it at once and starts the next one.
+// - Scrolling up is the browser's own: the page goes back up freely, as far and as fast as the
+//   visitor scrolls, and the animations play backwards with it.
 // Below the last stop ("Here's how"), the page scrolls as usual, and the intro's own autoplay
 // (main.js `auto`) carries the card to the reader. Off with reduced motion, and in presenter
 // mode (js/present.js), which plays the page its own way.
@@ -149,7 +151,9 @@ export function autoplay({ experience, stage, reduce }) {
     const whole = Math.max(1, span(path(a, b)));
     const time = rests[k].time ?? Math.min(PLAIN_MAX, Math.max(PLAIN_MIN, PER_SCREEN * (b - a) / innerHeight));
     const pieces = path(from, to), total = span(pieces);
-    if (Math.abs(from - scrollY) > .5) scrollTo(0, from);        // over the still stretch at once
+    // Over the still stretch at once. This also stops the browser's own smooth scroll, if one
+    // (scrolling up) is still running, so it can't pull the page away from the glide.
+    scrollTo(0, from);
     glide = { pieces, total, to, y: from, t: 0, length: Math.max(.3, time * Math.min(1, total / whole)), dir };
     run();
     return true;
@@ -197,9 +201,16 @@ export function autoplay({ experience, stage, reduce }) {
   function onWheel(event) {
     if (event.ctrlKey || !event.deltaY || !on()) return;      // pinch zoom, or sideways
     const dir = Math.sign(event.deltaY), now = performance.now();
+    // Up: the browser's own scroll. A glide under way stops, so the page goes where the visitor
+    // takes it.
+    if (dir < 0) {
+      settle();
+      burst = { at: now, start: now, dir, size: 0, handled: false };
+      return;
+    }
     const size = Math.abs(event.deltaY) * (event.deltaMode === 1 ? 33 : event.deltaMode === 2 ? innerHeight : 1);
-    // A new scroll: after a pause, the other way, or a sudden much harder push (a new swipe
-    // while the last one still coasts). The rest of the same scroll only rides along: swallowed,
+    // A new scroll down: after a pause, after scrolling up, or a sudden much harder push (a new
+    // swipe while the last one still coasts). The rest of the same scroll only rides along: swallowed,
     // never another animation.
     const fresh = now - burst.at > BURST || dir !== burst.dir ||
       (now - burst.start > BURST && size >= 12 && size > burst.size * 3);
@@ -223,12 +234,14 @@ export function autoplay({ experience, stage, reduce }) {
     const leaving = dy < 0 && !glide && scrollY >= lastStop - 4;
     if (!touch.dir) {
       if (Math.abs(dy) < 12 || !vertical) {
-        // Not decided yet: hold the page still meanwhile, so it doesn't start scrolling.
-        if (vertical && !leaving && event.cancelable) event.preventDefault();
+        // Not decided yet: hold the page still meanwhile, so it doesn't start scrolling down.
+        // (A swipe down, scrolling up, is the browser's own.)
+        if (vertical && dy < 0 && !leaving && event.cancelable) event.preventDefault();
         return;
       }
       touch.dir = dy < 0 ? 1 : -1;
-      touch.handled = step(touch.dir);
+      if (touch.dir > 0) touch.handled = step(1);
+      else settle();                                            // up: as usual
     }
     if (touch.handled && event.cancelable) event.preventDefault();
   }
@@ -242,13 +255,14 @@ export function autoplay({ experience, stage, reduce }) {
       if (event.key === 'Home' || event.key === 'End') settle();
       return;
     }
+    if (up) { settle(); return; }                           // up: the browser's own scroll
     if (!inside()) return;                                  // below the last stop: as usual
     // A held key repeats: one press is one animation, so the repeats only hold the page.
     if (event.repeat) {
-      if (glide || scrollY < lastStop - 4 || up) event.preventDefault();
+      if (glide || scrollY < lastStop - 4) event.preventDefault();
       return;
     }
-    if (step(down ? 1 : -1)) event.preventDefault();
+    if (step(1)) event.preventDefault();
   }
 
 }
