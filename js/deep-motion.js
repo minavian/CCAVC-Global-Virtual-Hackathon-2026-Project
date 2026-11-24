@@ -1745,60 +1745,65 @@ function watchWhispering(previous, scene) {
   wave.className = 's12-wave-copy';
   vortex.append(wave);
   const ctx = wave.getContext('2d');
-  const bands = Array.from({ length: 7 }, () => {
-    const band = document.createElement('div');
-    band.className = 's12-vortex-band';
-    const faces = [source, title].map(heading => {
-      const face = document.createElement('div'), text = document.createElement('span');
-      face.className = 's12-vortex-face';
-      text.className = 's12-vortex-type';
-      text.textContent = heading.textContent;
-      face.append(text);
-      band.append(face);
-      return face;
-    });
-    vortex.append(band);
-    return { band, faces };
-  });
   const cut = 880, arrivalEnd = 2260, readHold = 1000;
   let run, frame, listeners;
   const canPlay = () => ctx && !reducedMotion.matches && !document.hidden &&
     CSS.supports('mask-image', 'linear-gradient(transparent, black)');
 
-  function headingBox(heading, top) {
-    const rect = bounds(heading, top), range = document.createRange();
-    range.selectNodeContents(heading);
-    const width = Math.min(rect.w, range.getBoundingClientRect().width + 4);
-    return { ...rect, x: rect.x + width / 2, y: rect.y + rect.h / 2, width };
+  function glyphs(heading, shift) {
+    const range = document.createRange(), text = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
+    const list = [];
+    while (text.nextNode()) {
+      const node = text.currentNode;
+      for (const { 0: character, index } of node.data.matchAll(/\S/gu)) {
+        range.setStart(node, index);
+        range.setEnd(node, index + character.length);
+        const { left, top, width, height } = range.getBoundingClientRect();
+        list.push({ character, x: left + width / 2, y: top + height / 2 + shift, width });
+      }
+    }
+    return list;
   }
 
-  function placeBands(from, to) {
-    bands.forEach(({ faces }, i) => faces.forEach((face, side) => {
-      const rect = side ? to : from, height = rect.h / bands.length;
-      Object.assign(face.style, { width: `${rect.width}px`, height: `${height + .8}px` });
-      Object.assign(face.firstChild.style, { width: `${rect.w}px`, top: `${.4 - i * height}px` });
-    }));
+  function placeLetters(from, to) {
+    return Array.from({ length: Math.max(from.length, to.length) }, (_, i) => {
+      const letter = document.createElement('span');
+      letter.className = 's12-vortex-letter';
+      for (const [side, glyph] of [from[i], to[i]].entries()) {
+        if (!glyph) continue;
+        const face = document.createElement('span');
+        face.className = side ? 's12-vortex-face s12-vortex-face--back' : 's12-vortex-face';
+        face.textContent = glyph.character;
+        face.style.width = `${glyph.width}px`;
+        letter.append(face);
+      }
+      vortex.append(letter);
+      return { letter, from: from[i] ?? to[i], to: to[i] ?? from[i] };
+    });
   }
 
   function turnHeading(elapsed) {
-    const { from, to, hub, radius } = run;
+    const { letters, hub, radius } = run;
     title.style.setProperty('--s12-heading-opacity', ease(1755, 1950, elapsed));
-    vortex.style.setProperty('--s12-band-opacity', 1 - ease(1840, 2040, elapsed));
-    bands.forEach(({ band }, i) => {
-      const offset = (i + .5) / bands.length - .5, lag = i * 48;
-      const gather = ease(75 + lag * .3, cut + lag * .16, elapsed);
-      const release = ease(950 + lag * .35, 1650 + lag * .24, elapsed);
+    vortex.style.setProperty('--s12-letter-opacity', 1 - ease(1840, 2040, elapsed));
+    const span = Math.max(1, letters.length - 1);
+    const orbit = ease(175, 1520, elapsed) * Math.PI * 1.85;
+    const lift = ease(150, 815, elapsed) * (1 - ease(1020, 1710, elapsed));
+    letters.forEach(({ letter, from, to }, i) => {
+      const order = i / span, offset = order - .5, lag = order * 320;
+      const gather = ease(68 + lag * .45, cut + lag * .16, elapsed);
+      const release = ease(930 + lag * .37, 1620 + lag * .26, elapsed);
       const cx = mix(mix(from.x, hub.x, gather), to.x, release);
       const cy = mix(mix(from.y, hub.y, gather), to.y, release);
-      const turn = ease(190 + lag, 1340 + lag, elapsed);
-      const coil = Math.sin(Math.PI * turn), angle = turn * Math.PI * 2 + offset * 2.7;
-      const side = Math.sin(angle) * coil, depth = Math.cos(angle) * coil;
-      const x = cx + radius * (.29 * side + .27 * offset * coil);
-      const y = cy + mix(from.h, to.h, release) * offset * (1 + .58 * coil) + radius * .09 * depth;
-      const z = radius * .53 * depth;
-      const roll = offset * 38 * coil + 8 * side, tilt = -16 * side;
-      band.style.setProperty('--s12-fold', coil);
-      band.style.transform = `translate3d(${x}px,${y}px,${z}px) rotateZ(${roll}deg) rotateX(${tilt}deg) rotateY(${turn * 180}deg)`;
+      const turn = ease(175 + lag, 1280 + lag, elapsed);
+      const coil = Math.sin(Math.PI * turn), angle = orbit - offset * Math.PI * 1.78;
+      const side = Math.sin(angle) * lift, depth = Math.cos(angle) * lift;
+      const x = cx + radius * .72 * side;
+      const y = cy + radius * (.4 * depth + .3 * offset * lift);
+      const z = radius * .48 * depth;
+      const roll = offset * 31 * coil + 17 * side, tilt = -19 * depth;
+      letter.style.setProperty('--s12-fold', coil);
+      letter.style.transform = `translate3d(${x}px,${y}px,${z}px) rotateZ(${roll}deg) rotateX(${tilt}deg) rotateY(${turn * 180}deg) scale(${1 - .13 * lift})`;
     });
   }
 
@@ -1845,9 +1850,11 @@ function watchWhispering(previous, scene) {
   function clearEffects() {
     if (!vortex.isConnected) return;
     vortex.remove();
+    vortex.replaceChildren(wave);
     source.classList.remove('s12-title-in-flight');
     title.classList.remove('s12-title-in-flight');
     title.style.removeProperty('--s12-heading-opacity');
+    vortex.style.removeProperty('--s12-letter-opacity');
     scene.classList.remove('s12-staged');
     chart.style.removeProperty('mask-image');
     run.animations.forEach(animation => animation.cancel());
@@ -1915,15 +1922,13 @@ function watchWhispering(previous, scene) {
       return;
     }
     if (source.getBoundingClientRect().top < 0) scrollTo({ top: cue, behavior: 'instant' });
-    const top = scrollY, from = headingBox(source, top), to = headingBox(title, top);
+    const top = scrollY;
     const plot = bounds(chart, top), oldPlot = bounds(sourceChart, top);
-    const extra = Math.max(0, Math.min(plot.y + plot.h + 6 - end - height, to.y - to.h / 2 - end - 12));
+    const extra = Math.max(0, Math.min(plot.y + plot.h + 6 - end - height, bounds(title, top).y - end - 12));
     const destination = end + extra;
     const stacked = matchMedia('(max-width: 860px)').matches;
-    from.y -= top;
-    to.y -= destination;
     plot.y -= destination;
-    placeBands(from, to);
+    const letters = placeLetters(glyphs(source, 0), glyphs(title, top - destination));
 
     sourceChart.pauseAnswerScan?.(true);
     const trace = sourceChart.answerTrace;
@@ -1939,8 +1944,8 @@ function watchWhispering(previous, scene) {
       return [offset, trace.Y(current) - baseline, 49 * Math.abs(offset * 2) ** .37];
     });
     const hub = { x: width * (stacked ? .52 : .51), y: height * (stacked ? .30 : .47) };
-    run = { top, width, height, start: performance.now(), from, to, hub, destination, plot, signal, signalPoints, trace,
-      radius: Math.min(stacked ? 85 : 220, width * .22), animations: [] };
+    run = { top, width, height, start: performance.now(), letters, hub, destination, plot, signal, signalPoints, trace,
+      radius: Math.min(stacked ? 112 : 226, width * .28), animations: [] };
 
     root.classList.add('deep-whispering-hold');
     scene.classList.add('s12-staged');
