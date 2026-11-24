@@ -253,7 +253,9 @@ export function buildEffects() {
     // In the lab the rings fade as they rise, as the field does with height, and a metal
     // plate behind the card soaks up what would reach it.
     const falloff = b.falloff || 0, soak = (b.metal || 0) * (b.shield || 0);
-    const upFade = (p, z) => lerp(1, fieldAt(z - COIL_Z), falloff) * (1 - soak * smoothstep(.35, 1, p));
+    // (The metal's share is taken away over the upper half of the climb, so the rings visibly
+    // die out before they reach the plate.)
+    const upFade = (p, z) => lerp(1, fieldAt(z - COIL_Z), falloff) * (1 - soak * smoothstep(.15, .7, p));
     // The card's answer is a change in the field near its coil, weaker by the reader.
     const downFade = (p, z) => lerp(1, fieldAt(top - z), falloff * .7);
     // On the light page, while the card is still in the hand, the rings are lighter.
