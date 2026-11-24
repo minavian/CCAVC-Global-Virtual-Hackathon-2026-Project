@@ -602,18 +602,19 @@
 
   // ---------- 11. Soaking up more, then less ----------
   const answerMotion = { axes: 1, reveal: 1, blend: undefined, from: 0, to: 0, sweep: 1 };
-  const captureNames = ['Presence reply', 'Start of card ID', 'ID after 8 known bits', 'ID after 16 known bits',
-    'ID after 24 known bits', 'Selection confirmed'];
+  const uidPrefixes = [0, 4, 8, 12, 16, 20, 24];
+  const captureNames = ['Presence reply',
+    ...uidPrefixes.map(known => known ? `ID after ${known} known bits` : 'Start of card ID'), 'Selection confirmed'];
   const captureLabel = document.getElementById('s11-capture-name');
   let answerRecording;
   function answerSamples(depth) {
     const chip = tags.cardChip(), link = channel.cardChannel([{ chip, depth, awake: true }], { noise: .001, seed: 3 });
     const uid = iso.dataBits(chip.uid);
     link.send(iso.shortFrame(iso.REQA));
-    for (const known of [0, 8, 16, 24]) link.send(iso.anticollisionBits(uid.slice(0, known)));
+    for (const known of uidPrefixes) link.send(iso.anticollisionBits(uid.slice(0, known)));
     const selection = iso.withCrc([iso.SEL1, iso.NVB_SELECT, ...chip.uid, iso.bcc(chip.uid)]);
     link.send(iso.standardFrame(selection));
-    return link.recording.map(({ begin, samples }) => samples.subarray(begin - iso.HALF, begin + 20 * iso.BIT));
+    return link.recording.map(({ begin, samples }) => samples.subarray(begin - iso.HALF, begin + 10 * iso.BIT));
   }
   const answerScene = plate('s11', p => {
     if (!answerRecording) {
@@ -646,8 +647,8 @@
     const { X, Y } = chart(ctx, bx, { from: 0, to: finalSample, ticks: [[0, '0']], label: `Time · ${duration} µs shown` },
       { from: lo, to: hi, ticks: [[1, '100%'], [lo, Math.round(lo * 100) + '%']], label: 'The reader’s coil current' });
     const edge = sweep * finalSample;
-    // Finish the blend at the right edge before the cursor retraces the plot.
-    const feather = Math.min(12, finalSample - edge);
+    // Finish the blend at the right edge before the next pass starts.
+    const feather = Math.min(7, finalSample - edge);
     const currentAt = (i, take) => off[take][i] + (on[take][i] - off[take][i]) * blend;
     function sampleAt(i) {
       if (from === to || sweep === 1 || i <= edge - feather) return currentAt(i, to);

@@ -723,12 +723,12 @@ input.s7-track-copy {
 .s11-scan::after {
   content: "";
   position: absolute;
-  inset: var(--s11-scan-reference) auto auto 0;
+  inset: var(--s11-scan-point) auto auto 0;
   inline-size: 7px;
   block-size: 7px;
   border-radius: 50%;
   border: 1.5px solid var(--copper);
-  background: var(--paper);
+  background: #fff;
   transform: translate(-50%, -50%);
 }
 @media (prefers-reduced-motion: no-preference) {

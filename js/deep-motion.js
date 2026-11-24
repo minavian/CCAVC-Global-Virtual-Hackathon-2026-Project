@@ -1505,7 +1505,7 @@ function watchSoaking(part, scene) {
   filament.setAttribute('aria-hidden', 'true');
 
   const cut = 490, entranceEnd = 2080, readHold = 1000, sweepTime = 4000;
-  const rewindStart = sweepTime + 140, rewindEnd = rewindStart + 720;
+  const scanCycle = sweepTime + 85;
   let intro, listeners, frame = 0, visible = false, scanPaused = false, userPaused = false;
   let axes = 1, reveal = 1;
   let blend = Number(toggle.checked), destination = blend, blendFrom, blendStart, flip;
@@ -1582,21 +1582,21 @@ function watchSoaking(part, scene) {
     if (!trace) return;
     if (scanFrame !== undefined) scanElapsed += Math.min(64, now - scanFrame);
     scanFrame = now;
-    if (scanElapsed >= rewindEnd) {
-      scanElapsed -= rewindEnd;
+    if (scanElapsed >= scanCycle) {
+      scanElapsed -= scanCycle;
       previousCapture = capture;
       capture = (capture + 1) % plot.answerCaptureCount;
     }
 
-    const { box, Y } = trace;
-    const rewind = ease(rewindStart, rewindEnd, scanElapsed);
+    const { box, points, X, Y } = trace;
     let forward = sweepPosition();
     if (previousCapture !== capture) forward = trace.to === capture ? trace.sweep : 0;
-    const x = box.x + box.w * forward * (1 - rewind);
+    const last = points.length - 1, at = forward * last;
+    const index = Math.floor(at);
+    const current = mix(points[index][1], points[Math.min(index + 1, last)][1], at - index);
     scan.style.blockSize = `${box.h}px`;
-    scan.style.transform = `translate3d(${x}px, ${box.y}px, 0)`;
-    scan.style.setProperty('--s11-scan-reference', `${Y(1) - box.y}px`);
-    scan.style.opacity = .88 - Math.sin(Math.PI * rewind) * .42;
+    scan.style.transform = `translate3d(${X(at)}px, ${box.y}px, 0)`;
+    scan.style.setProperty('--s11-scan-point', `${Y(current) - box.y}px`);
     scan.hidden = false;
   }
 
