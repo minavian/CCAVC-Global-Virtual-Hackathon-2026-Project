@@ -10,17 +10,21 @@ function watchPartOne(word, part) {
   const normal = { color: 'var(--ink)', backgroundColor: 'transparent' };
   const inverted = { color: 'var(--paper)', backgroundColor: 'var(--ink)' };
   const sceneHold = 1000;
-  let animation, holdTimer, cue, partTop, armed, farthest, arrived, touchY, lastTop = scrollY;
+  let partTop = bounds(part, scrollY).y;
+  let animation, holdTimer, startTop, arrived, touch, inputListeners;
+  const active = () => !!animation || holdTimer !== undefined;
 
   function releaseHold() {
     clearTimeout(holdTimer);
     holdTimer = undefined;
     root.classList.remove('deep-blink-hold');
+    scheduleMotion();
   }
 
   function interrupt() {
+    if (!active()) return;
     animation?.cancel();
-    if (animation || holdTimer !== undefined) releaseHold();
+    releaseHold();
   }
 
   async function blink() {
@@ -60,54 +64,87 @@ function watchPartOne(word, part) {
     }
   }
 
-  watchScrollMotion((top, height, needsMeasure) => {
-    if (needsMeasure || cue === undefined) {
-      partTop = bounds(part, top).y;
-      cue = Math.max(0, partTop - height) + Math.min(80, height * .12);
-      if (!animation) armed = top < cue;
-    }
-    const jumped = top - lastTop > height * .5;
-    lastTop = top;
-    if (!motionAllowed()) return interrupt();
-    if (top < cue - 12) armed = true;
-
-    if (animation) {
-      const leftScene = arrived ? Math.abs(top - partTop) > 24 : top < farthest - 24 || top >= partTop;
-      if (leftScene) interrupt();
-      farthest = Math.max(farthest, top);
-      return;
-    }
-    if (holdTimer !== undefined) {
-      if (Math.abs(top - partTop) > 24) releaseHold();
-      return;
-    }
-    if (!armed || top < cue) return;
-
-    armed = false;
+  function openerReady(top, height) {
+    const openingEnd = Math.max(0, partTop - height);
+    if (top < openingEnd - 1 || top > openingEnd + 24) return false;
     const wordBox = word.getBoundingClientRect();
-    if (jumped || top >= partTop || wordBox.top < 0 || wordBox.bottom > height) return;
-    farthest = top;
+    return wordBox.top >= 0 && wordBox.bottom <= height;
+  }
+
+  function canBegin(event) {
+    return event.cancelable && !event.defaultPrevented && !active() && motionAllowed() && openerReady(scrollY, innerHeight);
+  }
+
+  function begin(event) {
+    event.preventDefault();
+    startTop = scrollY;
     arrived = false;
     void blink();
+  }
+
+  function onWheel(event) {
+    if (event.ctrlKey || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    if (event.deltaY < 0) interrupt();
+    else if (canBegin(event)) begin(event);
+  }
+
+  function onKeyDown(event) {
+    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+    const { key } = event;
+    if (['ArrowUp', 'PageUp', 'Home', 'End', 'Escape'].includes(key) || (key === ' ' && event.shiftKey)) {
+      interrupt();
+      return;
+    }
+    if (!['ArrowDown', 'PageDown', ' '].includes(key) || event.target.closest?.('a, button, input, textarea, select, [contenteditable]')) return;
+    if (canBegin(event)) begin(event);
+  }
+
+  function onTouchStart({ touches }) {
+    const finger = touches[0];
+    touch = touches.length === 1 ? { x: finger.clientX, y: finger.clientY, highest: finger.clientY } : null;
+  }
+
+  function onTouchMove(event) {
+    if (!touch || event.touches.length !== 1) return;
+    const { clientX: x, clientY: y } = event.touches[0];
+    if (y > touch.highest + 16) {
+      touch = { x, y, highest: y };
+      interrupt();
+      return;
+    }
+    touch.highest = Math.min(y, touch.highest);
+    const upward = touch.y - y;
+    if (upward <= Math.abs(x - touch.x) || !canBegin(event)) return;
+    if (upward >= 12) begin(event);
+    else event.preventDefault();
+  }
+
+  function listenForInput(top, height) {
+    if (!motionAllowed() || (!active() && !openerReady(top, height))) {
+      inputListeners?.abort();
+      inputListeners = null;
+      touch = null;
+      return;
+    }
+    if (inputListeners) return;
+    // Capture the opening gesture before the browser scrolls the chapter.
+    inputListeners = new AbortController();
+    const { signal } = inputListeners;
+    addEventListener('wheel', onWheel, { passive: false, signal });
+    addEventListener('keydown', onKeyDown, { signal });
+    addEventListener('touchstart', onTouchStart, { passive: true, signal });
+    addEventListener('touchmove', onTouchMove, { passive: false, signal });
+  }
+
+  listenForInput(scrollY, innerHeight);
+  watchScrollMotion((top, height, needsMeasure) => {
+    if (needsMeasure) partTop = bounds(part, top).y;
+    if (active() && (!motionAllowed() || Math.abs(top - (arrived ? partTop : startTop)) > 2)) interrupt();
+    listenForInput(top, height);
   });
   addEventListener('hashchange', interrupt);
   document.addEventListener('visibilitychange', () => { if (document.hidden) interrupt(); });
   reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) interrupt(); });
-  addEventListener('wheel', event => {
-    if (event.deltaY < 0 && !event.ctrlKey) interrupt();
-  }, { passive: true });
-  addEventListener('keydown', event => {
-    if (['ArrowUp', 'PageUp', 'Home', 'Escape'].includes(event.key) || (event.key === ' ' && event.shiftKey)) interrupt();
-  });
-  addEventListener('touchstart', ({ touches }) => {
-    touchY = touches.length === 1 ? touches[0].clientY : undefined;
-  }, { passive: true });
-  addEventListener('touchmove', ({ touches }) => {
-    if (touchY === undefined || touches.length !== 1) return;
-    const y = touches[0].clientY;
-    if (y > touchY + 16) interrupt();
-    touchY = Math.min(y, touchY);
-  }, { passive: true });
 }
 
 const scrollMotions = [];

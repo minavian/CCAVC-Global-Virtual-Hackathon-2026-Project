@@ -66,10 +66,6 @@ body::after {
   padding-block-start: clamp(72px, 12vh, 140px);
 }
 .deep-head-words { display: flow-root; }
-@media (prefers-reduced-motion: no-preference) {
-  /* Keep the source word in view while the opening handoff plays. */
-  .deep-head-words { position: sticky; inset-block-start: clamp(22px, 7svh, 80px); }
-}
 .deep-head h2 {
   margin: 14px 0 0;
   font-weight: 800;
@@ -92,6 +88,7 @@ body::after {
   padding-block: clamp(42px, 7vh, 80px);
   text-align: center;
 }
+#part-one { border-top-color: transparent; }
 .deep-part > span:first-child { font-size: 12px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
 .deep-part-title {
   max-inline-size: 21ch;
