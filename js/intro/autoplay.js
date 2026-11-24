@@ -1,64 +1,54 @@
-// Inside the card intro (index.html `.intro`) the page moves one animation at a time, and the
-// visitor's scroll is in charge. The stops are each screen of the intro, down to the card's
-// drop. The landing, the everyday taps and the way from the taps into the intro scroll as
-// usual: no assist there. Started by main.js.
-// One rule: one scroll goes to the next animation at once (or back one, scrolling up), and the
-// page stops there. No momentum: it never moves on by itself, a new glide always starts from
-// standstill, and a trackpad's momentum after a swipe never counts as another scroll. At the
-// card's drop the intro's own autoplay carries the card to the reader and plays the close-up
-// (main.js `auto`). Below that, the page scrolls as usual. It is off with reduced motion, and in
-// presenter mode (js/present.js), which plays the page its own way. See EXPLAINED.md.
+// From the top of the page to the card's drop, the page moves one animation at a time, and the
+// visitor's scroll is in charge: the landing, the everyday taps (index.html `.taps`) and each
+// screen of the card intro (`.intro`). Started by main.js. See EXPLAINED.md.
+// The rules:
+// - A scroll, however small, moves the page to the next animation at once (scrolling up goes
+//   back one). It starts moving on the next frame, and the animation with it: where the picture
+//   holds still, the page jumps over that stretch, because nothing on screen changes there.
+// - One scroll is one animation. However hard or fast the scroll, it plays the next animation
+//   only, for that animation's own time, then stops. A trackpad's momentum never counts again.
+// - A new scroll while an animation plays finishes it at once and starts the next one.
+// Below the last stop ("Here's how"), the page scrolls as usual, and the intro's own autoplay
+// (main.js `auto`) carries the card to the reader. Off with reduced motion, and in presenter
+// mode (js/present.js), which plays the page its own way.
 import { PACE, SCROLL_SCREENS } from './timeline.js?v=3';
 
-// The card intro's screens, in screens of its scroll at the first pace (`scrollFrames` in
-// timeline.js), scaled by PACE like the table.
+// The card intro's stops: where its picture holds still (from, to), in screens of its scroll at
+// the first pace (`scrollFrames` in timeline.js), and how long the animation into each one plays
+// (seconds).
 const INTRO = [
-  .64,                      // the card
-  1.68,                     // "RFID": the card opens and the four letters fly out
-  3.43,                     // "Radio-Frequency Identification"
-  5.10,                     // "This technology works by exchanging data using radio waves."
-  7.63,                     // the X-ray: antenna, chip, "So how does it talk?"
-  9.10,                     // "Here's how: drag the card to the reader": the last stop
-].map(screens => screens * PACE);
-// Every step takes exactly this long (seconds), however hard or lightly the visitor scrolled,
-// so an animation always plays the same way.
-const GLIDE = 3;
-// A new scroll only once the wheel has been still this long (ms). A trackpad keeps sending
-// small wheel events for a second or so after a swipe (its momentum); they arrive every few
-// milliseconds, so they all belong to the swipe that started them and never count again.
+  [.57, .71, 2],            // the card slides in over the taps and turns to face you
+  [1.60, 1.76, 1.9],        // "RFID": the card opens and the four letters fly out
+  [3.01, 3.85, 2],          // "Radio-Frequency Identification"
+  [4.56, 5.66, 1.4],        // "This technology works by exchanging data using radio waves."
+  [7.05, 8.21, 1.9],        // the X-ray: antenna, chip, "So how does it talk?"
+  [8.91, 9.27, 1.4],        // "Here's how: drag the card to the reader": the last stop
+];
+// Still stretches inside an animation (the card's mouth closed, before the letters spell the
+// name): crossed in one jump too, so an animation never pauses half-way.
+const STILL = [[2.12, 2.34]];
+// A stretch of plain page (the landing to the taps): this many seconds per screen, within limits.
+const PER_SCREEN = 1.2, PLAIN_MIN = .8, PLAIN_MAX = 2;
+// A new scroll only once the wheel has been still this long (ms), or when it is pushed again
+// much harder (a new swipe while a trackpad still coasts from the last one). The coasting
+// events after a swipe get smaller and smaller, so they never count as a scroll of their own.
 const BURST = 300;
 const DOWN_KEYS = new Set(['ArrowDown', 'PageDown']);    // and space
 const UP_KEYS = new Set(['ArrowUp', 'PageUp']);          // and shift + space
-// How far along a glide is at a share `k` of its time. It moves off at once (full pace within
-// the first 1.5% of the step, about 45 ms), keeps one even pace so the animation plays slowly
-// and evenly, and eases softly into the stop over the last 40%. A plain ease-in-out stretched to
-// 3 s barely moved for its first second, which felt like lag. Built once as a table from that
-// speed profile.
-const ease = (() => {
-  const N = 2000, START = .015, END = .4;
-  const ramp = x => { const t = Math.min(1, Math.max(0, x)); return t * t * (3 - 2 * t); };
-  const sum = [0];
-  for (let i = 1; i <= N; i++) {
-    const k = (i - .5) / N;
-    sum.push(sum[i - 1] + ramp(k / START) * ramp((1 - k) / END));
-  }
-  const total = sum[N];
-  return k => {
-    const x = Math.min(1, Math.max(0, k)) * N, i = Math.floor(x);
-    return i >= N ? 1 : (sum[i] + (sum[i + 1] - sum[i]) * (x - i)) / total;
-  };
-})();
+// The glide's pace: full speed on the very first frame, softly to a stop at the end.
+const ease = k => Math.sin(Math.min(1, k) * Math.PI / 2);
 
 export function autoplay({ experience, stage, reduce }) {
-  let list = [];            // the stops' places on the page, read when needed (`stops`)
-  let cur = -1;             // the stop the page is at, or heading to
-  let glide = null;         // { from, to, y, t, length }
+  const taps = document.getElementById('taps');
+  let rests = [];           // where the page can stop: { from, to, time }, on the page, top down
+  let skips = [];           // still stretches inside an animation, on the page
+  let glide = null;         // { pieces, total, to, y, t, length, dir }
   let ticking = false, then = 0;
-  // Where the intro's stage pins, and its last stop: outside them the page is the browser's own.
-  // Read again whenever the page's size changes.
-  let startY = Infinity, endY = -Infinity, stale = true;
+  // Below the last stop the page is the browser's own. Read again whenever the page's size
+  // changes.
+  let endY = -Infinity, lastStop = -Infinity, stale = true;
   let armed = false;
-  let burst = { at: 0, dir: 0, handled: false };
+  let burst = { at: 0, start: 0, dir: 0, size: 0, handled: false };
   let touch = null;
 
   const on = () => !reduce.matches && !window.__presenting;
@@ -72,10 +62,10 @@ export function autoplay({ experience, stage, reduce }) {
   addEventListener('touchcancel', () => { touch = null; }, { passive: true, capture: true });
   arm();
 
-  // Inside the intro, a scroll is caught before the page moves, so it can go to the next
-  // animation instead. That needs listeners that may cancel it; everywhere else they come off,
-  // so the page scrolls as usual.
-  function inside() { return scrollY >= startY - 4 && scrollY <= endY + 4; }
+  // A scroll is caught before the page moves, so it can go to the next animation instead. That
+  // needs listeners that may cancel it; below the last stop they come off, so the page scrolls
+  // as usual.
+  function inside() { return scrollY <= endY + 4; }
   function arm() {
     if (stale) stops();
     const want = inside();
@@ -86,33 +76,80 @@ export function autoplay({ experience, stage, reduce }) {
     toggle('touchmove', onTouchMove, { passive: false, capture: true });
   }
 
-  // Every stop's place on the page, read now (the layout can change with the window).
+  // Every stop's place on the page, read now (the layout changes with the window).
   function stops() {
     const top = node => node.getBoundingClientRect().top + scrollY;
+    const view = innerHeight;
+    rests = [{ from: 0, to: 0 }];                                // the landing
+    if (taps) {
+      // The taps, framed. On a phone their panels stack taller than the screen: one stop per
+      // screen, so none is skipped.
+      const first = top(taps), last = first + Math.max(0, taps.offsetHeight - view);
+      for (let y = first; ; y += view * .9) {
+        const at = Math.min(y, last);
+        rests.push({ from: at, to: at });
+        if (at >= last) break;
+      }
+    }
     const start = top(experience);
     const length = Math.max(experience.offsetHeight - stage.clientHeight, 1);
-    list = INTRO.map(screens => ({ y: start + screens / SCROLL_SCREENS * length }));
-    startY = start;
-    endY = list.at(-1).y;
+    const at = screens => start + screens * PACE / SCROLL_SCREENS * length;
+    for (const [from, to, time] of INTRO) rests.push({ from: at(from), to: at(to), time });
+    skips = STILL.map(([from, to]) => [at(from), at(to)]);
+    endY = rests.at(-1).to;
+    lastStop = rests.at(-1).from;
     stale = false;
-    return list;
   }
 
-  // Go one stop down (+1) or up (-1) now, from wherever the page is, even mid-glide. Returns
-  // false when there is nowhere to go that way, so the browser scrolls as usual (below the last
-  // stop, or above the top).
+  // The way from one place to another, without the still stretches in between: pieces of page,
+  // in the order the glide crosses them.
+  function path(from, to) {
+    const lo = Math.min(from, to), hi = Math.max(from, to);
+    const pieces = [];
+    let at = lo;
+    for (const [a, b] of skips) if (a > lo && b < hi) { pieces.push([at, a]); at = b; }
+    pieces.push([at, hi]);
+    return to >= from ? pieces : pieces.reverse().map(([a, b]) => [b, a]);
+  }
+  const span = pieces => pieces.reduce((sum, [a, b]) => sum + Math.abs(b - a), 0);
+  function along(pieces, d) {
+    for (const [a, b] of pieces) {
+      const n = Math.abs(b - a);
+      if (d <= n) return a + Math.sign(b - a) * d;
+      d -= n;
+    }
+    return pieces.at(-1)[1];
+  }
+
+  // Go one animation down (+1) or up (-1), now. Returns false when there is nowhere to go that
+  // way, so the browser scrolls as usual (below the last stop, or above the top).
   function step(dir) {
     if (!on()) return false;
     stops();
-    if (!glide && !inside()) return false;                      // outside the intro: as usual
-    const y = scrollY;
-    let i;
-    if (glide) i = cur + dir;                                   // on from where it was heading
-    else if (dir > 0) i = list.findIndex(stop => stop.y > y + 4);
-    else i = list.findLastIndex(stop => stop.y < y - 4);
-    if (i < 0 || i >= list.length) return Boolean(glide);       // mid-glide: still going there
-    cur = i;
-    glide = { from: y, to: list[i].y, y, t: 0, length: GLIDE };
+    if (!glide && !inside()) return false;
+    const busy = Boolean(glide);
+    // A scroll mid-glide: the same way, the animation playing finishes at once; the other way,
+    // it turns back from where it is.
+    const y = glide ? (glide.dir === dir ? glide.to : glide.y) : scrollY;
+    glide = null;
+    // At a stop, leave from the far end of its still stretch, so the next animation starts at once.
+    const here = rests.find(r => y >= r.from - 4 && y <= r.to + 4);
+    const from = here ? (dir > 0 ? here.to : here.from) : y;
+    const i = dir > 0 ? rests.findIndex(r => r.from > from + 4) : rests.findLastIndex(r => r.to < from - 4);
+    if (i < 0) {
+      if (busy) scrollTo(0, y);
+      return busy;
+    }
+    const to = dir > 0 ? rests[i].from : rests[i].to;
+    // The animation between two stops plays for its own time, whichever way it goes (`k`: the
+    // stop it leads into). Joined part-way, it plays the rest at the same pace.
+    const k = dir > 0 ? i : i + 1;
+    const a = k > 0 ? rests[k - 1].to : 0, b = rests[k].from;
+    const whole = Math.max(1, span(path(a, b)));
+    const time = rests[k].time ?? Math.min(PLAIN_MAX, Math.max(PLAIN_MIN, PER_SCREEN * (b - a) / innerHeight));
+    const pieces = path(from, to), total = span(pieces);
+    if (Math.abs(from - scrollY) > .5) scrollTo(0, from);        // over the still stretch at once
+    glide = { pieces, total, to, y: from, t: 0, length: Math.max(.3, time * Math.min(1, total / whole)), dir };
     run();
     return true;
   }
@@ -132,14 +169,14 @@ export function autoplay({ experience, stage, reduce }) {
   function tick(now) {
     ticking = false;
     if (!on()) { settle(); return; }
-    // Real frame time, so a step lasts one second even when frames are slow (capped only so a
-    // tab that was hidden for long does not jump).
-    const dt = Math.min(.25, (now - then) / 1000);
+    // Real frame time, so an animation keeps its length even when frames are slow (capped only
+    // so a tab that was hidden for long does not jump).
+    const dt = Math.min(.25, Math.max(0, now - then) / 1000);
     then = now;
     if (glide) {
       glide.t += dt;
       const k = Math.min(1, glide.t / glide.length);
-      glide.y = glide.from + (glide.to - glide.from) * ease(k);
+      glide.y = along(glide.pieces, glide.total * ease(k));
       scrollTo(0, glide.y);
       if (k >= 1) glide = null;                                 // there: stop, and stay
     }
@@ -151,7 +188,7 @@ export function autoplay({ experience, stage, reduce }) {
 
   function onScroll() {
     // The glide lands within a pixel or two of where it put the page. Anything else is the
-    // visitor (the scroll bar, a link, find in page): let them.
+    // visitor (a link, find in page, the scroll bar): let them.
     if (glide && Math.abs(scrollY - glide.y) > 3) settle();
     arm();
   }
@@ -159,10 +196,15 @@ export function autoplay({ experience, stage, reduce }) {
   function onWheel(event) {
     if (event.ctrlKey || !event.deltaY || !on()) return;      // pinch zoom, or sideways
     const dir = Math.sign(event.deltaY), now = performance.now();
-    // A new scroll: the next animation, now. The rest of the same scroll, and its momentum,
-    // only ride along: they are swallowed, never another step.
-    if (now - burst.at > BURST || dir !== burst.dir) burst = { dir, handled: step(dir) };
+    const size = Math.abs(event.deltaY) * (event.deltaMode === 1 ? 33 : event.deltaMode === 2 ? innerHeight : 1);
+    // A new scroll: after a pause, the other way, or a sudden much harder push (a new swipe
+    // while the last one still coasts). The rest of the same scroll only rides along: swallowed,
+    // never another animation.
+    const fresh = now - burst.at > BURST || dir !== burst.dir ||
+      (now - burst.start > BURST && size >= 12 && size > burst.size * 3);
+    if (fresh) burst = { dir, start: now, handled: step(dir) };
     burst.at = now;
+    burst.size = size;
     if (burst.handled && event.cancelable) event.preventDefault();
   }
 
@@ -177,7 +219,7 @@ export function autoplay({ experience, stage, reduce }) {
     const dx = event.touches[0].clientX - touch.x, dy = event.touches[0].clientY - touch.y;
     const vertical = Math.abs(dy) > Math.abs(dx);
     // At the last stop, a swipe up (scrolling down) leaves for the rest of the page as usual.
-    const leaving = dy < 0 && !glide && scrollY >= endY - 4;
+    const leaving = dy < 0 && !glide && scrollY >= lastStop - 4;
     if (!touch.dir) {
       if (Math.abs(dy) < 12 || !vertical) {
         // Not decided yet: hold the page still meanwhile, so it doesn't start scrolling.
@@ -199,7 +241,12 @@ export function autoplay({ experience, stage, reduce }) {
       if (event.key === 'Home' || event.key === 'End') settle();
       return;
     }
-    if (!inside()) return;                                  // outside the intro: as usual
+    if (!inside()) return;                                  // below the last stop: as usual
+    // A held key repeats: one press is one animation, so the repeats only hold the page.
+    if (event.repeat) {
+      if (glide || scrollY < lastStop - 4 || up) event.preventDefault();
+      return;
+    }
     if (step(down ? 1 : -1)) event.preventDefault();
   }
 
