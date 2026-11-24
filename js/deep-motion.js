@@ -2655,6 +2655,278 @@ function watchMistakes(previous, scene) {
   reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) finish(); });
 }
 
+function watchConversation(previous, scene) {
+  const root = document.documentElement, chapter = scene.closest('.deep');
+  const before = previous.querySelector('.plate-words'), after = scene.querySelector('.plate-words');
+  const source = previous.querySelector('#s14-replies'), sourceChart = previous.querySelector('#s14-chart');
+  const title = scene.querySelector('#s15-title'), gate = scene.querySelector('.plate-gate');
+  const chart = scene.querySelector('#s15-chart'), chat = scene.querySelector('.chat');
+  if (!before || !source || !after || !gate || !chart) return;
+
+  const copy = document.createElement('canvas');
+  copy.className = 's15-handoff-copy';
+  copy.setAttribute('aria-hidden', 'true');
+  const ctx = copy.getContext('2d');
+  const cut = 640, arrivalEnd = 1660, readHold = 1000;
+  let run, frame, listeners, armed = false, lastTop = scrollY;
+  const canPlay = () => ctx && !reducedMotion.matches && !document.hidden;
+
+  function clearEffects() {
+    if (!copy.isConnected && !scene.classList.contains('s15-staged')) return;
+    copy.remove();
+    previous.style.removeProperty('--s15-source-opacity');
+    chart.style.removeProperty('--s15-river-opacity');
+    scene.classList.remove('s15-staged');
+    run?.animations.forEach(animation => animation.cancel());
+  }
+
+  function finish() {
+    if (!run) return;
+    cancelAnimationFrame(frame);
+    clearEffects();
+    run = undefined;
+    root.classList.remove('deep-conversation-hold');
+    lastTop = scrollY;
+    scheduleMotion();
+  }
+
+  function sampleBits(height, toBox, stacked) {
+    const bits = [];
+    for (const el of source.querySelectorAll('.s14-bit')) {
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height || r.bottom < 0 || r.top > height) continue;
+      const ch = (el.textContent || '0').trim().slice(0, 1) || '0';
+      bits.push({ sx: r.left + r.width * .5, sy: r.top + r.height * .5, ch, wrong: el.hasAttribute('data-wrong') });
+    }
+    const maxCount = 56;
+    const picked = bits.length > maxCount
+      ? Array.from({ length: maxCount }, (_, i) => bits[Math.floor(i * bits.length / maxCount)])
+      : bits;
+    if (picked.length < 32 && sourceChart) {
+      const cr = sourceChart.getBoundingClientRect();
+      const needed = 32 - picked.length;
+      for (let i = 0; i < needed; i++) {
+        picked.push({
+          sx: cr.left + (i + .5) / needed * Math.max(40, cr.width),
+          sy: cr.top + cr.height * .42,
+          ch: i % 3 === 0 ? '1' : '0',
+          wrong: false,
+        });
+      }
+    }
+    const n = Math.max(1, picked.length);
+    return picked.map((bit, i) => {
+      const lane = i % 2;
+      const laneT = ((i + .5) / n);
+      return {
+        ...bit,
+        lane,
+        dep: 40 + (i / n) * 260,
+        dur: 860 + (i % 5) * 55,
+        arc: stacked ? -12 : (lane === 0 ? -26 : -14),
+        tx: toBox.x + 14 + laneT * Math.max(40, toBox.w - 28),
+        ty: toBox.y + toBox.h * (lane === 0 ? .36 : .64),
+      };
+    });
+  }
+
+  function land() {
+    scrollTo({ top: run.destination, behavior: 'instant' });
+    run.top = scrollY;
+    lastTop = run.top;
+    run.landed = true;
+    scene.classList.remove('s15-staged');
+    for (const [i, node] of Array.from(after.children).entries()) {
+      const focused = node === title || node === gate;
+      run.animations.push(node.animate(
+        focused
+          ? [{ opacity: 0, filter: 'blur(6px)', transform: 'translateY(6px)' }, { opacity: 1, filter: 'blur(0px)', transform: 'none' }]
+          : [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }],
+        {
+          duration: focused ? 460 : 400,
+          delay: focused ? (node === title ? 40 : 120) : 160 + i * 42,
+          easing: arrivalEase,
+          fill: 'both',
+        }
+      ));
+    }
+    if (chat) {
+      run.animations.push(chat.animate([
+        { opacity: 0, transform: 'translateY(10px)' },
+        { opacity: 1, transform: 'none' },
+      ], { duration: 440, delay: 420, easing: arrivalEase, fill: 'both' }));
+    }
+  }
+
+  function drawHandoff(elapsed) {
+    const { width, height, bits, gateBox } = run;
+    previous.style.setProperty('--s15-source-opacity', 1 - ease(40, 280, elapsed));
+    ctx.clearRect(0, 0, width, height);
+
+    const bitsAlpha = 1 - ease(1220, 1620, elapsed);
+    if (bitsAlpha > 0) {
+      ctx.save();
+      ctx.font = '600 12px "JetBrains Mono", ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      for (const b of bits) {
+        const travel = ease(b.dep, b.dep + b.dur, elapsed);
+        const px = mix(b.sx, b.tx, travel);
+        const py = mix(b.sy, b.ty, travel) + Math.sin(Math.PI * travel) * b.arc;
+        if (b.wrong) {
+          const cool = travel;
+          const r = Math.round(mix(179, b.lane === 0 ? 87 : 184, cool));
+          const g = Math.round(mix(38, b.lane === 0 ? 83 : 101, cool));
+          const bp = Math.round(mix(30, b.lane === 0 ? 76 : 42, cool));
+          ctx.fillStyle = `rgb(${r}, ${g}, ${bp})`;
+        } else {
+          ctx.fillStyle = b.lane === 0 ? '#57534c' : '#b8652a';
+        }
+        ctx.globalAlpha = bitsAlpha * mix(.92, .8, travel);
+        ctx.fillText(b.ch, px, py);
+      }
+      ctx.restore();
+    }
+
+    if (elapsed >= cut) {
+      const lineSweep = ease(cut, 1040, elapsed);
+      const lineFade = 1 - ease(1060, 1320, elapsed);
+      if (lineSweep > 0 && lineFade > 0) {
+        ctx.save();
+        ctx.globalAlpha = lineFade * .85;
+        ctx.strokeStyle = '#b8652a';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(gateBox.x, gateBox.y - 6);
+        ctx.lineTo(gateBox.x + gateBox.w * lineSweep, gateBox.y - 6);
+        ctx.stroke();
+        ctx.restore();
+      }
+      chart.style.setProperty('--s15-river-opacity', ease(1100, 1520, elapsed));
+    }
+  }
+
+  function animate(now) {
+    const elapsed = now - run.start;
+    if (elapsed >= cut && !run.landed) land();
+    if (elapsed < arrivalEnd) drawHandoff(elapsed);
+    else if (copy.isConnected) clearEffects();
+    if (elapsed >= arrivalEnd + readHold) return finish();
+    frame = requestAnimationFrame(animate);
+  }
+
+  function approach(top, height) {
+    const start = bounds(previous, top).y, end = bounds(scene, top).y;
+    const cue = Math.max(start, end - height);
+    return { start, cue, end };
+  }
+
+  function canBegin(event, direction) {
+    if (direction < 0 || event.defaultPrevented || !canPlay()) return false;
+    if (run) return true;
+    if (!event.cancelable && event.type !== 'wheel') return false;
+    if (root.classList.contains('deep-mistakes-hold')) return false;
+    const { cue, end } = approach(scrollY, innerHeight);
+    if (scrollY >= end - 1) return false;
+    if (scrollY >= cue - 2 || event.type === 'touchmove' || event.key === 'PageDown' || event.key === ' ') return true;
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
+    return event.type === 'wheel' && scrollY + event.deltaY * unit > cue;
+  }
+
+  function startRun(height) {
+    if (run || !canPlay()) return;
+    const width = innerWidth;
+    const { cue, end } = approach(scrollY, height);
+    if (scrollY > cue + 1) scrollTo({ top: cue, behavior: 'instant' });
+    const top = scrollY;
+    armed = false;
+
+    const destination = end;
+    const to = bounds(chart, top), gBounds = bounds(gate, top);
+    const toBox = { x: to.x, y: to.y - destination, w: Math.max(120, to.w), h: Math.max(48, to.h) };
+    const gateBox = { x: gBounds.x, y: gBounds.y - destination, w: Math.max(80, gBounds.w) };
+    const stacked = matchMedia('(max-width: 860px)').matches;
+    const bits = sampleBits(height, toBox, stacked);
+
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    copy.width = Math.round(width * dpr);
+    copy.height = Math.round(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    run = { top, width, height, start: performance.now(), destination, bits, gateBox, animations: [] };
+    lastTop = top;
+    root.classList.add('deep-conversation-hold');
+    scene.classList.add('s15-staged');
+    chart.style.setProperty('--s15-river-opacity', 0);
+    chapter.append(copy);
+    for (const node of before.children) {
+      run.animations.push(node.animate([{ opacity: 1 }, { opacity: 0 }],
+        { duration: 380, delay: 40, fill: 'both' }));
+    }
+    drawHandoff(0);
+    frame = requestAnimationFrame(animate);
+  }
+
+  function begin(event) {
+    if (event.cancelable) event.preventDefault();
+    if (run) {
+      if (Math.abs(scrollY - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
+      return;
+    }
+    const height = innerHeight, { cue } = approach(scrollY, height);
+    if (scrollY < cue - 2) {
+      scrollTo({ top: cue, behavior: 'instant' });
+      return;
+    }
+    startRun(height);
+  }
+
+  function interrupt(direction, event) {
+    if (run && direction === -1 && event?.type === 'wheel' && Math.abs(event.deltaY) < 24) {
+      if (event.cancelable) event.preventDefault();
+      return;
+    }
+    if (run && !run.landed && direction === -1 && event?.cancelable) event.preventDefault();
+    finish();
+  }
+
+  watchScrollMotion((top, height) => {
+    const { start, cue, end } = approach(top, height);
+    if (run) {
+      if (!canPlay() || Math.abs(top - run.top) > height * .95) finish();
+      else if (Math.abs(top - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
+    } else {
+      if (top >= end - 1 || scene.contains(document.activeElement)) {
+        armed = false;
+      } else if (top >= start - height * .2 && top <= cue + 4) {
+        armed = true;
+      } else if (Math.abs(top - lastTop) > height * .95) {
+        armed = false;
+      }
+      if (armed && canPlay() && !root.classList.contains('deep-mistakes-hold') &&
+        top > cue + 2 && top < end - 1 && top > lastTop) {
+        startRun(height);
+      }
+    }
+    lastTop = scrollY;
+    const activeBounds = approach(lastTop, height);
+    if (canPlay() && (run || (lastTop >= activeBounds.cue - height * .25 && lastTop < activeBounds.end - 1))) {
+      listeners ??= capturePageGesture(canBegin, begin, interrupt);
+    } else {
+      listeners?.abort();
+      listeners = undefined;
+    }
+  });
+
+  for (const area of [previous.querySelector('.plate-controls'), previous.querySelector('.s14-instrument'), scene.querySelector('.plate-controls'), scene.querySelector('.plate-river')]) {
+    if (!area) continue;
+    for (const event of ['focusin', 'pointerdown', 'input']) area.addEventListener(event, finish);
+  }
+  for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, finish);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) finish(); });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) finish(); });
+}
+
 const blink = document.getElementById('deep-blink-word');
 const partOne = document.getElementById('part-one');
 if (blink?.animate && partOne) watchPartOne(blink, partOne);
@@ -2683,3 +2955,5 @@ const counting = document.getElementById('s13');
 if (whispering && counting) watchCounting(whispering, counting);
 const mistakes = document.getElementById('s14');
 if (counting && mistakes) watchMistakes(counting, mistakes);
+const conversationScene = document.getElementById('s15');
+if (mistakes && conversationScene) watchConversation(mistakes, conversationScene);

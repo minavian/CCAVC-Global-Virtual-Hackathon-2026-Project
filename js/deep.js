@@ -1402,6 +1402,29 @@
     settledReadout: '',
   };
 
+  let chatScrollTimer = 0;
+  function updateChatFade(chat) {
+    if (!chat) return;
+    const overflow = chat.scrollHeight - chat.clientHeight;
+    chat.classList.toggle('has-scroll-top', overflow > 4 && chat.scrollTop > 4);
+    chat.classList.toggle('has-scroll-bottom', overflow > 4 && chat.scrollTop + chat.clientHeight < chat.scrollHeight - 4);
+  }
+
+  function syncChatScroll(chat, autoFollow = false) {
+    if (!chat) return;
+    updateChatFade(chat);
+    const overflow = chat.scrollHeight - chat.clientHeight;
+    if (autoFollow && overflow > 2) {
+      const distanceFromBottom = overflow - chat.scrollTop;
+      if (distanceFromBottom < 140 || chat.scrollTop === 0) {
+        chat.scrollTo({ top: chat.scrollHeight, behavior: reduced.matches ? 'auto' : 'smooth' });
+      }
+      requestAnimationFrame(() => updateChatFade(chat));
+      clearTimeout(chatScrollTimer);
+      chatScrollTimer = setTimeout(() => updateChatFade(chat), 360);
+    }
+  }
+
   function setS15StateUI(p) {
     const tapBox = p.el.querySelector('#s15-tap-box');
     const prompt = p.el.querySelector('#s15-tap-prompt');
@@ -1448,6 +1471,8 @@
     river.settledReadout = run.ok ? `Card ${run.uid.map(hex).join(' ')} selected.` : run.reason;
     const chat = p.el.querySelector('.chat');
     chat.innerHTML = '';
+    chat.scrollTop = 0;
+    syncChatScroll(chat, false);
     setS15StateUI(p);
     p.say(river.settledReadout);
   }
@@ -1492,6 +1517,7 @@
         empty.className = 'chat-empty';
         empty.textContent = 'Waiting for you to drag the card onto the reader…';
         chat.append(empty);
+        syncChatScroll(chat, false);
       }
       p.say('Drag the card onto the reader to watch all six messages.');
       return;
@@ -1536,13 +1562,19 @@
     }
 
     // The phone's log, as a chat.
+    let added = false;
     while (chat.children.length < shown) {
       const msg = river.messages[chat.children.length], li = document.createElement('li');
       li.className = 'chat-' + msg.from + (msg.stolen ? ' is-stolen' : '');
       li.innerHTML = `<button type="button"><span>${msg.words}</span><small>${msg.name}${msg.bytes.length ? ' · ' + msg.bytes.map(hex).join(' ') : ''}</small></button>`;
-      li.querySelector('button').addEventListener('click', () => li.classList.toggle('is-open'));
+      li.querySelector('button').addEventListener('click', () => {
+        li.classList.toggle('is-open');
+        syncChatScroll(chat, false);
+      });
       chat.append(li);
+      added = true;
     }
+    if (added) syncChatScroll(chat, true);
     if (shown >= river.messages.length && river.settledReadout) p.say(river.settledReadout);
   }, { animate: true });
 
@@ -1553,6 +1585,9 @@
     const chartEl = s15.el.querySelector('#s15-chart'), chatEl = s15.el.querySelector('.chat');
     let cardAnim, ringAnim, randomFlip, heistFrame = 0, heistSvg = null, drag = null;
     let heistStartScroll = 0;
+
+    chatEl?.addEventListener('scroll', () => updateChatFade(chatEl), { passive: true });
+    addEventListener('resize', () => updateChatFade(chatEl));
 
     function cancelHeist() {
       cancelAnimationFrame(heistFrame);

@@ -100,16 +100,18 @@ body::after {
 #part-one-power { white-space: nowrap; }
 html.deep-blink-hold, html.deep-closer-hold, html.deep-flipping-hold, html.deep-tuning-hold,
 html.deep-metal-hold, html.deep-pauses-hold, html.deep-part-two-hold, html.deep-soaking-hold,
-html.deep-whispering-hold, html.deep-counting-hold, html.deep-mistakes-hold { overflow-y: hidden; }
+html.deep-whispering-hold, html.deep-counting-hold, html.deep-mistakes-hold, html.deep-conversation-hold { overflow-y: hidden; }
 html.deep-whispering-hold, html.deep-whispering-hold body,
 html.deep-counting-hold, html.deep-counting-hold body,
-html.deep-mistakes-hold, html.deep-mistakes-hold body {
+html.deep-mistakes-hold, html.deep-mistakes-hold body,
+html.deep-conversation-hold, html.deep-conversation-hold body {
   overflow-y: hidden;
   overscroll-behavior-y: none;
 }
-html.deep-whispering-hold .deep, html.deep-counting-hold .deep, html.deep-mistakes-hold .deep { touch-action: none; }
+html.deep-whispering-hold .deep, html.deep-counting-hold .deep, html.deep-mistakes-hold .deep, html.deep-conversation-hold .deep { touch-action: none; }
 html.deep-whispering-hold .plate-controls, html.deep-counting-hold .plate-controls,
-html.deep-mistakes-hold .plate-controls, html.deep-mistakes-hold .s14-instrument { touch-action: manipulation; }
+html.deep-mistakes-hold .plate-controls, html.deep-mistakes-hold .s14-instrument,
+html.deep-conversation-hold .plate-controls, html.deep-conversation-hold .plate-river { touch-action: manipulation; }
 .deep-blink-cover {
   position: fixed;
   inset: 0;
@@ -1369,6 +1371,20 @@ input.s7-track-copy {
   .s14-cell:focus-visible { outline-color: Highlight; }
 }
 
+.s15-staged:not(:focus-within) > * { visibility: hidden; }
+.deep-conversation-hold #s14 { border-bottom-color: transparent; }
+#s14 .s14-instrument { opacity: var(--s15-source-opacity, 1); }
+#s15-chart { opacity: var(--s15-river-opacity, 1); }
+
+.s15-handoff-copy {
+  position: fixed;
+  inset: 0;
+  inline-size: 100vw;
+  block-size: 100vh;
+  z-index: 15;
+  pointer-events: none;
+}
+
 .s15-heist-svg {
   position: fixed;
   inset: 0;
@@ -1606,11 +1622,38 @@ input.s7-track-copy {
   #s15-random::before { content: none; }
 }
 
-.plate-river { display: grid; gap: 14px; }
+.plate-river { display: grid; gap: 14px; align-content: start; }
 .plate-river .plate-canvas { height: clamp(150px, 22vh, 220px); }
-.chat { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; min-block-size: 160px; }
-.chat li { display: flex; }
+.chat {
+  margin: 0;
+  padding: 4px 2px 12px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  block-size: clamp(260px, 44vh, 360px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.chat::-webkit-scrollbar { display: none; }
+.chat.has-scroll-top {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 100%);
+}
+.chat.has-scroll-bottom {
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 22px), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 22px), transparent 100%);
+}
+.chat.has-scroll-top.has-scroll-bottom {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%);
+}
+.chat li { display: flex; align-items: flex-start; flex: 0 0 auto; }
 .chat button {
+  align-self: flex-start;
   max-width: 78%;
   display: grid;
   gap: 2px;
