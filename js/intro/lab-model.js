@@ -125,6 +125,13 @@ export function curve(s, kind) {
       const f = 5 * (30 / 5) ** (i / 120);
       points.push([f, P.solve({ ...o, frequency: f * 1e6 }).rawVolts]);
     }
+  } else if (kind === 'answer') {
+    // The answer's strength (%) across distance: it rises as the card comes in, then falls again
+    // very close, where the chip's limiter soaks up the field and the switch changes less.
+    for (let i = 0; i <= 120; i++) {
+      const cm = .5 + 9.5 * i / 120;
+      points.push([cm, P.solve(options(s, cm)).dip * 100]);
+    }
   } else {
     for (let i = 0; i <= 120; i++) {
       const cm = .5 + 9.5 * i / 120;
@@ -211,6 +218,11 @@ export function status(s, m) {
     if (s.metal > 0) return { text: 'Awake, but metal soaks up the field.', detail: reach };
     if (s.drive < 70) return { text: 'Awake, on a weak field.', detail: reach };
     if (Math.abs(s.tune - 13.56) > 3) return { text: 'Awake, though its tuning is off.', detail: reach };
+    // Awake, but answering faintly: very close its limiter soaks up the field, so its switch
+    // changes the field less (the Answer chart shows the peak in between); far off it barely
+    // changes it at all.
+    if (m.dip < .02) return { text: 'Awake, but its answer is faint.',
+      detail: m.limited ? 'So close, its limiter soaks up the field.' : 'Far off, it barely changes the field.' };
     // The point of it all, in numbers: the power comes through the air.
     const runs = `It runs on ${(m.watts * 1000).toFixed(1)} mW from the ${noun}.`;
     if (phone) return { text: 'The phone powers the chip. It can answer.', detail: runs };

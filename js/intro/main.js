@@ -546,7 +546,7 @@ function intro(experience) {
   function plotNow() {
     if (!lab.points.length || !lab.m) return null;
     const k = lab.morph ? smoother(0, 1, (performance.now() - lab.morph.start) / 380) : 1;
-    const dot = { x: lab.pointsChart === 'tuning' ? 13.56 : lab.set.distance, v: lab.m.raw };
+    const dot = { x: lab.pointsChart === 'tuning' ? 13.56 : lab.set.distance, v: lab.pointsChart === 'answer' ? lab.m.dip * 100 : lab.m.raw };
     if (!lab.morph || k >= 1) return { chart: lab.pointsChart, points: lab.points, dot, k: 1 };
     const { points: before, dot: was } = lab.morph;
     return {
@@ -637,7 +637,7 @@ function intro(experience) {
     reading('field', m.field.toFixed(2) + ' A/m', m.field >= m.H_MIN, m.field / 7.5, m.H_MIN / 7.5);
     reading('volts', m.volts.toFixed(2) + ' V', m.awake, m.volts / m.clamp, m.wake / m.clamp);
     reading('reach', m.reach < .05 ? 'Nowhere' : m.reach.toFixed(1) + ' cm', m.reach >= lab.set.distance);
-    reading('answer', m.awake ? (m.dip * 100).toFixed(1) + '%' : 'None', m.awake ? m.dip > .01 : false);
+    reading('answer', m.awake ? (m.dip * 100).toFixed(1) + '%' : 'None', m.awake ? m.dip >= .02 : false);
     // The numbers glide to their new values (paintLabNumbers, every frame), so a change reads as
     // a change, not a flicker.
     lab.targets = { field: m.field, volts: m.volts, reach: m.reach, answer: m.awake ? m.dip * 100 : null, watts: m.watts * 1000 };
@@ -704,20 +704,21 @@ function intro(experience) {
     g.clearRect(0, 0, W, H);
     const now = plotNow();
     if (!now) return;
-    const points = now.points, tuning = lab.chart === 'tuning';
+    const points = now.points, tuning = lab.chart === 'tuning', answer = lab.chart === 'answer';
     if (!points.length) return;
     const xs = points.map(p => p[0]);
     const x0 = xs[0], x1 = xs[xs.length - 1];
-    const yMax = 8;
+    // Volts for Distance and Tuning (the chip needs 2), the answer's strength (%) for Answer.
+    const yMax = answer ? 12 : 8, unit = answer ? '%' : ' V';
     const X = v => tuning ? left + (W - left - right) * Math.log(v / x0) / Math.log(x1 / x0) : left + (W - left - right) * (v - x0) / (x1 - x0);
     const Y = v => top + (H - top - bottom) * (1 - Math.min(v, yMax) / yMax);
     g.font = '600 10px "Inter Tight", system-ui, sans-serif';
     g.fillStyle = 'rgba(244,241,234,.5)';
     g.strokeStyle = 'rgba(255,255,255,.1)';
     g.lineWidth = 1;
-    for (const v of [0, 2, 4, 6, 8]) {
+    for (const v of answer ? [0, 4, 8, 12] : [0, 2, 4, 6, 8]) {
       g.beginPath(); g.moveTo(left, Y(v) + .5); g.lineTo(W - right, Y(v) + .5); g.stroke();
-      g.fillText(v + ' V', 2, Y(v) + 3);
+      g.fillText(v + unit, 2, Y(v) + 3);
     }
     const ticks = tuning ? [5, 10, 13.56, 20, 30] : [2, 4, 6, 8, 10];
     // Each under its place; the last one ends at the chart's edge, so it is never cut off.
@@ -727,15 +728,17 @@ function intro(experience) {
       g.fillText(tuning ? (last ? v + ' MHz' : String(v)) : v + ' cm', last ? W - right : X(v), H - 4);
     }
     g.textAlign = 'left';
-    // What the chip needs to wake.
-    g.strokeStyle = 'rgba(244,241,234,.75)';
-    g.setLineDash([3, 3]);
-    g.beginPath(); g.moveTo(left, Y(2)); g.lineTo(W - right, Y(2)); g.stroke();
-    g.setLineDash([]);
-    g.fillStyle = 'rgba(244,241,234,.8)';
-    g.textAlign = 'right';
-    g.fillText('wakes', W - right, Y(2) - 4);
-    g.textAlign = 'left';
+    // What the chip needs to wake (not on the answer's chart).
+    if (!answer) {
+      g.strokeStyle = 'rgba(244,241,234,.75)';
+      g.setLineDash([3, 3]);
+      g.beginPath(); g.moveTo(left, Y(2)); g.lineTo(W - right, Y(2)); g.stroke();
+      g.setLineDash([]);
+      g.fillStyle = 'rgba(244,241,234,.8)';
+      g.textAlign = 'right';
+      g.fillText('wakes', W - right, Y(2) - 4);
+      g.textAlign = 'left';
+    }
     if (tuning) {
       // The reader's frequency.
       g.strokeStyle = 'rgba(74,147,255,.7)';
@@ -745,7 +748,8 @@ function intro(experience) {
     g.lineWidth = 2;
     for (let i = 1; i < points.length; i++) {
       const [a, va] = points[i - 1], [b, vb] = points[i];
-      g.strokeStyle = (va + vb) / 2 >= 2 ? '#ffb52e' : 'rgba(255,181,46,.35)';
+      // The answer in blue, its colour in the close-up; nothing where the chip sleeps.
+      g.strokeStyle = answer ? (va > 0 && vb > 0 ? '#4a93ff' : 'rgba(74,147,255,.25)') : (va + vb) / 2 >= 2 ? '#ffb52e' : 'rgba(255,181,46,.35)';
       g.beginPath(); g.moveTo(X(a), Y(va)); g.lineTo(X(b), Y(vb)); g.stroke();
     }
     // Where the setting is now.
@@ -757,10 +761,12 @@ function intro(experience) {
       const x = X(nowX);
       g.beginPath(); g.moveTo(x - 4, top + 5); g.lineTo(x, top - 1); g.lineTo(x + 4, top + 5); g.fill();
       g.textAlign = x > W / 2 ? 'right' : 'left';
-      g.fillText(nowV.toFixed(0) + ' V', x + (x > W / 2 ? -8 : 8), top + 8);
+      g.fillText(nowV.toFixed(0) + unit, x + (x > W / 2 ? -8 : 8), top + 8);
       g.textAlign = 'left';
     }
-    canvas.setAttribute('aria-label', tuning
+    canvas.setAttribute('aria-label', answer
+      ? `The answer's strength against distance: it rises as the card comes in, then falls very close. At ${lab.set.distance.toFixed(1)} cm it is ${(lab.m.dip * 100).toFixed(1)}%.`
+      : tuning
       ? `Voltage at the chip against the ${READERS[lab.set.reader].noun}'s frequency, with the card tuned to ${lab.set.tune.toFixed(2)} MHz. At 13.56 MHz it gets ${lab.m.raw.toFixed(1)} volts; it needs 2.`
       : `Voltage at the chip against distance. At ${lab.set.distance.toFixed(1)} cm it gets ${lab.m.raw.toFixed(1)} volts; it needs 2. It works up to ${lab.m.reach.toFixed(1)} cm.`);
   }
