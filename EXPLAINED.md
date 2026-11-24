@@ -374,7 +374,7 @@ Owner: Mina Vian · 2026-11-21, updated 2026-11-21 · Issue #19
 ---
 
 ### Take it apart: scenes 6 to 17 (`js/deep.js`)
-Owner: Mina Vian · 2026-11-21 · Issue #19. Separated by Codex for the Issue #26 contributor · 2026-11-24. Part One handoff by Codex for the project team · 2026-11-24 · Issue #26.
+Owner: Mina Vian · 2026-11-21 · Issue #19. Separated by Codex for the Issue #26 contributor · 2026-11-24. Part One handoff and full-screen story layout by Codex for the project team · 2026-11-24 · Issue #26.
 
 **What it does.** Twelve scenes after the film, each one layer deeper into the same idea, each with one thing to try:
 - **6** Distance and coil size against field and volts.
@@ -391,6 +391,7 @@ Owner: Mina Vian · 2026-11-21 · Issue #19. Separated by Codex for the Issue #2
 - **17** Why a phone can't read a car key.
 
 **How it works.**
+- Each heading, scene, and the ending use a minimum height of one viewport in `take-apart/style.css`. A scene grows if its text and controls need more room, and normal page scrolling connects the scenes. The opening text starts at its original position and stays near the top briefly as Part One enters, so the blink has a visible source.
 - On the way from the chapter opener to Part One, `watchPartOne` in `js/deep-motion.js` starts a brief sequence. `blinkWord` uses a DOM Range to measure the last “blink” and places a decorative copper accent over it. A fast sweep then passes through the label and centered heading. The inline `#part-one-power` span gives the next scene a starting position for its title transition.
 - `plate(id, draw)` wires each scene: its canvas, inputs and readout. It redraws when an input changes, and only while it is on screen (an `IntersectionObserver`). Scenes 7 and 15 move, so they draw every frame while visible.
 - Every number comes from `js/rfid`. Scene 6 sweeps `physics.solve` across distance. Scene 8 sweeps frequency (`physics.sweep`) and finds the range by bisection (`physics.range`). Scene 9 traces field lines with the metal's mirror coil. Scene 10 runs the REQA command's real pauses through the chip's storage capacitor (200 µA drawn, reset below 1.8 V). Scene 11 plots a real exchange's samples. Scene 12 takes a Fourier transform (`fft`, written here) of a card's answer with and without the flicker. Scene 13 decodes a letter with a reader whose clock runs fast or slow. Scenes 14 to 16 run `reader.activate` on real channels: with noise and the checks on or off; with a packet stolen on the air (its samples wiped, so the check fails and the phone asks again); with up to three cards. Scene 17 plots the tag's tuning curve against the reader's frequency.
