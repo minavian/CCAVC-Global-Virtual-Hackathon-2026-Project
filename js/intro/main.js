@@ -395,7 +395,10 @@ function intro(experience) {
       dx /= length; dy /= length;
       if (length < 20) { dx = 0; dy = -1; }
       const reach = layout.compact ? 44 : 66;
-      const x = clamp(at.x + dx * reach, 70, layout.width - 70), y = clamp(at.y + dy * reach - 6, 60, layout.height - 200);
+      // Kept whole on the screen, by its own width (a long one, like the phone's coil, ran off
+      // a phone's edge when only its middle was kept 70 px in).
+      const half = (label.offsetWidth || 120) / 2 + 10;
+      const x = clamp(at.x + dx * reach, half, layout.width - half), y = clamp(at.y + dy * reach - 6, 60, layout.height - 200);
       label.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
       line.setAttribute('x1', at.x.toFixed(1));
       line.setAttribute('y1', at.y.toFixed(1));
@@ -644,7 +647,7 @@ function intro(experience) {
       g.textAlign = 'left';
     }
     canvas.setAttribute('aria-label', tuning
-      ? `Voltage at the chip against the reader's frequency, with the card tuned to ${lab.set.tune.toFixed(2)} MHz. At 13.56 MHz it gets ${lab.m.raw.toFixed(1)} volts; it needs 2.`
+      ? `Voltage at the chip against the ${READERS[lab.set.reader].noun}'s frequency, with the card tuned to ${lab.set.tune.toFixed(2)} MHz. At 13.56 MHz it gets ${lab.m.raw.toFixed(1)} volts; it needs 2.`
       : `Voltage at the chip against distance. At ${lab.set.distance.toFixed(1)} cm it gets ${lab.m.raw.toFixed(1)} volts; it needs 2. It works up to ${lab.m.reach.toFixed(1)} cm.`);
   }
 
@@ -974,6 +977,8 @@ function intro(experience) {
       // second and a half, like lights dimming in a cinema: at the same pace as the rest
       // the whole page swung from paper to dark in half a second.
       const omega = key === 'dark' ? Math.min(pace, 2.4) : pace;
+      // With reduced motion the lab's readers swap at once, without sliding.
+      if (key === 'phone' && reduce.matches) { shown[key].value = goal[key]; shown[key].velocity = 0; }
       chase(shown[key], goal[key], omega, dt, key === 'gap' ? 1e-5 : .0008);
       settled &&= resting(shown[key], goal[key]);
     }

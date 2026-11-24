@@ -995,7 +995,7 @@ html[data-intro] .stage-light { opacity: 0; }
 .intro .try-reader { display: grid; grid-template-columns: 1fr 1fr; gap: .25rem; padding: .2rem; border-radius: 999px; background: rgba(255, 255, 255, .07); }
 .intro .try-reader button {
   min-height: 2rem; padding: .3rem .8rem; border: 0; border-radius: 999px; font: inherit; font-size: .8rem; font-weight: 650;
-  color: rgba(244, 241, 234, .75); background: transparent; cursor: pointer; transition: background .2s ease, color .2s ease;
+  color: rgba(244, 241, 234, .75); background: transparent; cursor: pointer;
 }
 .intro .try-reader button[aria-pressed="true"] { color: #141210; background: #f4f1ea; }
 .intro .try-reader button[aria-busy="true"] { cursor: progress; opacity: .7; }
