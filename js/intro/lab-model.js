@@ -81,7 +81,7 @@ export function measure(s) {
   return {
     field: r.field, volts: r.chipVolts, raw: r.rawVolts, wake: r.wake, clamp: r.clamp,
     awake: r.awake, limited: r.limited, dip: r.dip, resonance: r.resonance,
-    reach: P.range(o, .2) * 100,
+    reach: reachOf(s),
     shield: bare.field > 0 ? Math.max(0, 1 - r.field / bare.field) : 0,
     // The current in the card's coil, as a share of a normal tap's (see `labLevels`).
     current: r.rawVolts / normal(),
@@ -89,6 +89,22 @@ export function measure(s) {
     on: s.drive >= READER_ON,
     H_MIN: P.H_MIN,
   };
+}
+
+// How far the chip still wakes (cm), everything else as set: the farthest distance it wakes at,
+// from the reader's nearest out to 20 cm. Not by bisection from the reader's face (the engine's
+// `range`): very close, a metal plate detunes the card so much that it can sleep there and wake
+// further out, and bisection from 1 mm then said it worked nowhere while the chip was awake. So a
+// scan every half millimetre (about 400 solves, under 2 ms), then bisection on the last step.
+function reachOf(s) {
+  const P = physics(), near = READERS[readerOf(s)].nearest;
+  const awakeAt = cm => P.solve(options(s, cm)).awake;
+  let far = 0;
+  for (let i = 0; near + i * .05 <= 20 + 1e-9; i++) if (awakeAt(near + i * .05)) far = near + i * .05;
+  if (!far) return 0;
+  let lo = far, hi = far + .05;
+  for (let i = 0; i < 14; i++) { const mid = (lo + hi) / 2; if (awakeAt(mid)) lo = mid; else hi = mid; }
+  return lo;
 }
 
 // The voltage at the chip across distances (cm), or across the reader's frequency (MHz),
