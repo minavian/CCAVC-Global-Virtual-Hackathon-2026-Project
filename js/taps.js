@@ -18,6 +18,18 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
+// Resolves once the landing's opening is over (js/landing.js), the visitor scrolls, or
+// `fallback` ms pass, whichever is first: the moment to load 3D without stuttering it.
+function afterOpening(fallback = 11000) {
+  return new Promise(resolve => {
+    if (window.__openingDone) { resolve(); return; }
+    document.addEventListener('rfid:opening-done', resolve, { once: true });
+    const onScroll = () => { if (scrollY > 40) { removeEventListener('scroll', onScroll); resolve(); } };
+    addEventListener('scroll', onScroll, { passive: true });
+    setTimeout(resolve, fallback);
+  });
+}
+
 const section = document.getElementById('taps');
 
 // ---------- Timing (seconds). Everything about pacing lives here. ----------
@@ -79,11 +91,12 @@ function init() {
   watch.observe(section);
   views.forEach(view => watch.observe(view));
 
-  // Load a little before the section scrolls in, so the models are ready when it arrives.
+  // Load a little before the section scrolls in, so the models are ready when it arrives,
+  // but not while the landing's opening plays: loading then made the opening stutter.
   const approach = new IntersectionObserver(([entry]) => {
     if (!entry.isIntersecting) return;
     approach.disconnect();
-    load();
+    afterOpening().then(load);
   }, { rootMargin: '120% 0px' });
   approach.observe(section);
 
@@ -154,6 +167,17 @@ function init() {
         // Draw every set once, hidden, so no shader compiles in the middle of a motion.
         for (const set of sets) set.apply(PLAY, 0, 0);
         renderer.compile(scene, sets[0].camera);
+        // Chrome on Windows (Direct3D) only finishes a shader the first time something is
+        // really drawn with it, so draw everything once too, before the section is seen, and
+        // clear it again. Otherwise the first frame on screen stalls as it scrolls in.
+        // Every part is shown for this one draw (some wait hidden until their moment), with
+        // nothing culled, from each panel's own view.
+        const kept = [];
+        scene.traverse(object => { kept.push([object, object.visible, object.frustumCulled]); object.visible = true; object.frustumCulled = false; });
+        renderer.setScissorTest(false);
+        for (const set of sets) renderer.render(scene, set.camera);
+        for (const [object, visible, culled] of kept) { object.visible = visible; object.frustumCulled = culled; }
+        renderer.clear();
         ready = true;
         canvas.addEventListener('webglcontextlost', event => {
           event.preventDefault();
