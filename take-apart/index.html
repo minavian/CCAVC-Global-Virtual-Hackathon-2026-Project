@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
-  <link rel="stylesheet" href="style.css?v=finale-3">
+  <link rel="stylesheet" href="style.css?v=finale-4">
   <script src="../js/rfid/physics.js" defer></script>
   <script src="../js/rfid/iso14443a.js" defer></script>
   <script src="../js/rfid/lf.js" defer></script>
@@ -18,8 +18,8 @@
   <script src="../js/rfid/air.js" defer></script>
   <script src="../js/rfid/reader.js" defer></script>
   <script src="../js/rfid/channel.js" defer></script>
-  <script src="../js/deep.js?v=finale-3" defer></script>
-  <script type="module" src="../js/deep-motion.js?v=finale-3"></script>
+  <script src="../js/deep.js?v=finale-4" defer></script>
+  <script type="module" src="../js/deep-motion.js?v=finale-4"></script>
 </head>
 <body>
   <main class="deep" id="take-apart" aria-labelledby="deep-title">
@@ -381,7 +381,6 @@
         <h3 id="s16-title">Two cards in one field</h3>
         <p>Both cards answer at once. Where their IDs differ, the reader hears a 1 and a 0 together: a clash. It picks one side, and the other card goes quiet. That’s why tapping a whole wallet can charge the wrong card.</p>
         <div class="plate-controls s16-controls">
-          <label class="s16-count-row">Cards on the phone <output data-for="s16-cards"></output><input id="s16-cards" type="range" min="0" max="3" value="2"></label>
           <div class="s16-pick-group">
             <span class="s16-pick-label" id="s16-pick-label">At a clash, pick</span>
             <div class="s16-pill" id="s16-pill" role="radiogroup" aria-labelledby="s16-pick-label">
@@ -415,7 +414,7 @@
               <span class="s16-zone-title">Wallet</span>
               <span class="s16-zone-hint" id="s16-wallet-count">1 inside</span>
             </div>
-            <button type="button" class="s16-wallet" id="s16-wallet" aria-label="Open wallet and place a card on the reader">
+            <button type="button" class="s16-wallet" id="s16-wallet" aria-label="Drag or click wallet to place a card on the reader">
               <span class="s16-wallet-back" aria-hidden="true"></span>
               <span class="s16-wallet-slots" id="s16-wallet-slots" aria-hidden="true">
                 <span class="s16-slot" data-slot="0"><span class="s16-slot-lip"></span></span>
@@ -424,7 +423,7 @@
               </span>
               <span class="s16-wallet-front" aria-hidden="true">
                 <span class="s16-wallet-stitch"></span>
-                <span class="s16-wallet-action" id="s16-wallet-action">Click to place</span>
+                <span class="s16-wallet-action" id="s16-wallet-action">Drag or click</span>
               </span>
             </button>
           </div>

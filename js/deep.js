@@ -1972,13 +1972,13 @@
       padStage.dataset.clash = String(hasClash);
     }
     if (fieldHint) {
-      fieldHint.textContent = count ? 'Drag a card off to return it' : 'Tap wallet to place a card';
+      fieldHint.textContent = count ? 'Drag a card off to return it' : 'Drag a card from the wallet';
     }
     if (walletCount) {
       walletCount.textContent = inWallet === 0 ? 'Empty' : `${inWallet} inside`;
     }
     if (walletBtn) walletBtn.dataset.empty = String(inWallet === 0);
-    if (walletAction) walletAction.textContent = inWallet ? 'Click to place' : 'All 3 on reader';
+    if (walletAction) walletAction.textContent = inWallet ? 'Drag or click' : 'All 3 on reader';
 
     if (walletSlots) {
       for (const slotEl of walletSlots.querySelectorAll('.s16-slot')) {
@@ -2033,10 +2033,6 @@
 
   const s16 = plate('s16', p => {
     const prefer = +(p.radio('pick') || 1);
-    const count = s16State.placed.length;
-    p.out('cards', String(count));
-    const countInput = p.input('cards');
-    if (countInput && +countInput.value !== count) countInput.value = String(count);
     p.el.querySelector('#s16-pill')?.style.setProperty('--s16-pick-index', prefer === 1 ? '0' : '1');
 
     const activeUids = s16State.placed.map(slot => s16State.uids[slot]);
@@ -2048,10 +2044,10 @@
       ctx.fillStyle = MUTED;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('No cards in the field. Click the wallet below to place one.', p.w / 2, p.h / 2);
+      ctx.fillText('No cards in the field. Drag or click the wallet below to place one.', p.w / 2, p.h / 2);
       p.canvas.clashTrace = { x0, cw, y0, rowStep, rows: [], clashes: [], winner: -1, prefer };
       syncS16Desk(-1, false);
-      p.say('No cards on the phone. Click the wallet to place a card.');
+      p.say('No cards on the phone. Drag or click a card from the wallet.');
       return;
     }
 
@@ -2095,14 +2091,29 @@
 
   if (s16) {
     const padCards = s16.el.querySelector('#s16-pad-cards');
+    const fieldZone = s16.el.querySelector('#s16-field-zone');
+    const walletZone = s16.el.querySelector('#s16-wallet-zone');
     const walletBtn = s16.el.querySelector('#s16-wallet');
     const walletSlots = s16.el.querySelector('#s16-wallet-slots');
-    const countInput = s16.input('cards');
     const tapBtn = s16.el.querySelector('#s16-tap');
-    let drag = null;
+    let drag = null, walletDrag = null, suppressWalletClick = false;
+
+    function isOverReaderDrop(clientX, clientY) {
+      const fRect = fieldZone?.getBoundingClientRect();
+      if (fRect && clientX >= fRect.left - 32 && clientX <= fRect.right + 32 &&
+        clientY >= fRect.top - 32 && clientY <= fRect.bottom + 32) {
+        return true;
+      }
+      const wRect = walletZone?.getBoundingClientRect();
+      return !!(wRect && clientX < wRect.left - 16);
+    }
 
     function cancelS16Animations() {
       s16State.seqToken++;
+      walletDrag?.ghost?.remove();
+      walletDrag = null;
+      suppressWalletClick = false;
+      if (fieldZone) delete fieldZone.dataset.dropTarget;
       for (const item of Array.from(s16State.flights)) {
         item.anim?.cancel();
         item.el?.remove();
@@ -2203,7 +2214,108 @@
       s16.dirty = true;
     }
 
+    walletBtn?.addEventListener('pointerdown', event => {
+      if (s16State.busy || !event.isPrimary || event.button !== 0) return;
+      const slotEl = event.target.closest?.('.s16-slot');
+      const picked = slotEl ? +slotEl.dataset.slot : -1;
+      const slot = (picked >= 0 && !s16State.placed.includes(picked))
+        ? picked
+        : [0, 1, 2].find(i => !s16State.placed.includes(i));
+      if (slot === undefined) return;
+      walletDrag = {
+        id: event.pointerId,
+        slot,
+        startX: event.clientX,
+        startY: event.clientY,
+        active: false,
+        ghost: null,
+        cardW: 108,
+        cardH: 68,
+      };
+      walletBtn.setPointerCapture?.(event.pointerId);
+    });
+
+    walletBtn?.addEventListener('pointermove', event => {
+      if (!walletDrag || event.pointerId !== walletDrag.id) return;
+      const dx = event.clientX - walletDrag.startX;
+      const dy = event.clientY - walletDrag.startY;
+      if (!walletDrag.active) {
+        if (Math.hypot(dx, dy) < 7) return;
+        walletDrag.active = true;
+        s16State.hiddenFlights.add(walletDrag.slot);
+        syncS16Desk(s16State.winnerRow, s16State.hasClash);
+        walletBtn.dataset.open = 'true';
+        const sample = padCards?.querySelector('.s16-pad-card')?.getBoundingClientRect();
+        const cardW = sample?.width || 108;
+        const cardH = cardW * 328 / 520;
+        walletDrag.cardW = cardW;
+        walletDrag.cardH = cardH;
+        const ghost = document.createElement('div');
+        ghost.className = 's16-flight-card';
+        ghost.setAttribute('aria-hidden', 'true');
+        ghost.style.zIndex = '25';
+        ghost.style.width = `${cardW.toFixed(1)}px`;
+        ghost.style.height = `${cardH.toFixed(1)}px`;
+        ghost.innerHTML = buildS16CardFace(walletDrag.slot, s16State.uids[walletDrag.slot], { compact: false });
+        document.body.append(ghost);
+        walletDrag.ghost = ghost;
+      }
+      const tilt = clamp(dx * .07, -14, 14);
+      const gx = event.clientX - walletDrag.cardW * .5;
+      const gy = event.clientY - walletDrag.cardH * .5;
+      walletDrag.ghost.style.left = `${gx.toFixed(1)}px`;
+      walletDrag.ghost.style.top = `${gy.toFixed(1)}px`;
+      walletDrag.ghost.style.transform = `rotate(${tilt.toFixed(1)}deg) scale(1.04)`;
+      if (fieldZone) {
+        if (isOverReaderDrop(event.clientX, event.clientY)) fieldZone.dataset.dropTarget = 'true';
+        else delete fieldZone.dataset.dropTarget;
+      }
+    });
+
+    for (const name of ['pointerup', 'pointercancel']) {
+      walletBtn?.addEventListener(name, async event => {
+        if (!walletDrag || event.pointerId !== walletDrag.id) return;
+        const ended = walletDrag;
+        walletDrag = null;
+        if (fieldZone) delete fieldZone.dataset.dropTarget;
+        if (!ended.active) return;
+
+        suppressWalletClick = true;
+        setTimeout(() => { suppressWalletClick = false; }, 0);
+        const fromRect = ended.ghost?.getBoundingClientRect();
+        ended.ghost?.remove();
+        const token = s16State.seqToken;
+
+        if (event.type === 'pointerup' && isOverReaderDrop(event.clientX, event.clientY)) {
+          s16State.placed.push(ended.slot);
+          syncS16Desk(s16State.winnerRow, s16State.hasClash);
+          const targetNode = padCards?.querySelector(`.s16-pad-card[data-slot="${ended.slot}"]`);
+          const toRect = targetNode?.getBoundingClientRect();
+          targetNode?.classList.add('is-hidden-flight');
+          s16.dirty = true;
+          await flyS16Card(ended.slot, fromRect, toRect, { duration: 240, arc: -10, scaleFrom: 1.04, scaleTo: 1 });
+          if (token !== s16State.seqToken) return;
+          s16State.hiddenFlights.delete(ended.slot);
+          if (!s16State.busy) delete walletBtn.dataset.open;
+          syncS16Desk(s16State.winnerRow, s16State.hasClash);
+          s16.dirty = true;
+        } else {
+          const slotNode = walletSlots?.querySelector(`.s16-slot[data-slot="${ended.slot}"]`);
+          const toRect = slotNode?.getBoundingClientRect();
+          await flyS16Card(ended.slot, fromRect, toRect, { duration: 240, arc: -12, scaleFrom: 1, scaleTo: .54 });
+          if (token !== s16State.seqToken) return;
+          s16State.hiddenFlights.delete(ended.slot);
+          if (!s16State.busy) delete walletBtn.dataset.open;
+          syncS16Desk(s16State.winnerRow, s16State.hasClash);
+        }
+      });
+    }
+
     walletBtn?.addEventListener('click', () => {
+      if (suppressWalletClick) {
+        suppressWalletClick = false;
+        return;
+      }
       if (s16State.busy) return;
       const slot = [0, 1, 2].find(i => !s16State.placed.includes(i));
       if (slot === undefined) {
@@ -2295,23 +2407,6 @@
         }
       });
     }
-
-    countInput?.addEventListener('input', () => {
-      if (s16State.busy) return;
-      const wanted = clamp(Math.round(+countInput.value), 0, 3);
-      while (s16State.placed.length < wanted) {
-        const nextSlot = [0, 1, 2].find(i => !s16State.placed.includes(i));
-        if (nextSlot === undefined) break;
-        void dealCardFromWallet(nextSlot);
-      }
-      while (s16State.placed.length > wanted) {
-        const dropSlot = s16State.placed[s16State.placed.length - 1];
-        const card = padCards?.querySelector(`.s16-pad-card[data-slot="${dropSlot}"]`);
-        if (card) void returnCardToWallet(dropSlot, card.getBoundingClientRect(), .18, -.06);
-        else s16State.placed.pop();
-      }
-      s16.dirty = true;
-    });
 
     tapBtn?.addEventListener('click', async () => {
       if (s16State.busy) return;
