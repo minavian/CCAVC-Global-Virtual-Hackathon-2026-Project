@@ -497,6 +497,13 @@ input.s7-track-copy {
   block-size: 100%;
   pointer-events: none;
 }
+.s9-copy-wipe {
+  position: fixed;
+  z-index: 3;
+  pointer-events: none;
+  backdrop-filter: blur(2.5px);
+  background: linear-gradient(transparent, rgb(184 101 42 / .09) 20% 80%, transparent);
+}
 @media (max-width: 860px) and (max-height: 700px) {
   #s9 { gap: 16px; padding-block: 18px; }
   #s9 .plate-words { gap: 8px; }

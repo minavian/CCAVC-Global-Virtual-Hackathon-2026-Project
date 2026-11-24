@@ -399,7 +399,7 @@
     const metal = document.getElementById('s9-metal'), action = document.getElementById('s9-metal-action');
     const distance = document.getElementById('s9-distance'), chip = document.getElementById('s9-chip');
     const strength = document.getElementById('s9-strength'), tuning = document.getElementById('s9-tuning');
-    const park = 61, restY = 68, d = .02, a = physics.READERS.pad.radius;
+    const park = Number(metal.getAttribute('aria-valuemax')), restY = 68, d = .02, a = physics.READERS.pad.radius;
     const card = physics.TAGS.card.radius;
     let value = park, model, scale, coilY, metalY = restY, pointer = null, grabOffset, travel;
     const heightAt = mm => coilY - (d + mm / 1000) * scale;
@@ -422,9 +422,10 @@
     }
 
     function followPlate(y) {
-      const mm = y < heightAt(60) ? park : clamp(Math.round(((coilY - y) / scale - d) * 1000), 1, 60);
+      const mm = y <= restY + .5 ? park : clamp(Math.round(((coilY - y) / scale - d) * 1000), 1, park - 1);
       setGap(mm);
       positionMetal(y);
+      scene.dirty = true;
     }
 
     function stopTravel() {
@@ -435,8 +436,8 @@
     const scene = plate('s9', p => {
       const ctx = fit(p), k = Math.min(p.w / .2, p.h / .15);
       coilY = p.h - 34;
-      // Leave room above the first field line for the parked metal and its cue.
-      scale = (coilY - 88) / .1;
+      // Put the farthest active gap at the parking edge so the field reacts when the plate moves.
+      scale = (coilY - restY) / (d + (park - 1) / 1000);
       if (travel) {
         const progress = reduced.matches ? 1 : stage(0, 600, performance.now() - travel.started);
         const end = travel.to === park ? restY : heightAt(travel.to);
@@ -471,10 +472,18 @@
       const X = rho => p.w / 2 + rho * k, Y = z => coilY - z * scale;
       const { lines } = model;
       p.canvas.metalField = { lines, X, Y };
+      ctx.save();
+      if (value !== park) {
+        // Hide any integration step that would draw a line through the conductive sheet.
+        const edge = pointer !== null || travel ? metalY : heightAt(value);
+        ctx.beginPath();
+        ctx.rect(0, edge - 2, p.w, p.h);
+        ctx.clip();
+      }
       for (const { points, color } of lines) {
         for (const side of [-1, 1]) curve(ctx, points, rho => X(side * rho), Y, color, 1.4);
       }
-
+      ctx.restore();
       for (const side of [-1, 1]) dot(ctx, X(side * a), Y(0), INK, 4);
       ctx.fillStyle = 'rgba(184, 101, 42, .25)'; ctx.fillRect(X(-card), Y(d) - 3, X(card) - X(-card), 6);
       ctx.fillStyle = INK; ctx.font = `600 11px ${SANS}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';

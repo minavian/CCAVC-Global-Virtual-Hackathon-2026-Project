@@ -920,8 +920,12 @@ function watchMetal(previous, plate) {
   const outgoing = previous.querySelector('.plate-words'), incoming = plate.querySelector('.plate-words');
   const figure = target.parentElement;
   const plot = document.createElement('canvas');
+  const wipe = document.createElement('span');
   plot.className = 's9-plot-copy';
+  wipe.className = 's9-copy-wipe';
+  wipe.hidden = true;
   plot.setAttribute('aria-hidden', 'true');
+  wipe.setAttribute('aria-hidden', 'true');
   const ctx = plot.getContext('2d');
   const end = 2560, readHold = 1000;
   let layout, frame, previousTop, targetTop, approach, lockedAt, listeners;
@@ -934,6 +938,7 @@ function watchMetal(previous, plate) {
     if (!active()) return;
     cancelAnimationFrame(frame);
     plot.remove();
+    wipe.remove();
     for (const node of [source, outgoing]) node.style.removeProperty('transform');
     incoming.style.removeProperty('transform');
     for (const node of [outgoing, incoming]) node.style.removeProperty('clip-path');
@@ -991,15 +996,35 @@ function watchMetal(previous, plate) {
   }
 
   function swapCopy(progress) {
-    const edge = mix(1.05, -.05, progress);
+    wipe.hidden = progress === 0 || progress === 1;
+    if (wipe.hidden) {
+      outgoing.style.clipPath = progress === 1 ? 'inset(0 0 0 100%)' : 'none';
+      incoming.style.clipPath = progress === 0 ? 'inset(0 100% 0 0)' : 'none';
+      return;
+    }
+    const edge = mix(-.05, 1.05, progress);
     const amplitude = .045 * Math.sin(Math.PI * progress);
-    // The same moving edge reveals the new copy where it removes the old copy.
-    const front = Array.from({ length: 9 }, (_, i) => {
-      const x = clamp(edge + amplitude * Math.sin(i * Math.PI / 4 - progress * Math.PI));
-      return `${x * 100}% ${i * 12.5}%`;
-    }).join(', ');
-    outgoing.style.clipPath = `polygon(0 0, ${front}, 0 100%)`;
-    incoming.style.clipPath = `polygon(100% 0, ${front}, 100% 100%)`;
+    const old = outgoing.getBoundingClientRect(), next = incoming.getBoundingClientRect();
+    const top = Math.min(old.top, next.top), height = Math.max(old.bottom, next.bottom) - top;
+    const sampleFront = (areaTop, areaHeight) => Array.from({ length: 9 }, (_, i) => {
+      const y = areaHeight * i / 8;
+      const phase = (areaTop + y - top) / height * 2 * Math.PI - progress * Math.PI;
+      return [old.left + old.width * (edge + amplitude * Math.sin(phase)), y];
+    });
+    const clip = (area, side) => {
+      const front = sampleFront(area.top, area.height).map(([x, y]) => `${clamp((x - area.left) / area.width) * 100}% ${y}px`);
+      return `polygon(${side}% 0, ${front.join(', ')}, ${side}% 100%)`;
+    };
+    outgoing.style.clipPath = clip(old, 100);
+    incoming.style.clipPath = clip(next, 0);
+
+    const band = 8;
+    const front = sampleFront(top, height);
+    const left = Math.max(0, Math.min(...front.map(([x]) => x)) - band);
+    const right = Math.min(innerWidth, Math.max(...front.map(([x]) => x)) + band);
+    const edgePoints = (points, offset) => points.map(([x, y]) => `${x - left + offset}px ${y}px`);
+    wipe.style.cssText = `left:${left}px;top:${top}px;width:${right - left}px;height:${height}px;`;
+    wipe.style.clipPath = `polygon(${[...edgePoints(front, -band), ...edgePoints(front.reverse(), band)].join(', ')})`;
   }
 
   function paint(elapsed) {
@@ -1013,8 +1038,8 @@ function watchMetal(previous, plate) {
     source.style.setProperty('--s9-source-opacity', 1 - leave);
     figure.style.opacity = arrive;
     plot.style.opacity = leave * (1 - arrive);
-    swapCopy(ease(325, 1240, elapsed));
     incoming.style.transform = `translateY(${layout.headingShift * (1 - ease(1050, 1600, elapsed))}px)`;
+    swapCopy(ease(325, 1240, elapsed));
     ctx.clearRect(0, 0, width, height);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -1089,7 +1114,7 @@ function watchMetal(previous, plate) {
     const pin = `translateY(${lockedAt - origin}px)`;
     outgoing.style.transform = pin;
     source.style.transform = pin;
-    chapter.append(plot);
+    chapter.append(plot, wipe);
     paint(0);
     plate.classList.remove('s9-awaiting');
 
@@ -1105,6 +1130,7 @@ function watchMetal(previous, plate) {
       else if (plot.isConnected) {
         paint(end);
         plot.remove();
+        wipe.remove();
       }
       if (elapsed >= end + readHold) return skip();
       frame = requestAnimationFrame(tick);
