@@ -798,7 +798,8 @@ function intro(experience) {
       return said;
     }
     const said = message('answer', e - ANSWER_AFTER);
-    if (said.landed >= 1 && e - ANSWER_AFTER > TALK.answer.length / SAMPLES_PER_BIT * .15 + 2) { lab.talk = null; labUi.ask.disabled = false; return null; }
+    // Held 3.5 s after the answer is in, so "Verified" and the check mark can be read.
+    if (said.landed >= 1 && e - ANSWER_AFTER > TALK.answer.length / SAMPLES_PER_BIT * .15 + 3.5) { lab.talk = null; labUi.ask.disabled = false; return null; }
     return said;
   }
 
@@ -842,7 +843,9 @@ function intro(experience) {
           if (e < asked) { text = `The ${noun} asks: who are you?`; detail = 'It flicks its field off and on.'; }
           else if (!lab.talk.answers) { text = 'No answer. The chip has no power.'; detail = 'It needs about 2 volts to wake.'; }
           else if (e < ANSWER_AFTER) { text = 'The chip works out its answer.'; detail = 'In life this takes 86 millionths of a second.'; }
-          else { text = 'The card answers: ' + TALK.answer.words + '.'; detail = `The ${noun} feels a ${(lab.m.dip * 100).toFixed(1)}% change.`; }
+          else if (!(b.message?.dir < 0 && b.message.landed >= 1)) { text = 'The card answers: ' + TALK.answer.words + '.'; detail = `The ${noun} feels a ${(lab.m.dip * 100).toFixed(1)}% change.`; }
+          // The whole answer is in: the reader has checked it.
+          else { text = `Verified. The ${noun} has the ID.`; detail = 'Its check byte matches the four ID bytes.'; }
         }
       }
       if (text) say(text, detail);
@@ -1062,6 +1065,9 @@ function intro(experience) {
         // The card's answer only once it answers: while the reader still asks, nothing comes back
         // (it used to show the answer coming down from the moment Ask was pressed).
         const levels = { ...plan.levels, ...labLevels(lab.set, lab.m), reply: lab.talk?.answers && said?.dir < 0 ? 1 : 0 };
+        // Once the whole answer is in, the reader confirms it, as in the tap's last step: the check
+        // mark over it, the pad's light (or the phone's screen) turning green.
+        if (lab.talk?.answers && said?.dir < 0 && said.landed >= 1) levels.check = 1;
         goal = said ? talkLevels(levels, said) : levels;
         if (said && reduce.matches && said.dir < 0) goal = { ...goal, reply: 1 };
       }
