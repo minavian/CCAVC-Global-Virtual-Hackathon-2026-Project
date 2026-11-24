@@ -25,8 +25,6 @@ const cardFrames = [
   [MOUTH_CLOSED, .754, .531, .60, .621, .95, .24, .46, -.18],
   [1.86,.745, .601, .591, .721, .85,  .29,  .30, -.16],
   [2.80,.806, .688, .664, .715, .70,  .32, -.27, -.18],
-  [3.40,.503, .573, .501, .517, 1.07, .32, -.28, -.27],
-  [3.87,.493, .549, .501, .509, 1.12, .24, -.14, -.16],
   [4.48,.382, .450, .50,  .414, 1.29, .05,  .05, -.096],
   [5.03,.387, .454, .50,  .414, 1.28, .06,  .035,-.083],
   [5.75,.690, .614, .621, .49,  .64,  .27,  .21, -.14],
@@ -47,16 +45,22 @@ const track = {
 export const mouthAt = time => smoother(.40, .64, time) * (1 - smoother(.96, 1.20, time));
 export const curlAt = time => smoother(.43, .68, time) * (1 - smoother(.99, MOUTH_CLOSED, time));
 
-// Matching playhead values hold the reading composition over a stretch of scroll.
+// How much scroll the intro takes: each screen in `scrollFrames` below is this many screens of
+// real scrolling. At 1 every animation needed a page or two of scrolling whenever the page
+// moved without the auto scroll (autoplay.js); at .3 the whole intro is under three screens.
+export const PACE = .3;
+
+// Matching playhead values hold the reading composition over a stretch of scroll. The first
+// column is in screens at the first pace; PACE scales it.
 const scrollFrames = [
   [0, 0], [.57, .41], [.71, .41], [.98, .59], [1.29, .76], [1.60, HERO],
   [1.76, HERO], [2.12, MOUTH_CLOSED], [2.34, MOUTH_CLOSED],
   [3.01, 1.87], [3.85, 1.87],
   [4.56, 2.82], [5.66, 2.82],
-  [6.34, 3.60], [7.01, 3.60],
-  [7.72, 4.77], [8.88, 4.77],
-  [9.58, END], [9.94, END],
-];
+  // From the definition straight to the X-ray (a "How It Works" title used to hold here).
+  [7.05, 4.77], [8.21, 4.77],
+  [8.91, END], [9.27, END],
+].map(([screens, time]) => [screens * PACE, time]);
 export const SCROLL_SCREENS = scrollFrames.at(-1)[0];
 const playback = monotone(scrollFrames);
 
@@ -66,8 +70,8 @@ export function scrollTime(fraction) {
   return playback(clamp(fraction) * SCROLL_SCREENS);
 }
 
-const holdFrames = [0, HERO, MOUTH_CLOSED, 1.86, 2.81, 3.59, 4.77, END];
-const cuts = [.61, 1.15, 1.47, 2.43, 3.28, 4.33, 5.53];
+const holdFrames = [0, HERO, MOUTH_CLOSED, 1.86, 2.81, 4.77, END];
+const cuts = [.61, 1.15, 1.47, 2.43, 3.9, 5.53];
 
 export function restingFrame(progress) {
   return holdFrames[cuts.filter(cut => progress >= cut).length];
@@ -128,7 +132,6 @@ export function beats(time) {
     letters: 1 - ease(2.96, 3.29, time),
     meaning: show(time, 1.52, 1.82, 2.14, 2.44),
     definition: show(time, 2.44, 2.79, 3.01, 3.32),
-    cinema: show(time, 3.10, 3.49, 3.86, 4.24),
     callouts: show(time, 4.25, 4.51, 5.09, 5.37),
     question: show(time, 4.43, 4.76, 5.10, 5.40),
     instruction: ease(5.31, 5.71, time),

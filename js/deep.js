@@ -2038,7 +2038,7 @@
   function buildS16CardFace(slot, uid, { compact = false, isWinner = false } = {}) {
     const label = compact ? `C${slot + 1}` : `Card ${slot + 1}${isWinner ? ' ✓' : ''}`;
     return `
-      <img class="s16-card-img" src="../images/intro/credit-card-face.webp" width="520" height="328" alt="" draggable="false">
+      <img class="s16-card-img" src="images/intro/credit-card-face.webp" width="520" height="328" alt="" draggable="false">
       <span class="s16-card-tint" data-slot="${slot}" aria-hidden="true"></span>
       ${compact
         ? `<span class="s16-tucked-tag">${label}</span>`

@@ -2,17 +2,742 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>The Reader Is the Battery</title>
+  <meta name="description" content="Your bank card has no battery. The card reader powers it: its magnetic field wakes the chip, and the chip answers by soaking up more or less of that field. Drag a key to a reader and watch it happen.">
+  <meta name="theme-color" content="#f5f2ec">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23f5f2ec'/%3E%3Cpath d='M11 22a8 8 0 0 1 0-12M15.5 19.5a4.5 4.5 0 0 0 0-7' fill='none' stroke='%230d0d0c' stroke-width='2.4' stroke-linecap='round'/%3E%3Ccircle cx='21' cy='16' r='2.6' fill='%230d0d0c'/%3E%3C/svg%3E">
   <script>
-    const chapter = new URL('take-apart/', location.href);
-    chapter.search = location.search;
-    chapter.hash = location.hash;
-    location.replace(chapter.href);
+    // Decide before the first paint whether the opening plays, so nothing flashes.
+    (function () {
+      var root = document.documentElement;
+      if (location.hash || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      root.setAttribute('data-intro', '');
+      // If the page script never starts, show the finished page instead of a blank one.
+      setTimeout(function () { if (!window.__heroStarted) root.removeAttribute('data-intro'); }, 6000);
+    })();
   </script>
-  <noscript><meta http-equiv="refresh" content="0; url=take-apart/"></noscript>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
+  <link rel="stylesheet" href="styles.css?v=19">
+  <link rel="stylesheet" href="take-apart/style.css?v=main-lesson-1">
+  <script type="importmap">
+    {"imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }}
+  </script>
+  <script src="js/rfid/physics.js" defer></script>
+  <script src="js/rfid/iso14443a.js" defer></script>
+  <script src="js/rfid/lf.js" defer></script>
+  <script src="js/rfid/tag.js" defer></script>
+  <script src="js/rfid/air.js" defer></script>
+  <script src="js/rfid/reader.js" defer></script>
+  <script src="js/rfid/channel.js" defer></script>
+  <script src="js/lockscreen.js" defer></script>
+  <script src="js/models.js" defer></script>
+  <script src="js/story.js?v=5" defer></script>
+  <script src="js/lab.js" defer></script>
+  <script src="js/deep.js?v=main-lesson-1" defer></script>
+  <script type="module" src="js/deep-motion.js?v=main-lesson-1"></script>
+  <script src="js/landing.js?v=8" defer></script>
+  <script src="js/present.js?v=5" defer></script>
+  <script type="module" src="js/taps.js"></script>
+  <script type="module" src="js/intro/main.js?v=47"></script>
 </head>
 <body>
-  <main><a href="take-apart/#take-apart">Take it apart</a></main>
+  <main class="hero">
+    <div class="stage" id="stage" tabindex="0" role="group" aria-roledescription="carousel"
+      aria-label="Three everyday things that use RFID: a key fob, a phone and a contactless card. Use the left and right arrow keys to turn them.">
+      <div class="stage-light" aria-hidden="true"></div>
+      <div class="shadows" aria-hidden="true"><i></i><i></i><i></i></div>
+      <p class="visually-hidden" id="focus-name" aria-live="polite"></p>
+    </div>
+    <div class="copy">
+      <h1 id="headline" aria-label="Those are the things you use every day.">
+        <span class="line"><span class="word">Those</span> <span class="word">are</span> <span class="word">the</span></span>
+        <span class="line"><span class="word">things</span> <span class="word">you</span> <span class="word">use</span></span>
+        <span class="line"><span class="word">every</span> <span class="word">day.</span></span>
+      </h1>
+      <p id="subline">and almost nobody knows how it works<span class="dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></p>
+    </div>
+  </main>
+
+  <!-- Every day: three taps, one after another (js/taps.js). It slides up over the
+       landing page; the story below starts where this section ends. -->
+  <section class="taps" id="taps" aria-labelledby="taps-title">
+    <h2 class="taps-title" id="taps-title">One tap, and it just works.</h2>
+    <div class="taps-row">
+      <canvas class="taps-canvas" aria-hidden="true"></canvas>
+      <figure class="tap">
+        <div class="tap-view" role="img" aria-label="A metro ticket taps the reader on a ticket gate. The gate opens."></div>
+        <figcaption class="tap-say"><b>Tap.</b> The gate opens.</figcaption>
+        <span class="tap-bar" aria-hidden="true"><i></i></span>
+      </figure>
+      <figure class="tap">
+        <div class="tap-view" role="img" aria-label="A bank card taps a payment terminal. The payment is approved."></div>
+        <figcaption class="tap-say"><b>Tap.</b> The payment goes through.</figcaption>
+        <span class="tap-bar" aria-hidden="true"><i></i></span>
+      </figure>
+      <figure class="tap">
+        <div class="tap-view" role="img" aria-label="The unlock button on a car key is pressed. The car's lights blink and its door opens."></div>
+        <figcaption class="tap-say"><b>Click.</b> The car opens.</figcaption>
+        <span class="tap-bar" aria-hidden="true"><i></i></span>
+      </figure>
+    </div>
+    <button class="taps-pause" type="button" aria-pressed="false"><i aria-hidden="true"></i><span>Pause</span></button>
+  </section>
+
+  <!-- What RFID is (js/intro/). A pinned stage that scrolling plays: the card opens and
+       lets out R, F, I, D, an X-ray shows its antenna and chip, and you drag it onto a reader. -->
+  <section class="intro" id="what-is-rfid" aria-labelledby="intro-title">
+    <a class="skip-link" href="#try-it">Skip to the card and reader</a>
+    <div class="intro-stage">
+      <div class="frame" aria-hidden="true"></div>
+      <h2 class="story-title" id="intro-title">RFID</h2>
+      <div class="letters" aria-hidden="true">
+        <span class="letter"><b>R</b><span>adio-</span></span>
+        <span class="letter"><b>F</b><span>requency</span></span>
+        <span class="letter"><b>I</b><span></span></span>
+        <span class="letter"><b>D</b><span>entification</span></span>
+      </div>
+      <p class="meaning">RFID spells <strong>Radio-Frequency Identification.</strong></p>
+      <div class="definition">
+        <p class="definition-lead">This technology works by exchanging data using radio waves.</p>
+        <p class="aside">That’s literally it.</p>
+      </div>
+      <div class="card-shadow" aria-hidden="true"></div>
+      <canvas class="signal" aria-hidden="true"></canvas>
+      <div class="reader" aria-hidden="true">
+        <img src="images/intro/reader.webp" alt="" width="640" height="512" draggable="false">
+      </div>
+      <div class="card-poster" aria-hidden="true">
+        <img src="images/intro/credit-card-face.webp" alt="" width="520" height="328" draggable="false">
+        <img src="images/intro/credit-card-xray.webp" alt="" width="520" height="328" draggable="false">
+      </div>
+      <!-- The lights going down for the conversation (js/intro/main.js, paintFilm). -->
+      <div class="cine-backdrop" aria-hidden="true"></div>
+      <canvas class="card-scene" aria-hidden="true"></canvas>
+      <div class="intro-callouts" aria-hidden="true">
+        <span class="antenna-label">Antenna</span>
+        <span class="chip-label">Chip</span>
+      </div>
+      <p class="question"><span>The card has no battery.</span> <strong>So how does it talk?</strong></p>
+      <div class="instruction">
+        <h2>Here's how:</h2>
+        <p id="drag-instruction">Drag the card to the reader</p>
+        <noscript><p>Turn on JavaScript to try the card.</p></noscript>
+      </div>
+      <button class="drag-card" type="button" aria-label="Tap the card on the reader" aria-describedby="drag-instruction" hidden></button>
+      <!-- The close-up (js/intro/cinema.js), placed by js/intro/main.js (paintFilm). One
+           readout, like a subtitle along the bottom, says one thing at a time: one
+           sentence, a line of small print under it, then the radio frequency, how far the
+           card is (or when it happens in a real tap) and the chip's power. After the drop,
+           the arrows on its sides step through the tap; in the conversation the right one
+           becomes Ask. While a message is on the air, its label holds still at the top in
+           the middle: which way it goes, what it says, and its signal as the other side
+           feels it (js/intro/effects.js draws the field as rings that carry it). -->
+      <div class="cine">
+        <section class="readout" aria-label="What is happening now">
+          <div class="readout-words" aria-live="polite">
+            <p class="readout-text"></p>
+            <p class="readout-detail"></p>
+          </div>
+          <div class="readout-meters" aria-hidden="true">
+            <p class="readout-meter readout-frequency"><small>Radio frequency</small><b>13.56 MHz</b><i class="readout-wave"></i></p>
+            <p class="readout-meter readout-middle"><small>Distance</small><b>10.0 cm</b><i></i></p>
+            <p class="readout-meter readout-power"><small>Chip power</small><b>0%</b><i></i></p>
+          </div>
+          <div class="readout-nav" hidden>
+            <button class="readout-back" type="button" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg></button>
+            <ol class="readout-dots" aria-label="Steps"></ol>
+            <span class="readout-count"></span>
+            <button class="readout-next" type="button" aria-label="Next"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5.5 16 12l-6.5 6.5"/></svg></button>
+          </div>
+          <p class="cine-hint" aria-hidden="true">Drag to look around</p>
+        </section>
+        <!-- The parts each step names, joined to them by thin lines (main.js paintLabels3D). -->
+        <div class="cine-labels" aria-hidden="true">
+          <svg class="cine-leaders"></svg>
+          <span class="cine-label" data-part="readerCoil">Reader’s coil</span>
+          <span class="cine-label" data-part="field">Magnetic field</span>
+          <span class="cine-label" data-part="cardCoil">Card’s coil</span>
+          <span class="cine-label" data-part="cardChip">Chip</span>
+          <span class="cine-label" data-part="metal">Metal</span>
+        </div>
+        <!-- The lab (cinema.js `lab` step, js/intro/lab-model.js, main.js): change the tap and
+             watch it respond. Every number is worked out live by js/rfid/physics.js. -->
+        <section class="try" aria-labelledby="try-title" hidden>
+          <h3 class="try-title" id="try-title">Try it yourself</h3>
+          <dl class="try-readings">
+            <div class="try-reading" data-reading="field">
+              <dt>Field at the card</dt><dd><b>0 A/m</b><i class="try-bar"><span></span><em title="The standard’s minimum"></em></i></dd>
+            </div>
+            <div class="try-reading" data-reading="volts">
+              <dt>Voltage at the chip</dt><dd><b>0 V</b><i class="try-bar"><span></span><em title="What the chip needs to wake"></em></i></dd>
+            </div>
+            <div class="try-reading" data-reading="reach"><dt>Works up to</dt><dd><b>0 cm</b></dd></div>
+            <div class="try-reading" data-reading="answer"><dt>Answer strength</dt><dd><b>None</b></dd></div>
+          </dl>
+          <div class="try-chart">
+            <div class="try-tabs" role="group" aria-label="Chart">
+              <button type="button" data-chart="distance" aria-pressed="true">Distance</button>
+              <button type="button" data-chart="tuning" aria-pressed="false">Tuning</button>
+            </div>
+            <canvas class="try-plot" role="img" aria-label="Voltage at the chip against distance"></canvas>
+          </div>
+          <div class="try-controls">
+            <label class="try-control"><span>Distance</span><output data-for="distance">3.0 cm</output>
+              <input type="range" name="distance" min="0.5" max="10" step="0.1" value="3"></label>
+            <label class="try-control"><span>Card’s angle</span><output data-for="angle">0°</output>
+              <input type="range" name="angle" min="0" max="90" step="1" value="0"></label>
+            <label class="try-control"><span>Metal behind the card</span><output data-for="metal">None</output>
+              <input type="range" name="metal" min="0" max="4" step="1" value="0"></label>
+            <label class="try-control"><span>Reader’s power</span><output data-for="drive">100%</output>
+              <input type="range" name="drive" min="0" max="150" step="1" value="100"></label>
+            <label class="try-control"><span>Card tuned to</span><output data-for="tune">13.56 MHz</output>
+              <input type="range" name="tune" min="0" max="1000" step="1" value="499"></label>
+          </div>
+          <div class="try-id">
+            <label><span>Card’s ID</span><input type="text" name="id" value="04 7B 21 9E" maxlength="11" spellcheck="false" autocomplete="off" aria-describedby="try-check"></label>
+            <p class="try-check" id="try-check">Check byte <b>C0</b></p>
+          </div>
+          <div class="try-actions">
+            <button class="try-ask" type="button">Ask the card</button>
+            <button class="try-reset" type="button">Reset</button>
+          </div>
+          <div class="try-presets" role="group" aria-label="Try a situation"></div>
+        </section>
+        <!-- It plays by itself until the visitor steps in; this pauses or plays it again. -->
+        <button class="cine-auto is-on" type="button" aria-pressed="true" hidden><i aria-hidden="true"></i><span class="cine-auto-text">Pause</span></button>
+        <div class="talk-tag" aria-hidden="true">
+          <small class="talk-note"></small>
+          <b class="talk-words"></b>
+          <div class="talk-signal">
+            <svg class="talk-trace" viewBox="0 0 672 24" preserveAspectRatio="none">
+              <defs><clipPath class="talk-clip" id="talk-clip"><rect x="0" y="0" width="0" height="24"/></clipPath></defs>
+              <path class="talk-track" d="M0 3H672"/>
+              <path class="talk-line" clip-path="url(#talk-clip)"/>
+            </svg>
+            <i class="talk-dot"></i>
+          </div>
+          <span class="talk-bytes"></span>
+        </div>
+        <svg class="cine-check" viewBox="0 0 64 64" aria-hidden="true">
+          <circle cx="32" cy="32" r="27" pathLength="1"/>
+          <path d="M20 33.5l8.5 8.5L45 24.5" pathLength="1"/>
+        </svg>
+        <div class="cine-explain">
+          <p class="status" role="status"></p>
+          <h3>That’s how it works.</h3>
+          <p>The reader’s field powers the card. The card uses that power to answer. The reader reads the answer.</p>
+          <p>No battery. No contact. All in about five thousandths of a second.</p>
+          <p class="cine-fine">The card never broadcasts. It answers by taking more or less of the reader’s field, and the reader feels the change.</p>
+          <div class="feedback">
+            <a class="continue-chapter" href="#take-apart" hidden>Take it apart</a>
+            <button class="replay" type="button" hidden>Watch again</button>
+            <button class="retry" type="button" hidden>Try again</button>
+          </div>
+        </div>
+      </div>
+      <div class="hud" aria-hidden="true">
+        <span class="scroll-guide">
+          <img src="images/intro/down.svg" width="18" height="18" alt="">
+          Scroll to explore
+        </span>
+        <div class="progress"><span></span></div>
+      </div>
+    </div>
+    <div id="try-it"></div>
+  </section>
+
+  <!-- The key-fob story, played by scrolling (js/story.js). It is off the page's path:
+       js/landing.js removes it unless the address has ?story, because the card close-up
+       above tells the mechanism once. The empty track gives it its scroll length. -->
+  <div class="story" id="story">
+    <!-- One plain sentence at a time, always in the same place (js/story.js). -->
+    <p class="say" id="say" aria-live="polite"></p>
+    <p class="visually-hidden">Inside the key, the card and the phone: a copper coil and a chip.</p>
+    <svg class="callout-lines" aria-hidden="true"></svg>
+    <div class="callouts" aria-hidden="true"></div>
+    <button type="button" class="battery-handle" hidden aria-label="Pull the battery out of the key"></button>
+
+    <!-- Scenes 4 to 6: the reader and the key, live (js/lab.js). -->
+    <section class="lab" aria-label="A reader and a key" aria-hidden="true">
+      <canvas class="lab-canvas" aria-hidden="true"></canvas>
+      <button type="button" class="lab-grab" role="slider" aria-label="Distance from the reader" aria-valuemin="2" aria-valuemax="120" aria-valuenow="95"></button>
+      <div class="lab-meter" aria-hidden="true"><div><i></i><em></em></div><span>Power</span></div>
+      <div class="lab-trace" aria-hidden="true"><span>What the reader feels</span><canvas></canvas></div>
+      <p class="lab-id" aria-live="off"><span>ID</span><b>·· ·· ·· ··</b></p>
+      <div class="lab-buttons" role="group" aria-label="Break it">
+        <button type="button" id="lab-turn" aria-pressed="false">Turn it</button>
+        <button type="button" id="lab-metal" aria-pressed="false">Add metal</button>
+        <button type="button" id="lab-card" aria-pressed="false">Use a card</button>
+      </div>
+      <p class="lab-badge" aria-hidden="true">Slowed down</p>
+      <svg class="lab-hand" viewBox="0 0 48 56" aria-hidden="true"><path d="M18 52c-6-4-12-12-14-18-1-3 2-5 5-3l5 5V8c0-3 2-5 4-5s4 2 4 5v16c0-3 2-5 4-5s4 2 4 5v2c0-3 2-5 4-5s4 2 4 5v4c0-3 2-4 4-4s3 2 3 5v10c0 8-4 13-8 16"/></svg>
+      <p class="lab-fine">Simulation, computed live.</p>
+    </section>
+
+    <p class="scroll-cue" aria-hidden="true"><span>Scroll</span><i></i></p>
+    <nav class="chapters" aria-label="Chapters">
+      <div class="chapters-track" aria-hidden="true"><i class="chapters-fill"></i></div>
+      <button type="button">Intro</button>
+      <button type="button">Inside</button>
+      <button type="button">No battery</button>
+      <button type="button">Power</button>
+      <button type="button">Reply</button>
+      <button type="button">Break it</button>
+    </nav>
+  </div>
+  <div class="track" aria-hidden="true"></div>
+
+  <!-- Part 2: take it apart (js/deep.js). Every scene runs on the same simulation as the film. -->
+  <section class="deep" id="take-apart" aria-labelledby="deep-title" tabindex="-1">
+    <header class="deep-head">
+      <div class="deep-head-words">
+        <p class="kicker">Take it apart</p>
+        <h2 id="deep-title">Everything you just saw happens faster than a <span id="deep-blink-word">blink</span>.</h2>
+        <p>Here it is, slowed down and taken apart. From here on, the card is the tag and the phone is the reader. Every number below is calculated as you change things.</p>
+      </div>
+    </header>
+
+    <h2 class="deep-part" id="part-one">
+      <span>Part one</span>
+      <span class="deep-part-title"><span id="part-one-power">The power</span>: how a field makes electricity</span>
+    </h2>
+
+    <section class="plate" id="s6" aria-labelledby="s6-title">
+      <div class="plate-words">
+        <p class="plate-num">6</p>
+        <h3 id="s6-title">Closer is stronger</h3>
+        <p class="s6-intro">The field fades very fast with distance. A bigger coil catches more of it, which is why the card’s coil runs around its whole edge.</p>
+        <div class="plate-controls">
+          <div class="s6-control">
+            <div class="s6-control-text">
+              <label for="s6-radius">Size of the card’s coil</label>
+              <output for="s6-radius" data-for="s6-radius" aria-live="off"></output>
+            </div>
+            <input id="s6-radius" type="range" min="12" max="45" value="36">
+          </div>
+        </div>
+        <div class="s6-distance-demo">
+          <div class="s6-coupling">
+            <img class="s6-reader" src="images/intro/reader.webp" width="640" height="512" alt="" draggable="false">
+            <span class="s6-field" aria-hidden="true"></span>
+            <span class="s6-measure" aria-hidden="true"></span>
+            <div class="s6-card-travel">
+              <div class="s6-card" id="s6-distance" role="slider" tabindex="0" aria-label="Card distance from the phone" aria-describedby="s6-distance-help" aria-valuemin="2" aria-valuemax="80" aria-valuenow="20" aria-valuetext="2.0 cm">
+                <img src="images/intro/credit-card-face.webp" width="520" height="328" alt="" draggable="false">
+                <span class="s6-coil" aria-hidden="true"></span>
+              </div>
+            </div>
+          </div>
+          <div class="s6-distance-caption">
+            <span id="s6-distance-help">Drag the card or tap to place it</span>
+            <span id="s6-distance-value" class="s6-distance-value" aria-hidden="true">2.0 cm</span>
+          </div>
+        </div>
+        <p class="plate-readout" aria-live="polite"></p>
+        <p class="plate-real">Real name: inductive coupling. A card must work in a field from 1.5 to 7.5 A/m (ISO/IEC 14443-2).</p>
+      </div>
+      <canvas class="plate-canvas" id="s6-chart" role="img" aria-label="Graph of the field and the chip's volts against distance"></canvas>
+    </section>
+
+    <section class="plate" id="s7" aria-labelledby="s7-title">
+      <div class="plate-words">
+        <p class="plate-num">7</p>
+        <h3 id="s7-title"><span>It</span> <span>has</span> <span>to</span> <span>keep</span> <span id="s7-flipping">flipping</span></h3>
+        <p>Only a changing field makes electricity. The reader’s field flips 13.56 million times a second.</p>
+        <div class="plate-controls s7-control">
+          <div class="s7-control-text">
+            <label for="s7-speed">How fast the field flips</label>
+            <output for="s7-speed" data-for="s7-speed" aria-live="off"></output>
+          </div>
+          <input id="s7-speed" type="range" min="0" max="100" value="100">
+        </div>
+        <p class="plate-readout" aria-live="polite"></p>
+        <p class="plate-real">Real name: Faraday’s law of induction. The voltage is the speed of the change: V = ω · M · I.</p>
+      </div>
+      <canvas class="plate-canvas" id="s7-chart" role="img" aria-label="The field through the coil and the voltage it makes, over time"></canvas>
+    </section>
+
+    <section class="plate" id="s8" aria-labelledby="s8-title">
+      <div class="plate-words">
+        <p class="plate-num">8</p>
+        <h3 id="s8-title"><span>The</span> <span>tuning</span> <span>trick</span></h3>
+        <p>The coil and the tiny capacitor beside it swing together, like a child on a swing pushed at just the right moment. Tuned right, a weak field is enough.</p>
+        <div class="plate-controls">
+          <div class="s8-cap-control">
+            <div>
+              <label for="s8-cap">Capacitor</label>
+              <output for="s8-cap" data-for="s8-cap" aria-live="off"></output>
+              <input id="s8-cap" type="range" min="0" max="100" value="50">
+            </div>
+            <button class="s8-cap-toggle" id="s8-cap-toggle" type="button" aria-label="Remove the capacitor">
+              <span class="s8-cap-seat" aria-hidden="true">
+                <span class="s8-cap-lift"><span class="s8-capacitor"></span></span>
+              </span>
+              <span class="s8-cap-action">Remove</span>
+            </button>
+          </div>
+          <div class="plate-switch s8-tags" role="radiogroup" aria-label="Tag">
+            <label>
+              <input type="radio" name="s8-tag" value="card" checked>
+              <img src="images/intro/credit-card-face.webp" width="520" height="328" alt="">
+              Card
+            </label>
+            <label>
+              <input type="radio" name="s8-tag" value="key">
+              <span class="s8-key" aria-hidden="true"></span>
+              Car key
+            </label>
+          </div>
+        </div>
+        <p class="plate-readout" aria-live="polite"></p>
+        <p class="plate-real">Real name: resonance, f = 1 / (2π√LC). A card’s chip draws about 5 mW; a key’s about 75 µW, so the key leans on tuning far more.</p>
+      </div>
+      <canvas class="plate-canvas" id="s8-chart" role="img" aria-label="The chip's volts across frequencies, with its tuned response for comparison"></canvas>
+    </section>
+
+    <section class="plate" id="s9" aria-labelledby="s9-title">
+      <div class="plate-words">
+        <p class="plate-num">9</p>
+        <h3 id="s9-title">Why metal fights back</h3>
+        <p>Metal makes its own currents that push against the field, and it knocks the coil out of tune.</p>
+        <div class="s9-readout">
+          <div class="s9-status">
+            <strong id="s9-distance">No metal</strong>
+            <span id="s9-chip" role="status">Chip awake</span>
+          </div>
+          <dl class="s9-metrics">
+            <div><dt>Field at the card</dt><dd id="s9-strength">—</dd></div>
+            <div><dt>Coil tuning</dt><dd id="s9-tuning">—</dd></div>
+          </dl>
+        </div>
+        <p class="plate-real">Real name: eddy currents and detuning. Modelled as a perfect conductor: a mirror image of the reader’s coil, with the current reversed.</p>
+      </div>
+      <div class="s9-field" id="s9-field">
+        <canvas class="plate-canvas" id="s9-chart" role="img" aria-label="Magnetic field lines around the reader’s coil and card"></canvas>
+        <button class="s9-metal-action" id="s9-metal-action" type="button">Bring metal closer</button>
+        <div class="s9-metal" id="s9-metal" role="slider" tabindex="0" aria-label="Metal distance behind the card" aria-describedby="s9-metal-help" aria-orientation="vertical" aria-valuemin="1" aria-valuemax="91" aria-valuenow="91" aria-valuetext="No metal">
+          <span class="s9-metal-surface" aria-hidden="true"></span>
+        </div>
+        <span id="s9-metal-help" hidden>Drag the plate or use the arrow keys to move it. Home brings it closest and End moves it away.</span>
+      </div>
+    </section>
+
+    <section class="plate" id="s10" aria-labelledby="s10-title">
+      <div class="plate-words">
+        <p class="plate-num">10</p>
+        <h3 id="s10-title"><span class="s10-title-text">Getting through the <a id="s10-pauses" href="#part-two" aria-describedby="part-two-label"><span>pauses</span></a></span></h3>
+        <p>The phone talks by switching its field off for an instant. A chip with no battery has to survive every pause, a few millionths of a second long, on saved energy.</p>
+        <div class="plate-controls s10-control">
+          <div class="s10-control-text">
+            <label for="s10-cap">Storage capacitor</label>
+            <output for="s10-cap" data-for="s10-cap" aria-live="off">1 nF</output>
+          </div>
+          <div class="s10-range">
+            <span class="s10-track" aria-hidden="true"></span>
+            <input id="s10-cap" type="range" min="0" max="40" value="20" aria-valuetext="1 nF">
+          </div>
+        </div>
+        <p class="plate-readout" aria-live="polite"></p>
+        <p class="plate-real">Real name: 100% ASK pauses, modified Miller coding. Each pause lasts about 2.4 µs.</p>
+      </div>
+      <canvas class="plate-canvas" id="s10-chart" role="img" aria-label="The field with its pauses, and the chip's stored voltage"></canvas>
+    </section>
+
+    <h2 class="deep-part" id="part-two" tabindex="-1">
+      <span id="part-two-label">Part two</span>
+      <span class="deep-part-title">The answer: how a chip with no radio talks back</span>
+    </h2>
+
+    <section class="plate" id="s11" aria-labelledby="s11-title">
+      <div class="plate-words">
+        <p class="plate-num">11</p>
+        <h3 id="s11-title">Soaking up more, then less</h3>
+        <p>The chip never sends anything. It changes how much of the field it soaks up, and the reader feels the difference in its own coil.</p>
+        <div class="plate-controls">
+          <label class="s11-switch-label" for="s11-switch"><input id="s11-switch" type="checkbox" role="switch" checked> The chip’s answer switch</label>
+        </div>
+        <p class="plate-readout" aria-live="polite"></p>
+        <p class="plate-real">Real name: load modulation.</p>
+      </div>
+      <div class="s11-instrument">
+        <div class="plate-controls s11-capture">
+          <span id="s11-capture-name">Presence reply</span>
+          <button id="s11-playback" type="button" aria-label="Pause captures" hidden>Pause</button>
+        </div>
+        <div class="s11-plot">
+          <canvas class="plate-canvas" id="s11-chart" role="img" aria-label="The reader's coil current while the card answers" aria-describedby="s11-capture-name"></canvas>
+          <span class="s11-scan" aria-hidden="true" hidden></span>
+        </div>
+        <div class="plate-controls s11-zoom">
+          <label for="s11-zoom">Zoom</label>
+          <input id="s11-zoom" type="range" min="0" max="100" value="0" aria-orientation="vertical" aria-valuetext="true size">
+          <output for="s11-zoom" data-for="s11-zoom" aria-live="off">true size</output>
+        </div>
+      </div>
+    </section>
+
+    <section class="plate" id="s12" aria-labelledby="s12-title">
+      <div class="plate-words">
+        <p class="plate-num">12</p>
+        <h3 id="s12-title">Whispering next to a shout</h3>
+        <p>The card’s answer is tiny next to the reader’s own field. So the chip flickers its dips 847,500 times a second. That moves its answer to a pitch the reader can pick out.</p>
+        <div class="plate-controls">
+          <div class="s12-flicker-control">
+            <label class="s12-flicker-label" for="s12-flicker"><input id="s12-flicker" type="checkbox" role="switch" checked> The chip’s fast flicker</label>
+            <output id="s12-flicker-rate" for="s12-flicker" aria-live="off">847.5 kHz</output>
+          </div>
+        </div>
+        <p class="plate-readout" aria-live="polite"></p>
+        <p class="plate-real">Real name: the subcarrier, 13.56 MHz ÷ 16 = 847.5 kHz.</p>
+      </div>
+      <canvas class="plate-canvas" id="s12-chart" role="img" aria-label="The reader's signal sorted by pitch"></canvas>
+    </section>
+
+    <section class="plate" id="s13" aria-labelledby="s13-title" tabindex="-1">
+      <div class="plate-words">
+        <p class="plate-num">13</p>
+        <h3 id="s13-title">Keeping count</h3>
+        <p>With “dip for 1, quiet for 0”, a run of zeros is a flat line, and a reader whose clock runs a little fast loses count. With “every bit changes in its middle”, the count never slips.</p>
+        <div class="plate-controls">
+          <label>A letter <input id="s13-letter" type="text" maxlength="1" value="A" autocomplete="off"></label>
+          <span class="plate-switch s13-code-switch" role="radiogroup" aria-label="How bits are written"><span class="s13-code-pill" aria-hidden="true"></span><label><input type="radio" name="s13-code" value="simple"> Dip for 1</label><label><input type="radio" name="s13-code" value="manchester" checked> Change in the middle</label></span>
+          <div class="s13-drift-control">
+            <div class="s13-drift-head">
+              <label for="s13-drift-input">The reader’s clock</label>
+              <output id="s13-drift" data-for="s13-drift" for="s13-drift-input"><span class="s13-drift-num">+7%</span> <span class="s13-drift-word">fast</span></output>
+              <button id="s13-exact" type="button" class="s13-exact" aria-label="Reset clock drift to 0%">0%</button>
+            </div>
+            <div class="s13-drift-range">
+              <span class="s13-drift-track" aria-hidden="true"><span class="s13-drift-zero"></span><span class="s13-drift-fill"></span></span>
+              <input id="s13-drift-input" type="range" min="-12" max="12" step="1" value="7" aria-valuetext="+7% fast">
+            </div>
+            <div class="s13-drift-scale" aria-hidden="true">
+              <span>−12% slow</span>
+              <span>0%</span>
+              <span>+12% fast</span>
+            </div>
+          </div>
+        </div>
+        <p class="plate-readout" aria-live="polite"></p>
+        <p class="plate-real">Real name: Manchester coding.</p>
+      </div>
+      <canvas class="plate-canvas" id="s13-chart" role="img" aria-label="A letter's bits, how they look on the air, and where the reader counts them"></canvas>
+    </section>
+
+    <section class="plate" id="s14" aria-labelledby="s14-title" tabindex="-1">
+      <div class="plate-words">
+        <p class="plate-num">14</p>
+        <h3 id="s14-title">Catching mistakes</h3>
+        <p>A dip drowns and a 1 becomes a 0. A check bit on every byte and a check number on every message catch it, and the phone asks again.</p>
+        <div class="plate-controls s14-controls">
+          <button type="button" id="s14-tap" class="s14-tap-pad" data-tone="ok">
+            <span class="s14-tap-stage" aria-hidden="true">
+              <img class="s14-reader" src="images/intro/reader.webp" width="640" height="512" alt="" draggable="false">
+              <span class="s14-tap-wave"></span>
+              <span class="s14-card-wrap">
+                <img class="s14-card" src="images/intro/credit-card-face.webp" width="520" height="328" alt="" draggable="false">
+              </span>
+            </span>
+            <span class="s14-tap-copy">
+              <span class="s14-tap-action">Tap again</span>
+              <span class="s14-tap-badge" id="s14-tap-status" data-tone="ok" aria-hidden="true">
+                <svg class="s14-icon-ok" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 8.4 6.5 11.7 12.8 4.6"/></svg>
+                <svg class="s14-icon-fail" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4.2 4.2 11.8 11.8M11.8 4.2 4.2 11.8"/></svg>
+              </span>
+            </span>
+          </button>
+          <div class="s14-checks-row">
+            <label class="s14-checks-label" for="s14-checks">
+              <span class="s14-checks-text">
+                <span>Checks</span>
+                <span class="s14-checks-sub">Parity bit &amp; CRC</span>
+              </span>
+              <span class="s14-checks-toggle">
+                <output id="s14-checks-state" for="s14-checks" aria-live="off">On</output>
+                <input id="s14-checks" type="checkbox" role="switch" checked>
+              </span>
+            </label>
+          </div>
+        </div>
+        <p class="plate-readout" aria-live="polite"></p>
+        <p class="plate-real">Real name: odd parity bits and CRC_A (ISO/IEC 14443-3). The card also checks its own ID when the phone selects it.</p>
+      </div>
+      <div class="s14-instrument">
+        <div class="s14-signal-label">
+          <span>Card’s ID signal</span>
+          <div class="s14-signal-meta">
+            <output id="s14-disturbance" for="s14-signal">Quiet · 0.0%</output>
+            <button type="button" id="s14-clear" class="s14-clear" aria-disabled="true">Clear</button>
+          </div>
+        </div>
+        <div class="s14-signal-strip" id="s14-signal" role="group" aria-label="Card ID signal cells" aria-describedby="s14-signal-help">
+          <canvas class="plate-canvas" id="s14-chart" aria-hidden="true"></canvas>
+          <div class="s14-cells" id="s14-cells"></div>
+          <span class="s14-noise-meter" aria-hidden="true"><span class="s14-noise-fill"></span></span>
+        </div>
+        <p id="s14-signal-help">Click or drag across bits to jam or clear them. More jammed bits raise the channel noise.</p>
+        <ol class="s14-replies" id="s14-replies" aria-label="Decoded replies"></ol>
+      </div>
+    </section>
+
+    <section class="plate" id="s15" aria-labelledby="s15-title">
+      <div class="plate-words">
+        <p class="plate-num">15</p>
+        <h3 id="s15-title">The whole conversation</h3>
+        <p class="plate-gate">You’re not supposed to see this… But just this once, we’ll make an exception.</p>
+        <p>Every tap starts with the same six messages. The phone works out every bit from the dips alone: it never peeks at the card’s memory.</p>
+        <div class="plate-controls s15-controls">
+          <div class="s15-tap-box" id="s15-tap-box" data-state="idle">
+            <div class="s15-tap-head">
+              <span class="s15-tap-prompt" id="s15-tap-prompt">Drag the card onto the reader</span>
+              <span class="s15-tap-hint" id="s15-tap-hint">Drag to reader</span>
+            </div>
+            <div class="s15-tap-stage" id="s15-tap-stage">
+              <img class="s15-reader" src="images/intro/reader.webp" width="640" height="512" alt="" draggable="false">
+              <span class="s15-reader-ring" aria-hidden="true"></span>
+              <span class="s15-field-arc" aria-hidden="true"></span>
+              <button type="button" id="s15-tap" class="s15-card-btn" aria-label="Drag the card onto the reader to play the conversation (or press Left Arrow)" aria-describedby="s15-tap-prompt">
+                <img src="images/intro/credit-card-face.webp" width="520" height="328" alt="" draggable="false">
+              </button>
+            </div>
+          </div>
+          <div class="s15-action-row">
+            <button type="button" id="s15-steal" class="s15-steal-btn">
+              <span class="s15-steal-text">Steal a packet</span>
+              <span class="s15-jaw-wrap" aria-hidden="true">
+                <svg class="s15-jaw-svg" viewBox="0 0 36 36" width="24" height="24">
+                  <g class="s15-jaw-top">
+                    <path d="M5 18 A13 13 0 0 1 31 18 Z" fill="currentColor"/>
+                    <path d="M23.5 18 L25.5 20.5 L27.5 18 Z" fill="var(--paper)"/>
+                    <circle cx="21" cy="11.5" r="1.7" fill="var(--paper)"/>
+                  </g>
+                  <g class="s15-jaw-bot">
+                    <path d="M5 18 A13 13 0 0 0 31 18 Z" fill="currentColor"/>
+                    <path d="M21.5 18 L23.5 15.5 L25.5 18 Z" fill="var(--paper)"/>
+                  </g>
+                </svg>
+              </span>
+            </button>
+          </div>
+          <div class="s15-random-row">
+            <label class="s15-random-label" for="s15-random">
+              <span class="s15-random-text">
+                <span>New ID every tap</span>
+                <span class="s15-random-sub">Random UID (08 …)</span>
+              </span>
+              <span class="s15-random-toggle">
+                <output id="s15-random-state" for="s15-random" aria-live="off">On</output>
+                <input id="s15-random" type="checkbox" role="switch" checked>
+              </span>
+            </label>
+          </div>
+        </div>
+        <p class="plate-readout" aria-live="polite"></p>
+        <p class="plate-real">Real name: ISO/IEC 14443-3: REQA, ATQA, anticollision, UID, SELECT, SAK.</p>
+      </div>
+      <div class="plate-river">
+        <canvas class="plate-canvas" id="s15-chart" role="img" aria-label="Messages flowing between the phone and the card"></canvas>
+        <ol class="chat" aria-label="The phone's log"></ol>
+      </div>
+    </section>
+
+    <section class="plate" id="s16" aria-labelledby="s16-title">
+      <div class="plate-words">
+        <p class="plate-num">16</p>
+        <h3 id="s16-title">Two cards in one field</h3>
+        <p>Both cards answer at once. Where their IDs differ, the reader hears a 1 and a 0 together: a clash. It picks one side, and the other card goes quiet. That’s why tapping a whole wallet can charge the wrong card.</p>
+        <div class="plate-controls s16-controls">
+          <div class="s16-pick-group">
+            <span class="s16-pick-label" id="s16-pick-label">At a clash, pick</span>
+            <div class="s16-pill" id="s16-pill" role="radiogroup" aria-labelledby="s16-pick-label">
+              <span class="s16-pill-thumb" aria-hidden="true"></span>
+              <label class="s16-pill-opt"><input type="radio" name="s16-pick" value="1" checked><span>1s first</span></label>
+              <label class="s16-pill-opt"><input type="radio" name="s16-pick" value="0"><span>0s first</span></label>
+            </div>
+          </div>
+          <button type="button" id="s16-tap">New cards</button>
+        </div>
+        <p class="plate-readout" aria-live="polite"></p>
+        <p class="plate-real">Real name: bit-wise anticollision (ISO/IEC 14443-3). Transport for London calls it “card clash”.</p>
+      </div>
+      <div class="s16-instrument">
+        <canvas class="plate-canvas" id="s16-chart" role="img" aria-label="The cards' IDs, the clash and the reader's choice"></canvas>
+        <div class="s16-desk" id="s16-desk">
+          <div class="s16-field-zone" id="s16-field-zone">
+            <div class="s16-zone-head">
+              <span class="s16-zone-title">Reader field</span>
+              <span class="s16-zone-hint" id="s16-field-hint">Drag a card off to return it</span>
+            </div>
+            <div class="s16-pad-stage" id="s16-pad-stage">
+              <span class="s16-rf-ring s16-rf-ring-outer" aria-hidden="true"></span>
+              <span class="s16-rf-ring s16-rf-ring-inner" aria-hidden="true"></span>
+              <img class="s16-reader" src="images/intro/reader.webp" width="640" height="512" alt="" draggable="false">
+              <div class="s16-pad-cards" id="s16-pad-cards"></div>
+            </div>
+          </div>
+          <div class="s16-wallet-zone" id="s16-wallet-zone">
+            <div class="s16-zone-head">
+              <span class="s16-zone-title">Wallet</span>
+              <span class="s16-zone-hint" id="s16-wallet-count">1 inside</span>
+            </div>
+            <button type="button" class="s16-wallet" id="s16-wallet" aria-label="Drag or click wallet to place a card on the reader">
+              <span class="s16-wallet-back" aria-hidden="true"></span>
+              <span class="s16-wallet-slots" id="s16-wallet-slots" aria-hidden="true">
+                <span class="s16-slot" data-slot="0"><span class="s16-slot-lip"></span></span>
+                <span class="s16-slot" data-slot="1"><span class="s16-slot-lip"></span></span>
+                <span class="s16-slot" data-slot="2"><span class="s16-slot-lip"></span></span>
+              </span>
+              <span class="s16-wallet-front" aria-hidden="true">
+                <span class="s16-wallet-stitch"></span>
+                <span class="s16-wallet-action" id="s16-wallet-action">Drag or click</span>
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="plate" id="s17" aria-labelledby="s17-title">
+      <div class="plate-words">
+        <p class="plate-num">17</p>
+        <h3 id="s17-title"><span id="s17-why-word" class="s17-why-word">Why</span> your phone can’t read your car key</h3>
+        <p>A reader and a tag have to be tuned to each other. The key is tuned to 125 kHz; the phone’s field flips at 13.56 MHz, about 100 times faster.</p>
+        <div class="plate-controls s17-controls">
+          <div class="s17-switch-row">
+            <span class="s17-switch-label" id="s17-reader-label">Reader <output id="s17-reader-freq">13.56 MHz</output></span>
+            <div class="s17-pill" id="s17-reader-pill" role="radiogroup" aria-labelledby="s17-reader-label">
+              <span class="s17-pill-thumb" aria-hidden="true"></span>
+              <label class="s17-pill-opt"><input type="radio" name="s17-reader" value="phone" checked><span>Phone</span></label>
+              <label class="s17-pill-opt"><input type="radio" name="s17-reader" value="key"><span>Car’s reader</span></label>
+            </div>
+          </div>
+          <div class="s17-switch-row">
+            <span class="s17-switch-label" id="s17-tag-label">Tag <output id="s17-tag-freq">125 kHz</output></span>
+            <div class="s17-pill" id="s17-tag-pill" role="radiogroup" aria-labelledby="s17-tag-label">
+              <span class="s17-pill-thumb" aria-hidden="true"></span>
+              <label class="s17-pill-opt"><input type="radio" name="s17-tag" value="key" checked><span>Car key</span></label>
+              <label class="s17-pill-opt"><input type="radio" name="s17-tag" value="card"><span>Card</span></label>
+            </div>
+          </div>
+        </div>
+        <p class="plate-readout" aria-live="polite"></p>
+        <p class="plate-real">Real name: low frequency (LF, 125 kHz) and high frequency (HF, 13.56 MHz).</p>
+      </div>
+      <canvas class="plate-canvas" id="s17-chart" role="img" aria-label="The tag's tuning curve and the reader's frequency"></canvas>
+    </section>
+
+    <footer class="deep-end" id="deep-end">
+      <p class="deep-last">Every tap does all of this, in less time than a <span id="deep-end-blink" class="deep-end-blink">blink</span>.</p>
+      <p>Everything on this page is computed by its own code: the coils from Maxwell’s formula, the card and phone from the ISO/IEC 14443 standard, and a reader that decodes only the signal it receives. <a href="tests/">See the checks run</a>.</p>
+      <p class="deep-fine">Sources: ISO/IEC 14443-2 and -3; NIST SP 800-98; NXP NTAG21x and PN7462 datasheets; TI TMS37145 datasheet; EM4100 format; Transport for London, “card clash”. 3D models made by our team. Built with Three.js.</p>
+    </footer>
+  </section>
 </body>
 </html>

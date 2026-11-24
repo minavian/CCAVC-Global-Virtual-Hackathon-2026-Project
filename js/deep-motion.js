@@ -1,7 +1,9 @@
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const viewportWidth = () => document.body.clientWidth;
 
 function watchPartOne(word, part) {
   const chapter = part.closest('.deep');
+  const opener = word.closest('.deep-head');
   const root = document.documentElement;
   const cover = document.createElement('span');
   cover.className = 'deep-blink-cover';
@@ -75,7 +77,7 @@ function watchPartOne(word, part) {
       await close.finished;
       if (!motionAllowed()) return;
 
-      scrollTo({ top: 0, behavior: 'instant' });
+      opener.scrollIntoView({ block: 'start', behavior: 'instant' });
       animation = cover.animate([
         { opacity: 1 }, { opacity: 1, offset: .14, easing: 'ease-out' }, { opacity: 0 },
       ], { duration: 250, fill: 'both' });
@@ -233,7 +235,7 @@ function runReverseCanvasMorph(fromEl, toEl, { mode = 'default', cut = 430, arri
   copy.className = 'deep-rev-copy';
   copy.setAttribute('aria-hidden', 'true');
   const ctx = copy.getContext('2d');
-  const width = innerWidth, height = innerHeight;
+  const width = viewportWidth(), height = innerHeight;
   const dpr = Math.min(devicePixelRatio || 1, 2);
   copy.width = Math.round(width * dpr);
   copy.height = Math.round(height * dpr);
@@ -759,7 +761,7 @@ function watchFlipping(previous, plate, settlePrevious) {
     const fraction = input => (input.valueAsNumber - Number(input.min)) / (Number(input.max) - Number(input.min));
     layout = {
       source: viewportBox(sourceChart), target: viewportBox(targetChart, targetTop),
-      outgoing: sourceChart.handoffPlots, fromTrack, toTrack, width: innerWidth, height: innerHeight,
+      outgoing: sourceChart.handoffPlots, fromTrack, toTrack, width: viewportWidth(), height: innerHeight,
       coilValue: fraction(coil), speedValue: fraction(speed),
     };
 
@@ -1019,7 +1021,7 @@ function watchTuning(previous, plate) {
     event.preventDefault();
     const height = innerHeight, top = scrollY;
     const from = bounds(sourceChart, top), to = bounds(targetChart, top);
-    layout = { from, to, width: innerWidth, height, stacked: Math.abs(from.x - to.x) < 1 };
+    layout = { from, to, width: viewportWidth(), height, stacked: Math.abs(from.x - to.x) < 1 };
     const overflow = Math.max(0, Math.min(to.y + to.h + 12 - targetTop - height, plate.offsetHeight - height));
     const dpr = Math.min(devicePixelRatio || 1, 2);
     plot.width = Math.round(layout.width * dpr);
@@ -1173,7 +1175,7 @@ function watchMetal(previous, plate) {
     const band = 8;
     const front = sampleFront(top, height);
     const left = Math.max(0, Math.min(...front.map(([x]) => x)) - band);
-    const right = Math.min(innerWidth, Math.max(...front.map(([x]) => x)) + band);
+    const right = Math.min(viewportWidth(), Math.max(...front.map(([x]) => x)) + band);
     const edgePoints = (points, offset) => points.map(([x, y]) => `${x - left + offset}px ${y}px`);
     wipe.style.cssText = `left:${left}px;top:${top}px;width:${right - left}px;height:${height}px;`;
     wipe.style.clipPath = `polygon(${[...edgePoints(front, -band), ...edgePoints(front.reverse(), band)].join(', ')})`;
@@ -1253,7 +1255,7 @@ function watchMetal(previous, plate) {
     const newHeadingTop = bounds(incoming.querySelector('h3'), origin).y - targetTop;
     const shift = oldHeadingTop - newHeadingTop;
     const headingShift = oldHeadingTop >= 0 && Math.abs(shift) < 80 ? shift : 0;
-    layout = { origin, from: { ...from, y: from.y - origin }, to, width: innerWidth, height, headingShift, curve: source.resonanceCurve };
+    layout = { origin, from: { ...from, y: from.y - origin }, to, width: viewportWidth(), height, headingShift, curve: source.resonanceCurve };
     const dpr = Math.min(devicePixelRatio || 1, 2);
     plot.width = Math.round(layout.width * dpr);
     plot.height = Math.round(height * dpr);
@@ -1433,7 +1435,7 @@ function watchPauses(previous, plate) {
     const old = bounds(surface, origin), to = bounds(track, origin), chart = bounds(plot, origin);
     const extra = Math.max(0, Math.min(chart.y + chart.h + 8 - targetTop - height, plate.offsetHeight - height));
     layout = { origin, from: { ...old, y: old.y - origin }, to, oldWidth: oldWords.clientWidth, newWidth: words.clientWidth,
-      width: innerWidth, stacked: Math.abs(bounds(figure, origin).x - bounds(words, origin).x) < 1 };
+      width: viewportWidth(), stacked: Math.abs(bounds(figure, origin).x - bounds(words, origin).x) < 1 };
     piece.style.width = `${old.w}px`;
     piece.style.height = `${old.h}px`;
     root.classList.add('deep-pauses-hold');
@@ -1565,7 +1567,7 @@ function watchPartTwo(source, part) {
     const lockedTop = scrollY;
     const { x, y, w, h } = bounds(word, lockedTop);
     const centerX = x + w / 2, centerY = y + h * .69 - lockedTop;
-    const reach = Math.hypot(Math.max(centerX, innerWidth - centerX), Math.max(centerY, innerHeight - centerY)) + 20;
+    const reach = Math.hypot(Math.max(centerX, viewportWidth() - centerX), Math.max(centerY, innerHeight - centerY)) + 20;
 
     revCover = document.createElement('div');
     revCover.className = 'part-two-reveal part-two-reverse-cover';
@@ -1614,7 +1616,7 @@ function watchPartTwo(source, part) {
     }
     const { x, y, w, h } = bounds(word, scrollY);
     const centerX = x + w / 2, centerY = y + h * .69 - scrollY;
-    const reach = Math.hypot(Math.max(centerX, innerWidth - centerX), Math.max(centerY, innerHeight - centerY)) + 20;
+    const reach = Math.hypot(Math.max(centerX, viewportWidth() - centerX), Math.max(centerY, innerHeight - centerY)) + 20;
     transition = { top: scrollY, followLink, arrived: false };
     root.classList.add('deep-part-two-hold');
     reveal.style.setProperty('--ripple-center', `${centerX}px ${centerY}px`);
@@ -2155,7 +2157,7 @@ function watchWhispering(previous, scene) {
 
   function startRun(height) {
     if (run || !canPlay() || !sourceChart.answerTrace) return;
-    const width = innerWidth;
+    const width = viewportWidth();
     const { cue, end } = approach(scrollY, height);
     if (scrollY > cue + 1 || source.getBoundingClientRect().top < 0) {
       scrollTo({ top: cue, behavior: 'instant' });
@@ -2408,7 +2410,7 @@ function watchCounting(previous, scene) {
   function startRun(height) {
     const spectrum = source.spectrumTrace, timing = chart.timingTrace;
     if (run || !canPlay() || !spectrum || !timing) return;
-    const width = innerWidth;
+    const width = viewportWidth();
     const { cue, end } = approach(scrollY, height);
     if (scrollY > cue + 1) scrollTo({ top: cue, behavior: 'instant' });
     const top = scrollY;
@@ -2692,7 +2694,7 @@ function watchMistakes(previous, scene) {
   function start(dir) {
     if (run || !canPlay()) return;
     sanitizeChapter();
-    const top = scrollY, width = innerWidth, height = innerHeight;
+    const top = scrollY, width = viewportWidth(), height = innerHeight;
     const sceneTop = bounds(scene, top).y;
     const fromTop = dir > 0 ? top : bounds(previous, top).y;
     const toTop = dir > 0 ? sceneTop : top;
@@ -2908,7 +2910,7 @@ function watchConversation(previous, scene) {
 
   function startRun(height) {
     if (run || !canPlay()) return;
-    const width = innerWidth;
+    const width = viewportWidth();
     const { cue, end } = approach(scrollY, height);
     if (scrollY > cue + 1) scrollTo({ top: cue, behavior: 'instant' });
     const top = scrollY;
@@ -2956,7 +2958,7 @@ function watchConversation(previous, scene) {
     sanitizeChapter();
     const s15Top = bounds(scene, scrollY).y;
     if (Math.abs(scrollY - s15Top) > 2) scrollTo({ top: s15Top, behavior: 'instant' });
-    const top = scrollY, width = innerWidth, height = innerHeight;
+    const top = scrollY, width = viewportWidth(), height = innerHeight;
     const destination = bounds(previous, top).y;
     const gBounds = bounds(gate, top), gateBox = { x: gBounds.x, y: gBounds.y - top, w: Math.max(80, gBounds.w) };
     const fromRect = bounds(chart, top), fromBox = { x: fromRect.x, y: fromRect.y - top, w: Math.max(120, fromRect.w), h: Math.max(48, fromRect.h) };
@@ -3272,7 +3274,7 @@ function watchTwoCards(previous, scene) {
 
   function startRun(height) {
     if (run || !canPlay()) return;
-    const width = innerWidth;
+    const width = viewportWidth();
     const { cue, end } = approach(scrollY, height);
     if (scrollY > cue + 1) scrollTo({ top: cue, behavior: 'instant' });
     const top = scrollY;
@@ -3326,7 +3328,7 @@ function watchTwoCards(previous, scene) {
     sanitizeChapter();
     const s16Top = bounds(scene, scrollY).y;
     if (Math.abs(scrollY - s16Top) > 2) scrollTo({ top: s16Top, behavior: 'instant' });
-    const top = scrollY, width = innerWidth, height = innerHeight;
+    const top = scrollY, width = viewportWidth(), height = innerHeight;
     const destination = bounds(previous, top).y;
     const from = bounds(chart, top), to = bounds(sourceChart, top);
     const fromBox = { x: from.x, y: from.y - top, w: Math.max(200, from.w), h: Math.max(120, from.h) };
@@ -3601,7 +3603,7 @@ function watchCarKey(previous, scene) {
 
   function startRun(height) {
     if (run || !canPlay()) return;
-    const width = innerWidth;
+    const width = viewportWidth();
     const { cue, end } = approach(scrollY, height);
     if (scrollY > cue + 1) scrollTo({ top: cue, behavior: 'instant' });
     const top = scrollY;
@@ -3672,7 +3674,7 @@ function watchCarKey(previous, scene) {
     sanitizeChapter();
     const s17Top = bounds(scene, scrollY).y;
     if (Math.abs(scrollY - s17Top) > 2) scrollTo({ top: s17Top, behavior: 'instant' });
-    const top = scrollY, width = innerWidth, height = innerHeight;
+    const top = scrollY, width = viewportWidth(), height = innerHeight;
     const destination = bounds(previous, top).y;
     const wb = walletBtn ? bounds(walletBtn, top) : { x: width * .74 - 70, y: destination + height * .58 - 78, w: 140, h: 156 };
     const wTarget = { left: wb.x, top: wb.y - destination, width: Math.max(80, wb.w), height: Math.max(80, wb.h) };
@@ -4011,6 +4013,7 @@ function createChapterDeck(stops, transitions) {
 
   function currentStopIndex() {
     const h = innerHeight;
+    if (stops[0].getBoundingClientRect().top > 1) return -1;
     let best = 0, bestDist = Infinity;
     for (let i = 0; i < stops.length; i++) {
       const r = stops[i].getBoundingClientRect();
@@ -4052,6 +4055,7 @@ function createChapterDeck(stops, transitions) {
     const now = performance.now();
     if (!deliberate && now < cooldownUntil) return true;
     const idx = currentStopIndex();
+    if (idx < 0) return false;
     const transition = transitions[dir > 0 ? idx : idx - 1];
     if (!transition) return false;
     if (dir > 0) transition.forward();
@@ -4066,13 +4070,22 @@ function createChapterDeck(stops, transitions) {
 
   function distanceToEdge(dir) {
     const idx = currentStopIndex();
+    if (idx < 0) return Infinity;
     if (!transitions[dir > 0 ? idx : idx - 1]) return Infinity;
     const { top, bottom } = stops[idx].getBoundingClientRect();
     return Math.max(0, dir > 0 ? bottom - innerHeight - 96 : -top - 96);
   }
 
+  function enterChapter(dir, distance) {
+    const top = stops[0].getBoundingClientRect().top;
+    if (dir < 0 || top <= 1 || top > innerHeight || distance < top) return false;
+    stops[0].scrollIntoView({ block: 'start', behavior: 'instant' });
+    cooldownUntil = performance.now() + 300;
+    return true;
+  }
+
   addEventListener('wheel', event => {
-    if (event.ctrlKey || Math.abs(event.deltaY) <= Math.abs(event.deltaX) || !canPage()) return;
+    if (event.defaultPrevented || event.ctrlKey || Math.abs(event.deltaY) <= Math.abs(event.deltaX) || !canPage()) return;
     const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
     const dy = event.deltaY * unit;
     const dir = Math.sign(dy);
@@ -4085,13 +4098,16 @@ function createChapterDeck(stops, transitions) {
       return;
     }
     if (canChildScroll(event.target, dir) || isInteractiveTarget(event.target)) return;
+    if (event.cancelable && enterChapter(dir, Math.abs(dy))) {
+      event.preventDefault();
+      return;
+    }
     const distance = distanceToEdge(dir);
     if (!event.cancelable || Math.abs(dy) <= distance) return;
     event.preventDefault();
     if (distance) scrollTo({ top: scrollY + dir * Math.ceil(distance), behavior: 'instant' });
 
-    const now = performance.now();
-    if (now < cooldownUntil) return;
+    if (event.timeStamp < cooldownUntil) return;
     if (dir !== accumDir) { accum = 0; accumDir = dir; }
     accum += dy - dir * distance;
     clearTimeout(accumTimer);
@@ -4118,8 +4134,12 @@ function createChapterDeck(stops, transitions) {
       if (dir !== current.dir) changeDirection(current, dir);
       return;
     }
-    const distance = distanceToEdge(dir);
     const step = key === 'ArrowUp' || key === 'ArrowDown' ? 40 : innerHeight * .875;
+    if (enterChapter(dir, step)) {
+      event.preventDefault();
+      return;
+    }
+    const distance = distanceToEdge(dir);
     if (distance < step) {
       event.preventDefault();
       if (distance) scrollTo({ top: scrollY + dir * Math.ceil(distance), behavior: 'instant' });
@@ -4133,7 +4153,11 @@ function createChapterDeck(stops, transitions) {
   }, { passive: true });
 
   addEventListener('touchmove', event => {
-    if (!touchStart || event.touches.length !== 1 || !canPage()) return;
+    if (event.defaultPrevented || !touchStart || event.touches.length !== 1 || !canPage()) return;
+    if (touchStart.landed) {
+      if (event.cancelable) event.preventDefault();
+      return;
+    }
     const { clientX: x, clientY: y } = event.touches[0];
     const delta = touchStart.y - y;
     if (Math.abs(delta) <= Math.abs(x - touchStart.x)) return;
@@ -4147,7 +4171,13 @@ function createChapterDeck(stops, transitions) {
       }
       return;
     }
-    if (canChildScroll(touchStart.target, dir) || distanceToEdge(dir) !== 0 || !event.cancelable) return;
+    if (canChildScroll(touchStart.target, dir) || !event.cancelable) return;
+    if (enterChapter(dir, Math.abs(delta))) {
+      event.preventDefault();
+      touchStart.landed = true;
+      return;
+    }
+    if (distanceToEdge(dir) !== 0) return;
     if (event.cancelable) event.preventDefault();
     if (Math.abs(delta) >= TOUCH_THRESHOLD) {
       touchStart = { x, y, target: touchStart.target };

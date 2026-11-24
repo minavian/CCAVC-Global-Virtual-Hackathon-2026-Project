@@ -125,8 +125,16 @@
   // ---------- Story state ----------
   // Scrolling plays the story (js/story.js). Its progress `scrollNow` is measured in screens
   // and eases toward the real scroll position, so wheel steps still feel like a film.
-  const story = window.RFIDStory ? window.RFIDStory.create() : null;
-  const lab = window.RFIDLab ? window.RFIDLab.create() : null;
+  // The key-fob scroll story (js/story.js, js/lab.js) is off the page's path: the card
+  // close-up (js/intro/) tells the mechanism once, and its lab does what the story's lab did
+  // (distance, turning, metal). `?story` in the address brings it back.
+  const STORY = new URLSearchParams(location.search).has('story');
+  if (!STORY) {
+    document.getElementById('story')?.remove();
+    document.querySelector('.track')?.remove();
+  }
+  const story = STORY && window.RFIDStory ? window.RFIDStory.create() : null;
+  const lab = STORY && window.RFIDLab ? window.RFIDLab.create() : null;
   const FEATURED = 0;                        // the key fob is the object the story opens
   const CARD = 2;
   let scrollGoal = 0, scrollNow = 0, storyOn = false, storyState = null, labState = null, paintedAt = null;
@@ -509,8 +517,17 @@
   }
 
   // End the opening. With soft = true every layer blends from where it is now.
+  // The opening is over: the rest of the page (the taps, the card intro) may now load its 3D
+  // without making the opening stutter (js/taps.js, js/intro/main.js, js/present.js).
+  function openingDone() {
+    if (window.__openingDone) return;
+    window.__openingDone = true;
+    document.dispatchEvent(new Event('rfid:opening-done'));
+  }
+
   function finishIntro(soft) {
     if (intro === null) return;
+    setTimeout(openingDone, 0);
     const t = intro, TL = TIMELINE;
     intro = null;
     soft = soft && !calm;
@@ -775,14 +792,12 @@
     calm = reduced.matches;
     if (calm) { finishIntro(false); flight = null; phase = Math.round(phase); velocity = twist = 0; }
   });
-  // Scrolling plays the story. Every visit starts at the top, and scrolling (even by
-  // dragging the scrollbar) ends the opening first.
-  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
-  scrollTo(0, 0);
+  // Keep the browser's position for chapter links and Back. Scrolling ends the opening.
   // The story starts where its track starts: after the everyday taps (js/taps.js) and the card intro (js/intro/).
   const track = document.querySelector('.track');
   addEventListener('scroll', () => {
-    scrollGoal = Math.max(0, scrollY - (track ? track.offsetTop : 0)) / Math.max(1, viewH());
+    // Without the story, scrolling never plays it: the objects stay where they are.
+    scrollGoal = track ? Math.max(0, scrollY - track.offsetTop) / Math.max(1, viewH()) : 0;
     if (intro !== null && started && frozenAt === null && scrollY / Math.max(1, viewH()) > .01) finishIntro(true);
     wake();
   }, { passive: true });
@@ -970,6 +985,9 @@
           for (const value of Object.values(material)) if (value?.isTexture) renderer.initTexture(value);
         }
       });
+      // Chrome on Windows (Direct3D) only finishes a shader the first time something is really
+      // drawn with it, so draw everything once too, out of sight, before the first frame.
+      renderer.render(scene, eye);
       for (const o of hidden) o.visible = false;
       renderer.setRenderTarget(null);
       renderer.compile(screen, flat);
@@ -1133,6 +1151,9 @@
   async function begin() {
     window.__heroStarted = true;
     const scene = loadScene();
+    // The opening waits for its 3D as well as its font (at most 3 s), so the heavy loading
+    // is done before anything moves: started at once, the words stuttered while it loaded.
+    await Promise.race([Promise.all([fontsReady(), scene]), new Promise(resolve => setTimeout(resolve, 3000))]);
     await fontsReady();
     const playing = root.hasAttribute('data-intro') && !calm;
     if (playing) {
@@ -1145,6 +1166,7 @@
       intro = frozenAt !== null ? frozenAt : 0;
     } else {
       root.removeAttribute('data-intro');
+      openingDone();
       dockHeadline();
       phase = 0; twist = 0;
       entranceFlight = { from: 0, age: 0, duration: .6 };
