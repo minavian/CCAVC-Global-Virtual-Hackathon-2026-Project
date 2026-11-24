@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
-  <link rel="stylesheet" href="style.css?v=counting-drift-2">
+  <link rel="stylesheet" href="style.css?v=mistakes-jam-3">
   <script src="../js/rfid/physics.js" defer></script>
   <script src="../js/rfid/iso14443a.js" defer></script>
   <script src="../js/rfid/lf.js" defer></script>
@@ -18,8 +18,8 @@
   <script src="../js/rfid/air.js" defer></script>
   <script src="../js/rfid/reader.js" defer></script>
   <script src="../js/rfid/channel.js" defer></script>
-  <script src="../js/deep.js?v=counting-drift-2" defer></script>
-  <script type="module" src="../js/deep-motion.js?v=counting-drift-2"></script>
+  <script src="../js/deep.js?v=mistakes-jam-3" defer></script>
+  <script type="module" src="../js/deep-motion.js?v=mistakes-jam-3"></script>
 </head>
 <body>
   <main class="deep" id="take-apart" aria-labelledby="deep-title">
@@ -264,8 +264,34 @@
         <h3 id="s14-title">Catching mistakes</h3>
         <p>A dip drowns and a 1 becomes a 0. A check bit on every byte and a check number on every message catch it, and the phone asks again.</p>
         <div class="plate-controls s14-controls">
-          <label class="plate-check"><input id="s14-checks" type="checkbox" checked> Checks</label>
-          <button type="button" id="s14-tap">Tap again</button>
+          <button type="button" id="s14-tap" class="s14-tap-pad" data-tone="ok">
+            <span class="s14-tap-stage" aria-hidden="true">
+              <img class="s14-reader" src="../images/intro/reader.webp" width="640" height="512" alt="" draggable="false">
+              <span class="s14-tap-wave"></span>
+              <span class="s14-card-wrap">
+                <img class="s14-card" src="../images/intro/credit-card-face.webp" width="520" height="328" alt="" draggable="false">
+              </span>
+            </span>
+            <span class="s14-tap-copy">
+              <span class="s14-tap-action">Tap again</span>
+              <span class="s14-tap-badge" id="s14-tap-status" data-tone="ok" aria-hidden="true">
+                <svg class="s14-icon-ok" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 8.4 6.5 11.7 12.8 4.6"/></svg>
+                <svg class="s14-icon-fail" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4.2 4.2 11.8 11.8M11.8 4.2 4.2 11.8"/></svg>
+              </span>
+            </span>
+          </button>
+          <div class="s14-checks-row">
+            <label class="s14-checks-label" for="s14-checks">
+              <span class="s14-checks-text">
+                <span>Checks</span>
+                <span class="s14-checks-sub">Parity bit &amp; CRC</span>
+              </span>
+              <span class="s14-checks-toggle">
+                <output id="s14-checks-state" for="s14-checks" aria-live="off">On</output>
+                <input id="s14-checks" type="checkbox" role="switch" checked>
+              </span>
+            </label>
+          </div>
         </div>
         <p class="plate-readout" aria-live="polite"></p>
         <p class="plate-real">Real name: odd parity bits and CRC_A (ISO/IEC 14443-3). The card also checks its own ID when the phone selects it.</p>
@@ -273,12 +299,17 @@
       <div class="s14-instrument">
         <div class="s14-signal-label">
           <span>Card’s ID signal</span>
-          <output id="s14-disturbance" for="s14-signal">No added noise</output>
+          <div class="s14-signal-meta">
+            <output id="s14-disturbance" for="s14-signal">Quiet · 0.0%</output>
+            <button type="button" id="s14-clear" class="s14-clear" aria-disabled="true">Clear</button>
+          </div>
         </div>
-        <button type="button" id="s14-signal" aria-label="Disrupt the simulated signal" aria-describedby="s14-signal-help">
+        <div class="s14-signal-strip" id="s14-signal" role="group" aria-label="Card ID signal cells" aria-describedby="s14-signal-help">
           <canvas class="plate-canvas" id="s14-chart" aria-hidden="true"></canvas>
-        </button>
-        <p id="s14-signal-help">Tap or drag to add noise. Use Enter or the left and right arrow keys.</p>
+          <div class="s14-cells" id="s14-cells"></div>
+          <span class="s14-noise-meter" aria-hidden="true"><span class="s14-noise-fill"></span></span>
+        </div>
+        <p id="s14-signal-help">Click or drag across bits to jam or clear them. More jammed bits raise the channel noise.</p>
         <ol class="s14-replies" id="s14-replies" aria-label="Decoded replies"></ol>
       </div>
     </section>

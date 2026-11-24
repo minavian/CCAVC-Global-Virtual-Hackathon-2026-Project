@@ -2402,92 +2402,257 @@ function watchCounting(previous, scene) {
 }
 
 function watchMistakes(previous, scene) {
-  const chapter = scene.closest('.deep');
+  const root = document.documentElement, chapter = scene.closest('.deep');
+  const before = previous.querySelector('.plate-words'), after = scene.querySelector('.plate-words');
   const source = previous.querySelector('#s13-chart'), chart = scene.querySelector('#s14-chart');
-  const copy = document.createElement('canvas'), ctx = copy.getContext('2d');
+  const signalHeader = scene.querySelector('.s14-signal-label');
+  const signalHelp = scene.querySelector('#s14-signal-help');
+  const replies = scene.querySelector('#s14-replies');
+  const copy = document.createElement('canvas');
   copy.className = 's14-timing-copy';
   copy.setAttribute('aria-hidden', 'true');
-  let layout, armed = false, lastTop = scrollY;
+  const ctx = copy.getContext('2d');
+  const cut = 580, morphEnd = 1080, arrivalEnd = 1780, readHold = 1000;
+  let run, frame, listeners, armed = false, lastTop = scrollY;
+  const canPlay = () => ctx && !reducedMotion.matches && !document.hidden &&
+    CSS.supports('clip-path', 'inset(0)');
 
-  function settle() {
-    if (!copy.isConnected) return;
+  function clearEffects() {
+    if (!copy.isConnected && !scene.classList.contains('s14-staged')) return;
     copy.remove();
     source.style.removeProperty('--s14-timing-opacity');
     chart.style.removeProperty('--s14-signal-opacity');
+    scene.classList.remove('s14-staged');
+    run?.animations.forEach(animation => animation.cancel());
   }
 
-  watchScrollMotion((top, height, needsMeasure) => {
-    if (reducedMotion.matches || document.hidden) return settle();
-    if (needsMeasure || !layout) {
-      const from = bounds(source, top), to = bounds(chart, top);
-      const start = Math.max(from.y + from.h * .34 - height * .36, to.y - height * 1.24);
-      const end = Math.max(start + height * .28, to.y + to.h * .5 - height * .62);
-      layout = { from, to, start, end, stacked: matchMedia('(max-width: 860px)').matches };
-      armed = false;
-    }
-    if (Math.abs(top - lastTop) > height * .42) armed = false;
-    lastTop = top;
-    const { from, to, start, end, stacked } = layout;
-    if (top <= start) armed = true;
-    if (!armed || top <= start || top >= end || chapter.querySelector('.s13-spectrum-copy')) return settle();
+  function finish() {
+    if (!run) return;
+    cancelAnimationFrame(frame);
+    clearEffects();
+    run = undefined;
+    root.classList.remove('deep-mistakes-hold');
+    lastTop = scrollY;
+    scheduleMotion();
+  }
 
+  function land() {
+    scrollTo({ top: run.destination, behavior: 'instant' });
+    run.top = scrollY;
+    lastTop = run.top;
+    run.landed = true;
+    scene.classList.remove('s14-staged');
+    for (const [i, node] of Array.from(after.children).entries()) {
+      run.animations.push(node.animate([
+        { opacity: 0, transform: 'translateY(9px)' },
+        { opacity: 1, transform: 'none' },
+      ], { duration: 420, delay: 70 + i * 52, easing: arrivalEase, fill: 'both' }));
+    }
+    for (const node of [signalHeader, signalHelp]) {
+      if (!node) continue;
+      run.animations.push(node.animate([
+        { opacity: 0, filter: 'blur(3px)', transform: 'translateY(-5px)' },
+        { opacity: 1, filter: 'blur(0px)', transform: 'none' },
+      ], { duration: 340, delay: 140, easing: arrivalEase, fill: 'both' }));
+    }
+    if (replies) {
+      Array.from(replies.children).forEach((row, i) => {
+        run.animations.push(row.animate([
+          { opacity: 0, transform: 'translateY(-12px)', filter: 'blur(7px)', clipPath: 'inset(0 0 100% 0)' },
+          { opacity: .78, transform: 'translateY(-2px)', filter: 'blur(2.5px)', clipPath: 'inset(0 0 18% 0)', offset: .42 },
+          { opacity: 1, transform: 'none', filter: 'blur(0px)', clipPath: 'inset(0 0 0% 0)' },
+        ], { duration: 440, delay: 380 + i * 105, easing: arrivalEase, fill: 'both' }));
+      });
+    }
+  }
+
+  function drawHandoff(elapsed) {
+    const { width, height, stacked, fromBox, toBox, toChartTop, timing, signal } = run;
+    const carry = ease(70, morphEnd, elapsed);
+    const fold = ease(180, morphEnd, elapsed);
+    const arc = stacked ? 0 : Math.sin(Math.PI * carry) * -18;
+    const curX = mix(fromBox.x, toBox.x, carry);
+    const curY = mix(fromBox.y, toBox.y, carry) + arc;
+    const curW = mix(fromBox.w, toBox.w, carry);
+    const curH = mix(fromBox.h, toBox.h, carry);
+
+    const outFade = 1 - ease(160, 620, elapsed);
+    const overFade = 1 - ease(880, 1140, elapsed);
+    const overlayAlpha = ease(0, 120, elapsed) * overFade;
+
+    ctx.clearRect(0, 0, width, height);
+    if (overlayAlpha > 0) {
+      const r = Math.round(mix(13, 184, fold));
+      const g = Math.round(mix(13, 101, fold));
+      const b = Math.round(mix(12, 42, fold));
+      ctx.save();
+      ctx.globalAlpha = overlayAlpha;
+      ctx.strokeStyle = `rgb(${r}, ${g}, ${b})`;
+      ctx.lineWidth = mix(2, 1.45, fold);
+      ctx.beginPath();
+      const divisions = 10 * timing.sent.length;
+      const fromMin = Math.min(timing.Y(1), timing.Y(0)), fromMax = Math.max(timing.Y(1), timing.Y(0));
+      const fromSpan = Math.max(1, fromMax - fromMin);
+      for (let i = 0; i <= divisions; i++) {
+        const t = i / divisions;
+        const sample = timing.level[Math.min(timing.level.length - 1, Math.floor(t * timing.level.length))];
+        const [, current] = signal.points[Math.round(t * (signal.points.length - 1))];
+        const yFrom = curY + (timing.Y(sample) - fromMin) / fromSpan * curH;
+        const yTo = curY + (signal.Y(current) / Math.max(1, signal.box.h)) * curH;
+        const px = curX + t * curW;
+        const py = mix(yFrom, yTo, fold);
+        if (i) ctx.lineTo(px, py);
+        else ctx.moveTo(px, py);
+      }
+      ctx.stroke();
+
+      if (outFade > 0) {
+        ctx.globalAlpha = overlayAlpha * outFade;
+        ctx.font = '600 12px "JetBrains Mono", ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        timing.ticks.forEach((sample, i) => {
+          ctx.fillStyle = timing.read[i] === timing.sent[i] ? '#1f7a4a' : '#b3261e';
+          ctx.fillText(String(timing.read[i]), curX + sample / timing.level.length * curW, curY + curH + 14);
+        });
+      }
+      ctx.restore();
+    }
+
+    if (run.landed) {
+      const reveal = ease(780, 1080, elapsed);
+      chart.style.setProperty('--s14-signal-opacity', reveal);
+    }
+  }
+
+  function animate(now) {
+    const elapsed = now - run.start;
+    if (elapsed >= cut && !run.landed) land();
+    if (elapsed < arrivalEnd) drawHandoff(elapsed);
+    else if (copy.isConnected) clearEffects();
+    if (elapsed >= arrivalEnd + readHold) return finish();
+    frame = requestAnimationFrame(animate);
+  }
+
+  function approach(top, height) {
+    const start = bounds(previous, top).y, end = bounds(scene, top).y;
+    const cue = Math.max(start, end - height);
+    return { start, cue, end };
+  }
+
+  function canBegin(event, direction) {
+    if (direction < 0 || event.defaultPrevented || !canPlay()) return false;
+    if (run) return true;
+    if (!event.cancelable && event.type !== 'wheel') return false;
+    if (!source.timingTrace || !chart.errorTrace || root.classList.contains('deep-counting-hold')) return false;
+    const { cue, end } = approach(scrollY, innerHeight);
+    if (scrollY >= end - 1) return false;
+    if (scrollY >= cue - 2 || event.type === 'touchmove' || event.key === 'PageDown' || event.key === ' ') return true;
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
+    return event.type === 'wheel' && scrollY + event.deltaY * unit > cue;
+  }
+
+  function startRun(height) {
     const timing = source.timingTrace, signal = chart.errorTrace;
-    if (!timing || !signal) return settle();
-    const progress = stage(start, end, top);
-    const carry = ease(0, stacked ? .58 : .92, progress);
-    const fold = ease(.14, stacked ? .57 : .84, progress);
-    const waveTop = timing.Y(1) - 5, waveBottom = timing.Y(0) - waveTop;
-    const width = mix(timing.box.w, signal.box.w, carry);
-    const x = mix(from.x + timing.box.x, to.x, carry);
-    // On a narrow screen, let the line contract in place so it never moves across the copy.
-    const y = mix(from.y + waveTop, stacked ? from.y + timing.Y(0) - signal.box.h : to.y, carry);
-    const copyWidth = Math.ceil(Math.max(timing.box.w, signal.box.w));
-    const copyHeight = Math.ceil(Math.max(waveBottom + 38, signal.box.h));
-    const dpr = Math.min(devicePixelRatio || 1, 2);
-    if (copy.width !== Math.round(copyWidth * dpr) || copy.height !== Math.round(copyHeight * dpr)) {
-      copy.width = Math.round(copyWidth * dpr);
-      copy.height = Math.round(copyHeight * dpr);
-      Object.assign(copy.style, { width: `${copyWidth}px`, height: `${copyHeight}px` });
-    }
-    if (!copy.isConnected) chapter.append(copy);
-    copy.style.transform = `translate(${x}px, ${y - top}px)`;
-    copy.style.opacity = ease(0, .18, progress) * (1 - ease(stacked ? .50 : .79, stacked ? .72 : .99, progress));
-    source.style.setProperty('--s14-timing-opacity', 1 - .86 * ease(.02, .24, progress));
-    chart.style.setProperty('--s14-signal-opacity', .22 + .78 * ease(stacked ? .57 : .74, .99, progress));
+    if (run || !canPlay() || !timing || !signal) return;
+    const width = innerWidth;
+    const { cue, end } = approach(scrollY, height);
+    if (scrollY > cue + 1) scrollTo({ top: cue, behavior: 'instant' });
+    const top = scrollY;
+    armed = false;
 
+    const from = bounds(source, top), to = bounds(chart, top);
+    const extra = Math.max(0, Math.min(to.y + to.h + 190 - end - height, scene.offsetHeight - height));
+    const destination = end + extra;
+    const stacked = matchMedia('(max-width: 860px)').matches;
+    const timBox = timing.box;
+    const waveTop = Math.min(timing.Y(1), timing.Y(0)), waveBottom = Math.max(timing.Y(1), timing.Y(0));
+    const fromBox = { x: from.x + timBox.x, y: from.y - top + waveTop, w: timBox.w, h: Math.max(12, waveBottom - waveTop) };
+    const toChartTop = to.y - destination;
+    const toBox = { x: to.x, y: toChartTop, w: signal.box.w, h: signal.box.h };
+
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    copy.width = Math.round(width * dpr);
+    copy.height = Math.round(height * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, copyWidth, copyHeight);
-    ctx.globalAlpha = 1;
-    ctx.strokeStyle = signal.color;
-    ctx.lineWidth = mix(2, 1.4, fold);
-    ctx.beginPath();
-    const divisions = 10 * timing.sent.length;
-    for (let i = 0; i <= divisions; i++) {
-      const t = i / divisions;
-      const sample = timing.level[Math.min(timing.level.length - 1, Math.floor(t * timing.level.length))];
-      const [, current] = signal.points[Math.round(t * (signal.points.length - 1))];
-      const level = mix(timing.Y(sample) - waveTop, signal.Y(current), fold);
-      if (i) ctx.lineTo(t * width, level);
-      else ctx.moveTo(0, level);
+    ctx.lineCap = ctx.lineJoin = 'round';
+
+    run = { top, width, height, stacked, start: performance.now(), destination, fromBox, toBox, toChartTop,
+      timing, signal, animations: [] };
+
+    lastTop = top;
+    root.classList.add('deep-mistakes-hold');
+    scene.classList.add('s14-staged');
+    source.style.setProperty('--s14-timing-opacity', 0);
+    chart.style.setProperty('--s14-signal-opacity', 0);
+    chapter.append(copy);
+    for (const node of before.children) {
+      run.animations.push(node.animate([{ opacity: 1 }, { opacity: 0 }],
+        { duration: 420, delay: 40, fill: 'both' }));
     }
-    ctx.stroke();
-    ctx.globalAlpha = 1 - ease(.24, .67, progress);
-    ctx.font = '600 12px "JetBrains Mono", ui-monospace, monospace';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    timing.ticks.forEach((sample, i) => {
-      ctx.fillStyle = timing.read[i] === timing.sent[i] ? '#1f7a4a' : '#b3261e';
-      ctx.fillText(String(timing.read[i]), sample / timing.level.length * width, mix(waveBottom + 22, 8, fold));
-    });
+    drawHandoff(0);
+    frame = requestAnimationFrame(animate);
+  }
+
+  function begin(event) {
+    if (event.cancelable) event.preventDefault();
+    if (run) {
+      if (Math.abs(scrollY - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
+      return;
+    }
+    const height = innerHeight, { cue } = approach(scrollY, height);
+    if (scrollY < cue - 2) {
+      scrollTo({ top: cue, behavior: 'instant' });
+      return;
+    }
+    startRun(height);
+  }
+
+  function interrupt(direction, event) {
+    if (run && direction === -1 && event?.type === 'wheel' && Math.abs(event.deltaY) < 24) {
+      if (event.cancelable) event.preventDefault();
+      return;
+    }
+    if (run && !run.landed && direction === -1 && event?.cancelable) event.preventDefault();
+    finish();
+  }
+
+  watchScrollMotion((top, height) => {
+    const { start, cue, end } = approach(top, height);
+    if (run) {
+      if (!canPlay() || Math.abs(top - run.top) > height * .45) finish();
+      else if (Math.abs(top - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
+    } else {
+      if (top >= end - 1 || scene.contains(document.activeElement)) {
+        armed = false;
+      } else if (top >= start - height * .2 && top <= cue + 4) {
+        armed = true;
+      } else if (Math.abs(top - lastTop) > height * .45) {
+        armed = false;
+      }
+      if (armed && canPlay() && source.timingTrace && chart.errorTrace &&
+        !root.classList.contains('deep-counting-hold') &&
+        top > cue + 2 && top < end - 1 && top > lastTop) {
+        startRun(height);
+      }
+    }
+    lastTop = scrollY;
+    const activeBounds = approach(lastTop, height);
+    if (canPlay() && (run || (lastTop >= activeBounds.cue - height * .25 && lastTop < activeBounds.end - 1))) {
+      listeners ??= capturePageGesture(canBegin, begin, interrupt);
+    } else {
+      listeners?.abort();
+      listeners = undefined;
+    }
   });
 
-  const contentSize = new ResizeObserver(() => { layout = undefined; scheduleMotion(); });
-  for (const node of [chapter, previous, scene, source, chart]) contentSize.observe(node);
-  for (const node of [previous.querySelector('.plate-controls'), scene]) {
-    for (const event of ['focusin', 'pointerdown', 'input', 'click']) node.addEventListener(event, () => {
-      if (copy.isConnected) armed = false;
-      settle();
-    });
+  for (const area of [previous.querySelector('.plate-controls'), scene.querySelector('.plate-controls'), scene.querySelector('.s14-instrument')]) {
+    if (!area) continue;
+    for (const event of ['focusin', 'pointerdown', 'input']) area.addEventListener(event, finish);
   }
+  for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, finish);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) finish(); });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) finish(); });
 }
 
 const blink = document.getElementById('deep-blink-word');

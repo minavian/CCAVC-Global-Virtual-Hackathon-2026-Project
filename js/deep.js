@@ -902,28 +902,76 @@
 
   // ---------- 14. Catching mistakes ----------
   const firstSignalBit = 9, signalBitCount = 9;
-  let s14seed = 1, noiseBit = null, checkedSignal, revealReplies = false, replyMotion;
+  const I_SPUR = [1, 1, -1, -1];
+  let s14seed = 1, checkedSignal, baseCapture = null, revealMode = 'none', prevRowCount = 0;
+  const jammedCells = new Set();
+  let replyAnimations = [];
+
+  function cancelReplyReveal() {
+    for (const animation of replyAnimations) animation.cancel();
+    replyAnimations = [];
+  }
+
+  function getBaseIdReply(seed) {
+    if (baseCapture?.seed === seed) return baseCapture.reply;
+    const s = physics.solve({ tag: 'card', reader: 'pad', distance: .042 });
+    const chip = tags.cardChip({ randomUid: true, seed });
+    const link = channel.cardChannel([{ chip, depth: s.dip, awake: s.awake }], { noise: .0015, seed: seed * 31 });
+    reader.activate(link, { checks: true });
+    const uidExchange = link.recording.find(ex => ex.answers[0]?.name === 'UID');
+    const reply = uidExchange ? {
+      begin: uidExchange.begin,
+      answers: [{ name: 'UID', bits: [...uidExchange.answers[0].bits] }],
+      samples: new Float32Array(uidExchange.samples),
+    } : null;
+    baseCapture = { seed, reply };
+    return reply;
+  }
+
+  function applyJamming(samples, begin, origBits, seed, dip, cells, jamCount) {
+    for (const cell of cells) {
+      const bitIndex = firstSignalBit + cell;
+      const g = air.gaussian(tags.random((seed * 97 + bitIndex * 17 + 1) * 31));
+      const start = begin + (bitIndex + 1) * iso.BIT;
+      const quietHalf = origBits[bitIndex] === 1 ? iso.HALF : 0;
+      for (let n = 0; n < iso.BIT; n++) {
+        const inQuiet = n >= quietHalf && n < quietHalf + iso.HALF;
+        const spur = inQuiet ? I_SPUR[n & 3] * dip * .5 : 0;
+        samples[start + n] = 1 + (samples[start + n] - 1) * .10 + spur + g() * (.010 + jamCount * .0014);
+      }
+    }
+  }
 
   function checkSignal(checks) {
     const s = physics.solve({ tag: 'card', reader: 'pad', distance: .042 });
     const chip = tags.cardChip({ randomUid: true, seed: s14seed });
-    const link = channel.cardChannel([{ chip, depth: s.dip, awake: s.awake }], { noise: .007, seed: s14seed * 31 });
+    const jamCount = jammedCells.size;
+    const noisePct = jamCount === 0 ? 0 : .2 + (jamCount / signalBitCount) * 1.8;
+    const channelNoise = jamCount === 0 ? .0015 : noisePct / 100;
+    const link = channel.cardChannel([{ chip, depth: s.dip, awake: s.awake }], { noise: channelNoise, seed: s14seed * 31 });
     let idReply;
     const run = reader.activate({
       send(bits) {
         const heard = link.send(bits), exchange = link.recording.at(-1);
         if (idReply || exchange.answers[0]?.name !== 'UID') return heard;
         idReply = exchange;
-        if (noiseBit !== null) {
-          const noise = air.gaussian(tags.random((s14seed + noiseBit + 1) * 31));
-          const start = exchange.begin + (noiseBit + 1) * iso.BIT;
-          // A brief disturbance drowns one bit of the first answer. The phone can still retry.
-          for (let n = start; n < start + iso.BIT; n++) heard.samples[n] = 1 + (heard.samples[n] - 1) * .25 + noise() * .035;
-        }
+        if (jamCount) applyJamming(heard.samples, exchange.begin, exchange.answers[0].bits, s14seed, s.dip, jammedCells, jamCount);
         return heard;
       },
     }, { checks });
-    return { run, recording: link.recording, idReply, uid: chip.uid };
+    let displayReply = idReply;
+    if (!displayReply) {
+      const base = getBaseIdReply(s14seed);
+      if (base) {
+        const samples = new Float32Array(base.samples);
+        const bg = air.gaussian(tags.random(s14seed * 53 + jamCount * 13));
+        const start = base.begin + (firstSignalBit + 1) * iso.BIT, end = start + signalBitCount * iso.BIT;
+        for (let n = start; n < end; n++) samples[n] += bg() * channelNoise;
+        if (jamCount) applyJamming(samples, base.begin, base.answers[0].bits, s14seed, s.dip, jammedCells, jamCount);
+        displayReply = { begin: base.begin, answers: base.answers, samples };
+      }
+    }
+    return { run, recording: link.recording, idReply, displayReply, uid: chip.uid, noisePct, jamCount };
   }
 
   function showErrorReplies(replies, { run, recording }) {
@@ -936,6 +984,7 @@
       const retry = run.steps[i - 1]?.label === step.label;
       if (step.failed || retry) {
         const note = document.createElement('span');
+        note.dataset.tone = step.failed ? 'fail' : 'retry';
         note.textContent = step.failed ? 'Check failed' : 'Phone retry';
         label.append(note);
       }
@@ -970,7 +1019,7 @@
     const start = reply.begin + (firstSignalBit + 1) * iso.BIT, length = signalBitCount * iso.BIT;
     const samples = reply.samples.subarray(start, start + length);
     const bits = reply.answers[0].bits.slice(firstSignalBit, firstSignalBit + signalBitCount);
-    const X = n => n / length * w, Y = v => clamp(h * .53 + (1 - v) * h * 7, 26, h - 7);
+    const X = n => n / length * w, Y = v => clamp(h * .52 + (1 - v) * h * 5.8, 26, h - 14);
     const points = [];
     // Average one subcarrier cycle at a time so the dips remain legible at this scale.
     for (let n = 0; n < length; n += iso.SUB) {
@@ -979,88 +1028,275 @@
       const average = total / iso.SUB;
       points.push([n, average], [n + iso.SUB, average]);
     }
-    const offset = noiseBit === null ? null : (noiseBit - firstSignalBit) * iso.BIT;
-    ctx.fillStyle = 'rgba(179, 38, 30, .09)';
-    if (offset !== null) ctx.fillRect(X(offset), 0, X(iso.BIT), h);
+    for (let i = 0; i < signalBitCount; i++) {
+      if (i) {
+        if (i === signalBitCount - 1) vline(ctx, X(i * iso.BIT), 0, h, 'rgba(184, 101, 42, .45)', '', [3, 3]);
+        else vline(ctx, X(i * iso.BIT), 0, h, GRID, '', []);
+      }
+      if (jammedCells.has(i)) {
+        ctx.fillStyle = 'rgba(179, 38, 30, .10)';
+        ctx.fillRect(X(i * iso.BIT), 0, X(iso.BIT), h);
+      }
+    }
     ctx.font = `500 12px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     bits.forEach((bit, i) => {
-      if (i) vline(ctx, X(i * iso.BIT), 0, h, GRID, '', []);
-      ctx.fillStyle = i + firstSignalBit === noiseBit ? RED : MUTED;
+      ctx.fillStyle = jammedCells.has(i) ? RED : MUTED;
       ctx.fillText(String(bit), X((i + .5) * iso.BIT), 8);
     });
-    curve(ctx, points, X, Y, COPPER, 1.4);
-    const burst = offset === null ? [] : Array.from({ length: iso.BIT }, (_, i) => [offset + i, samples[offset + i]]);
-    if (burst.length) curve(ctx, burst, X, Y, RED, 1.6);
-    p.canvas.errorTrace = { box: { x: 0, y: 0, w, h }, X, Y, points, bits, burst, noiseBit, color: COPPER };
+    ctx.font = `500 9px ${MONO}`; ctx.textBaseline = 'bottom';
+    ctx.fillStyle = jammedCells.has(signalBitCount - 1) ? RED : MUTED;
+    ctx.fillText('chk', X((signalBitCount - .5) * iso.BIT), h - 4);
+    curve(ctx, points, X, Y, COPPER, 1.45);
+    for (const cell of jammedCells) {
+      const offset = cell * iso.BIT;
+      const burst = Array.from({ length: iso.BIT }, (_, n) => [offset + n, samples[offset + n]]);
+      curve(ctx, burst, X, Y, RED, 1.55);
+    }
+    p.canvas.errorTrace = { box: { x: 0, y: 0, w, h }, X, Y, points, bits, jammed: [...jammedCells], color: COPPER };
+  }
+
+  function animateS14Reveal(p, replies) {
+    const rows = Array.from(replies.children);
+    if (reduced.matches || document.hidden) {
+      cancelReplyReveal();
+      prevRowCount = rows.length;
+      revealMode = 'none';
+      return;
+    }
+    const mode = revealMode;
+    revealMode = 'none';
+    if (mode === 'tap') {
+      cancelReplyReveal();
+      const easing = 'cubic-bezier(.16, 1, .3, 1)';
+      const cardWrap = p.el.querySelector('.s14-card-wrap');
+      const tapWave = p.el.querySelector('.s14-tap-wave');
+      const tapBadge = p.input('tap-status');
+      if (cardWrap?.animate) {
+        replyAnimations.push(cardWrap.animate([
+          { transform: 'translateX(-8px) rotate(4deg)' },
+          { transform: 'translateX(-22px) rotate(-1deg)', offset: .28 },
+          { transform: 'translateX(-22px) rotate(-1deg)', offset: .58 },
+          { transform: 'translateX(0) rotate(7deg)' },
+        ], { duration: 1050, easing: 'cubic-bezier(.22, 1, .36, 1)' }));
+      }
+      if (tapWave?.animate) {
+        replyAnimations.push(tapWave.animate([
+          { opacity: .25, transform: 'scale(.76)' },
+          { opacity: 1, transform: 'scale(1.28)', offset: .36 },
+          { opacity: .38, transform: 'scale(1)' },
+        ], { duration: 880, delay: 140, easing }));
+      }
+      if (tapBadge?.animate) {
+        replyAnimations.push(tapBadge.animate([
+          { opacity: .15, transform: 'scale(.72)', filter: 'blur(3px)' },
+          { opacity: 1, transform: 'scale(1.06)', filter: 'blur(0px)', offset: .62 },
+          { opacity: 1, transform: 'none', filter: 'blur(0px)' },
+        ], { duration: 380, delay: 260, easing, fill: 'both' }));
+      }
+      if (p.canvas.animate) {
+        replyAnimations.push(p.canvas.animate([
+          { opacity: .28, filter: 'blur(5px)', clipPath: 'inset(0 0 100% 0)', transform: 'translateY(-6px)' },
+          { opacity: 1, filter: 'blur(0px)', clipPath: 'inset(0 0 0% 0)', transform: 'none' },
+        ], { duration: 420, delay: 240, easing, fill: 'both' }));
+      }
+      rows.forEach((row, i) => {
+        if (!row.animate) return;
+        replyAnimations.push(row.animate([
+          { opacity: 0, transform: 'translateY(-12px)', filter: 'blur(7px)', clipPath: 'inset(0 0 100% 0)' },
+          { opacity: .78, transform: 'translateY(-2px)', filter: 'blur(2.5px)', clipPath: 'inset(0 0 18% 0)', offset: .42 },
+          { opacity: 1, transform: 'none', filter: 'blur(0px)', clipPath: 'inset(0 0 0% 0)' },
+        ], { duration: 520, delay: 340 + i * 130, easing, fill: 'both' }));
+      });
+      const readout = p.el.querySelector('.plate-readout');
+      if (readout?.animate) {
+        replyAnimations.push(readout.animate([
+          { opacity: .35, filter: 'blur(4px)', transform: 'translateY(-6px)' },
+          { opacity: 1, filter: 'blur(0px)', transform: 'none' },
+        ], { duration: 420, delay: 360, easing, fill: 'both' }));
+      }
+    } else if (mode === 'diff' && rows.length > prevRowCount) {
+      cancelReplyReveal();
+      const easing = 'cubic-bezier(.16, 1, .3, 1)';
+      rows.slice(prevRowCount).forEach((row, idx) => {
+        if (!row.animate) return;
+        replyAnimations.push(row.animate([
+          { opacity: 0, transform: 'translateY(-8px)', filter: 'blur(4px)', clipPath: 'inset(0 0 100% 0)' },
+          { opacity: 1, transform: 'none', filter: 'blur(0px)', clipPath: 'inset(0 0 0% 0)' },
+        ], { duration: 280, delay: idx * 70, easing, fill: 'both' }));
+      });
+    }
+    prevRowCount = rows.length;
   }
 
   const mistakes = plate('s14', p => {
-    const checks = p.input('checks').checked, key = `${s14seed}/${checks}/${noiseBit}`;
+    const checks = p.input('checks').checked;
+    const jamKey = [...jammedCells].sort((a, b) => a - b).join(',');
+    const key = `${s14seed}/${checks}/${jamKey}`;
     if (key !== checkedSignal?.key) {
       checkedSignal = { key, ...checkSignal(checks) };
-      const { run, idReply, uid } = checkedSignal;
+      const { run, idReply, displayReply, uid, noisePct, jamCount } = checkedSignal;
       const replies = p.input('replies'), disturbance = p.input('disturbance');
-      disturbance.textContent = !idReply ? 'No ID signal' : noiseBit === null ? 'No added noise' : `Your noise at bit ${noiseBit + 1}`;
-      disturbance.toggleAttribute('data-active', !!idReply && noiseBit !== null);
-      const retried = run.steps.find((step, i) => step.label === run.steps[i + 1]?.label);
-      const retry = retried?.failed ? ' The phone retried after a failed check.' : retried ? ' The phone asked again.' : '';
+      const clearBtn = p.input('clear'), strip = p.input('signal'), cellsBox = p.input('cells');
+      const pctText = `${noisePct.toFixed(1)}%`;
+      disturbance.textContent = jamCount === 0
+        ? `Quiet · ${pctText}`
+        : `${jamCount} ${jamCount === 1 ? 'bit' : 'bits'} jammed · ${pctText}`;
+      disturbance.toggleAttribute('data-active', jamCount > 0);
+      if (clearBtn) clearBtn.setAttribute('aria-disabled', jamCount === 0 ? 'true' : 'false');
+      strip?.style.setProperty('--s14-noise-ratio', `${(jamCount / signalBitCount * 100).toFixed(1)}%`);
+      const bits = displayReply?.answers[0]?.bits.slice(firstSignalBit, firstSignalBit + signalBitCount) ?? [];
+      if (cellsBox) {
+        Array.from(cellsBox.children).forEach((btn, i) => {
+          const pressed = jammedCells.has(i);
+          const bitValue = bits[i];
+          const bitName = i === signalBitCount - 1 ? `Bit ${firstSignalBit + i + 1} check bit` : `Bit ${firstSignalBit + i + 1}`;
+          btn.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+          btn.setAttribute('aria-label', `${bitName}${bitValue === undefined ? '' : ` (${bitValue})`} — ${pressed ? 'jammed, activate to clear' : 'activate to jam'}`);
+        });
+      }
+      const tries = run.steps.filter(st => st.label === 'ANTICOLLISION').length;
       const badId = run.uid?.some((b, i) => b !== uid[i]);
-      p.say((run.ok ? `ID read: ${run.uid.map(hex).join(' ')} ✓`
-        : badId ? `Checks off. The phone accepted a wrong ID, ${run.uid.map(hex).join(' ')}. The card refused it.`
-        : run.reason) + retry);
-      replyMotion?.cancel();
+      const checksState = p.input('checks-state'), tapPad = p.input('tap'), tapStatus = p.input('tap-status');
+      if (checksState) {
+        checksState.textContent = checks ? 'On' : 'Off';
+        checksState.toggleAttribute('data-off', !checks);
+      }
+      const tone = run.ok ? (tries > 1 ? 'retry' : 'ok') : 'fail';
+      if (tapPad) tapPad.dataset.tone = tone;
+      if (tapStatus) tapStatus.dataset.tone = tone;
+      p.say(run.ok
+        ? `ID read: ${run.uid.map(hex).join(' ')} ✓${tries > 1 ? ` (a check failed, so the phone asked again ${tries - 1}×)` : ''}`
+        : badId
+          ? `Checks off: the phone accepted a wrong ID, ${run.uid.map(hex).join(' ')}. The card refused to confirm it: it knows its own ID.`
+          : `${run.reason}${checks ? ' The checks stopped a bad read.' : ''}${!idReply && jamCount ? ' (REQA drowned before ID reply.)' : ''}`);
       showErrorReplies(replies, checkedSignal);
-      if (revealReplies && !reduced.matches && !document.hidden) replyMotion = replies.animate?.([
-        { clipPath: 'inset(0 0 100% 0)', filter: 'blur(2px)', transform: 'translateY(-4px)' },
-        { clipPath: 'inset(0 0 50% 0)', filter: 'blur(0)', transform: 'none', offset: .48 },
-        { clipPath: 'inset(0)', filter: 'blur(0)', transform: 'none' },
-      ], { duration: 350, easing: 'cubic-bezier(.19, .68, .32, 1)' });
-      revealReplies = false;
+      animateS14Reveal(p, replies);
     }
-    drawErrorSignal(p, checkedSignal.idReply);
+    drawErrorSignal(p, checkedSignal.displayReply);
   });
 
   if (mistakes) {
-    const signal = mistakes.input('signal'), middle = firstSignalBit + Math.floor(signalBitCount / 2);
-    let pointer;
-    function disrupt(bit) {
-      const next = clamp(bit, firstSignalBit, firstSignalBit + signalBitCount - 1);
-      if (next === noiseBit) return;
-      noiseBit = next;
-      revealReplies = false;
+    const cellsBox = mistakes.input('cells'), clearBtn = mistakes.input('clear');
+    const checksInput = mistakes.input('checks'), tapBtn = mistakes.input('tap');
+    let focusIndex = 0, painting = null, suppressClick = false;
+    const cellButtons = Array.from({ length: signalBitCount }, (_, i) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 's14-cell';
+      btn.dataset.cell = String(i);
+      btn.tabIndex = i === 0 ? 0 : -1;
+      btn.setAttribute('aria-pressed', 'false');
+      return btn;
+    });
+    cellsBox?.replaceChildren(...cellButtons);
+
+    function setFocusCell(index) {
+      focusIndex = clamp(index, 0, signalBitCount - 1);
+      cellButtons.forEach((btn, i) => { btn.tabIndex = i === focusIndex ? 0 : -1; });
+    }
+
+    function applyCellState(index, action) {
+      const i = clamp(index, 0, signalBitCount - 1);
+      const changed = action === 'jam'
+        ? !jammedCells.has(i) && (jammedCells.add(i), true)
+        : action === 'clear'
+          ? jammedCells.delete(i)
+          : (jammedCells.has(i) ? jammedCells.delete(i) : jammedCells.add(i), true);
+      if (!changed) return false;
+      revealMode = 'diff';
       mistakes.dirty = true;
+      return true;
     }
-    function disturbAt(x) {
-      const { left, width } = signal.getBoundingClientRect();
-      if (width) disrupt(firstSignalBit + Math.floor((x - left) / width * signalBitCount));
+
+    function cellIndexAt(clientX) {
+      const { left, width } = cellsBox.getBoundingClientRect();
+      return width ? clamp(Math.floor((clientX - left) / width * signalBitCount), 0, signalBitCount - 1) : 0;
     }
-    signal.addEventListener('pointerdown', event => {
-      if (event.isPrimary && event.button === 0) pointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
+
+    if (cellsBox) {
+      cellsBox.addEventListener('pointerdown', event => {
+        if (!event.isPrimary || event.button !== 0) return;
+        const idx = cellIndexAt(event.clientX);
+        const action = jammedCells.has(idx) ? 'clear' : 'jam';
+        painting = { id: event.pointerId, action, last: idx };
+        suppressClick = true;
+        setFocusCell(idx);
+        applyCellState(idx, action);
+        cellsBox.setPointerCapture?.(event.pointerId);
+      });
+
+      cellsBox.addEventListener('pointermove', event => {
+        if (event.pointerId !== painting?.id || !(event.buttons & 1)) return;
+        const idx = cellIndexAt(event.clientX);
+        if (idx === painting.last) return;
+        const step = Math.sign(idx - painting.last);
+        for (let c = painting.last + step; c !== idx + step; c += step) applyCellState(c, painting.action);
+        painting.last = idx;
+        setFocusCell(idx);
+      });
+
+      for (const name of ['pointerup', 'pointercancel']) {
+        cellsBox.addEventListener(name, event => {
+          if (event.pointerId !== painting?.id) return;
+          painting = null;
+          setTimeout(() => { suppressClick = false; }, 0);
+        });
+      }
+
+      cellsBox.addEventListener('click', event => {
+        const btn = event.target.closest('.s14-cell');
+        if (!btn) return;
+        if (suppressClick) { suppressClick = false; return; }
+        const idx = Number(btn.dataset.cell);
+        setFocusCell(idx);
+        applyCellState(idx, 'toggle');
+      });
+
+      cellsBox.addEventListener('keydown', event => {
+        if (event.altKey || event.ctrlKey || event.metaKey) return;
+        const current = cellButtons.indexOf(document.activeElement);
+        const idx = current >= 0 ? current : focusIndex;
+        if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+          event.preventDefault();
+          const next = clamp(idx + (event.key === 'ArrowLeft' ? -1 : 1), 0, signalBitCount - 1);
+          setFocusCell(next);
+          cellButtons[next].focus();
+          if (event.shiftKey) applyCellState(next, 'jam');
+        } else if (event.key === 'Home' || event.key === 'End') {
+          event.preventDefault();
+          const next = event.key === 'Home' ? 0 : signalBitCount - 1;
+          setFocusCell(next);
+          cellButtons[next].focus();
+        } else if (event.key === 'Backspace' || event.key === 'Delete') {
+          if (!jammedCells.size) return;
+          event.preventDefault();
+          jammedCells.clear();
+          revealMode = 'diff';
+          mistakes.dirty = true;
+        }
+      });
+    }
+
+    clearBtn?.addEventListener('click', () => {
+      if (!jammedCells.size) return;
+      jammedCells.clear();
+      revealMode = 'diff';
+      mistakes.dirty = true;
     });
-    signal.addEventListener('pointermove', event => {
-      if (event.pointerId !== pointer?.id || !(event.buttons & 1)) return;
-      const dx = Math.abs(event.clientX - pointer.x), dy = Math.abs(event.clientY - pointer.y);
-      if (dx >= 6 && dx > dy) disturbAt(event.clientX);
+
+    checksInput?.addEventListener('change', () => {
+      revealMode = 'diff';
+      mistakes.dirty = true;
     });
-    for (const name of ['pointerup', 'pointercancel', 'pointerleave']) signal.addEventListener(name, event => {
-      if (event.pointerId === pointer?.id) pointer = null;
-    });
-    signal.addEventListener('click', event => {
-      if (event.detail === 0) disrupt(noiseBit ?? middle);
-      else disturbAt(event.clientX);
-    });
-    signal.addEventListener('keydown', event => {
-      if (event.altKey || event.ctrlKey || event.metaKey || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
-      event.preventDefault();
-      disrupt((noiseBit ?? middle) + (event.key === 'ArrowLeft' ? -1 : 1));
-    });
-    mistakes.input('tap').addEventListener('click', () => {
+
+    tapBtn?.addEventListener('click', () => {
       s14seed++;
-      noiseBit = null;
-      revealReplies = true;
+      revealMode = 'tap';
       mistakes.dirty = true;
     });
-    reduced.addEventListener('change', () => replyMotion?.cancel());
+
+    reduced.addEventListener('change', cancelReplyReveal);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) cancelReplyReveal(); });
   }
 
   // ---------- 15. The whole conversation (the Bit River) ----------
