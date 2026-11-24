@@ -1030,7 +1030,7 @@ html[data-intro] .stage-light { opacity: 0; }
 .intro .cine-hint.is-shown { opacity: 1; transition-delay: 1.4s; }
 /* After the drop, the stage itself can be dragged to turn the camera (sideways on a phone,
    so the page still scrolls up and down). */
-.intro .intro-stage.is-docked { cursor: grab; touch-action: pan-y; }
+.intro .intro-stage.is-docked { cursor: grab; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
 .intro .intro-stage.is-orbiting { cursor: grabbing; }
 @media (prefers-reduced-motion: reduce) {
   .intro .readout .readout-next.is-ask { animation: none; }

@@ -117,6 +117,8 @@ function intro(experience) {
   const orbit = { spin: 0, tilt: 0 };
   // How far the view can tip: from straight above the reader to straight underneath it.
   const TILT_MIN = .05, TILT_MAX = Math.PI - .05;
+  // The step's own tilt, before the hand's: the drag's tilt stops where the view stops.
+  let shotTilt = 1;
   let orbitDrag = null, orbited = false;
   // Autoplay. Until the visitor does anything, the close-up plays by itself: once the card is
   // ready it is carried to the reader, every step holds for its `hold` (cinema.js), and Ask
@@ -860,6 +862,7 @@ function intro(experience) {
         look.spin += Math.sin(clock * .19) * .035;
         look.tilt += Math.sin(clock * .14 + 1) * .012;
       }
+      shotTilt = look.tilt;
       look.spin += orbit.spin;
       look.tilt = clamp(look.tilt + orbit.tilt, TILT_MIN, TILT_MAX);
       // The question is over: the camera goes to the card's chip, which answers the standard's
@@ -1120,18 +1123,28 @@ function intro(experience) {
     if (!detected || step < 0 || step >= LAST || event.button !== 0) return;
     if (event.target.closest('button, a, input, .readout, .cine-explain, .try')) return;
     takeOver();
-    orbitDrag = { id: event.pointerId, x: event.clientX, y: event.clientY, spin: orbit.spin, tilt: orbit.tilt };
-    stage.setPointerCapture(event.pointerId);
+    // No text selection and no native drag: a selection left by a fast drag would otherwise
+    // take over the next one, and the view would stop turning.
+    event.preventDefault();
+    getSelection()?.removeAllRanges();
+    orbitDrag = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: 0 };
+    try { stage.setPointerCapture(event.pointerId); } catch {}
     stage.classList.add('is-orbiting');
   });
   stage.addEventListener('pointermove', event => {
     if (orbitDrag?.id !== event.pointerId) return;
+    // Each move adds only what the pointer moved since the last one, so a drag that runs past
+    // the tilt's end, or far off the stage, never leaves slack to undo: turning back answers
+    // at once.
     const dx = event.clientX - orbitDrag.x, dy = event.clientY - orbitDrag.y;
+    orbitDrag.x = event.clientX;
+    orbitDrag.y = event.clientY;
     // One drag across the stage turns it most of the way round, on a phone as on a wide screen.
     const perPixel = Math.max(.0055, 2 * Math.PI / (stage.clientWidth * 1.2));
-    orbit.spin = orbitDrag.spin + dx * perPixel;
-    orbit.tilt = clamp(orbitDrag.tilt - dy * perPixel * .7, -Math.PI, Math.PI);
-    if (Math.hypot(dx, dy) > 6) orbited = true;
+    orbit.spin += dx * perPixel;
+    orbit.tilt = clamp(orbit.tilt - dy * perPixel * .7, TILT_MIN - shotTilt, TILT_MAX - shotTilt);
+    orbitDrag.moved += Math.hypot(dx, dy);
+    if (orbitDrag.moved > 6) orbited = true;
     wake();
   });
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
