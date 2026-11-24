@@ -488,6 +488,41 @@ input.s7-track-copy {
   translate: var(--s10-word-shift, none);
 }
 
+#s10-pauses { color: inherit; text-decoration: none; border-radius: 2px; }
+#s10-pauses > span {
+  display: inline-block;
+  text-decoration: underline dotted var(--copper);
+  text-decoration-thickness: .06em;
+  text-underline-offset: .11em;
+  transform-origin: center 72%;
+}
+#s10-pauses:hover > span { text-decoration-style: solid; }
+#s10-pauses:active { color: var(--copper); }
+#part-two:focus { outline: none; }
+#s10-pauses:focus-visible, #part-two:focus-visible #part-two-label {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  html.part-two-link-scroll { scroll-behavior: smooth; }
+}
+.part-two-ripple {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  overflow: clip;
+  pointer-events: none;
+}
+.part-two-ripple > span {
+  display: block;
+  inline-size: 128px;
+  block-size: 128px;
+  transform-origin: top left;
+  background: radial-gradient(circle closest-side, transparent 76%,
+    color-mix(in srgb, var(--copper) 30%, transparent) 85%, transparent 91%,
+    var(--copper) 96%, transparent);
+}
+
 .plate-river { display: grid; gap: 14px; }
 .plate-river .plate-canvas { height: clamp(150px, 22vh, 220px); }
 .chat { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; max-height: 300px; overflow: auto; }

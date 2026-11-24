@@ -840,6 +840,7 @@ function watchPauses(previous, plate) {
   const field = previous.querySelector('#s9-chart');
   const oldWords = previous.querySelector('.plate-words'), words = plate.querySelector('.plate-words');
   const previousTitle = previous.querySelector('h3'), title = plate.querySelector('#s10-title');
+  const partLink = title.querySelector('#s10-pauses');
   const track = plate.querySelector('.s10-track'), slider = track.parentElement, cap = plate.querySelector('#s10-cap');
   const plot = plate.querySelector('#s10-chart');
   const piece = surface.cloneNode(false);
@@ -944,7 +945,7 @@ function watchPauses(previous, plate) {
       armed = true;
       return settle();
     }
-    if (jumped || document.activeElement === cap) armed = false;
+    if (jumped || document.activeElement === cap || document.activeElement === partLink) armed = false;
     if (!armed || top >= end || chapter.querySelector('.s9-plot-copy')) return settle();
 
     active = true;
@@ -963,7 +964,7 @@ function watchPauses(previous, plate) {
     plot.setPauseHandoff?.(ease(0, .28, progress), ease(.28, .81, progress), ease(.81, 1, progress));
   });
 
-  for (const control of [metal, metalAction, cap]) {
+  for (const control of [metal, metalAction, partLink, cap]) {
     for (const event of ['focus', 'pointerdown', 'input']) control.addEventListener(event, () => {
       if (active) armed = false;
       settle();
@@ -974,6 +975,79 @@ function watchPauses(previous, plate) {
     scheduleMotion();
   });
   for (const node of [oldWords, words, field, plot]) contentSize.observe(node);
+}
+
+function watchPartTwo(source, part) {
+  const plate = source.closest('.plate'), chapter = part.closest('.deep');
+  const word = source.firstElementChild, title = part.querySelector('.deep-part-title');
+  const ripple = document.createElement('span'), wave = document.createElement('span');
+  ripple.className = 'part-two-ripple';
+  ripple.setAttribute('aria-hidden', 'true');
+  ripple.append(wave);
+  let layout, lastTop, armed, followedFrom;
+
+  function settle() {
+    if (!ripple.isConnected) return;
+    ripple.remove();
+    word.style.removeProperty('transform');
+  }
+
+  function measure(top, height) {
+    const from = bounds(source, top), to = bounds(title, top);
+    const x = from.x + from.w / 2, y = from.y + from.h / 2;
+    // Keep the source visible for the press, including when the plot stacks below it.
+    const cue = Math.max(bounds(plate, top).y + height * .05, y - height * .24);
+    const reach = Math.hypot(to.x + to.w / 2 - x, to.y + to.h / 2 - y) + height * .16;
+    return { x, y, cue, reach, end: bounds(part, top).y };
+  }
+
+  source.addEventListener('click', event => {
+    if (reducedMotion.matches || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    followedFrom = scrollY;
+    layout = undefined;
+    // Let the native fragment link set the hash, history and focus.
+    const root = document.documentElement;
+    root.classList.add('part-two-link-scroll');
+    requestAnimationFrame(() => root.classList.remove('part-two-link-scroll'));
+  });
+
+  watchScrollMotion((top, height, needsMeasure) => {
+    if (reducedMotion.matches || document.hidden) {
+      followedFrom = undefined;
+      return settle();
+    }
+    if (needsMeasure || !layout) {
+      settle();
+      layout = measure(top, height);
+      armed = top <= layout.cue;
+      lastTop = top;
+    }
+    const { x, y, cue, reach, end } = layout;
+    const jumped = Math.abs(top - lastTop) > height * .5;
+    lastTop = top;
+    if (followedFrom !== undefined && (jumped || top < followedFrom || top >= end || location.hash !== source.hash)) {
+      followedFrom = undefined;
+    }
+    if (top <= cue) armed = true;
+    else if (jumped) armed = false;
+    const start = followedFrom ?? cue;
+    if ((!armed && followedFrom === undefined) || top <= start || top >= end) return settle();
+
+    const progress = stage(start, end, top);
+    const press = ease(0, .043, progress) * (1 - ease(.048, .115, progress));
+    word.style.transform = press ? `translateY(${press * .05}em) scale(${1 - press * .06}, ${1 - press * .11})` : '';
+    const radius = mix(18, reach, stage(.075, .98, progress));
+    wave.style.transform = `translate3d(${x}px, ${y - top}px, 0) scale(${radius / 64}) translate(-50%, -50%)`;
+    wave.style.opacity = .22 * ease(.055, .17, progress) * (1 - ease(.83, 1, progress));
+    if (!ripple.isConnected) chapter.append(ripple);
+  });
+
+  const contentSize = new ResizeObserver(() => {
+    layout = undefined;
+    scheduleMotion();
+  });
+  contentSize.observe(chapter);
+  contentSize.observe(source.closest('.plate-words'));
 }
 
 const opener = document.getElementById('deep-title');
@@ -993,3 +1067,6 @@ const metal = document.getElementById('s9');
 if (tuning && metal) watchMetal(tuning, metal);
 const pauses = document.getElementById('s10');
 if (metal && pauses) watchPauses(metal, pauses);
+const pausesLink = document.getElementById('s10-pauses');
+const partTwo = document.getElementById('part-two');
+if (pausesLink && partTwo) watchPartTwo(pausesLink, partTwo);
