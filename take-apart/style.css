@@ -88,7 +88,7 @@ body::after {
   padding-block: clamp(42px, 7vh, 80px);
   text-align: center;
 }
-#part-one { border-top-color: transparent; }
+#part-one, #part-two, .part-two-reveal .deep-part { border-top-color: transparent; }
 .deep-part > span:first-child { font-size: 12px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
 .deep-part-title {
   max-inline-size: 21ch;
@@ -99,7 +99,7 @@ body::after {
 }
 #part-one-power { white-space: nowrap; }
 html.deep-blink-hold, html.deep-closer-hold, html.deep-flipping-hold, html.deep-tuning-hold,
-html.deep-metal-hold, html.deep-pauses-hold { overflow-y: hidden; }
+html.deep-metal-hold, html.deep-pauses-hold, html.deep-part-two-hold { overflow-y: hidden; }
 .deep-blink-cover {
   position: fixed;
   inset: 0;
@@ -601,24 +601,27 @@ input.s7-track-copy {
   outline: 2px solid var(--ink);
   outline-offset: 3px;
 }
-@media (prefers-reduced-motion: no-preference) {
-  html.part-two-link-scroll { scroll-behavior: smooth; }
-}
-.part-two-ripple {
+.deep-part-two-hold #s10 { pointer-events: none; }
+.part-two-reveal {
   position: fixed;
   inset: 0;
   z-index: 2;
   overflow: clip;
   pointer-events: none;
+  padding-inline: var(--gutter);
+  background: var(--paper);
+  mask-image: radial-gradient(circle at var(--ripple-center),
+    #000 max(0px, calc(var(--ripple-radius) - 8px)), transparent var(--ripple-radius));
 }
-.part-two-ripple > span {
-  display: block;
-  inline-size: 128px;
-  block-size: 128px;
-  transform-origin: top left;
-  background: radial-gradient(circle closest-side, transparent 76%,
-    color-mix(in srgb, var(--copper) 30%, transparent) 85%, transparent 91%,
-    var(--copper) 96%, transparent);
+.part-two-reveal::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: var(--ripple-crest, 0);
+  background: radial-gradient(circle at var(--ripple-center),
+    transparent calc(var(--ripple-radius) - 26px),
+    color-mix(in srgb, var(--copper) 15%, transparent) calc(var(--ripple-radius) - 10px),
+    transparent var(--ripple-radius));
 }
 
 .s11-letter-flight {

@@ -1363,75 +1363,134 @@ function watchPauses(previous, plate) {
 
 function watchPartTwo(source, part) {
   const plate = source.closest('.plate'), chapter = part.closest('.deep');
-  const word = source.firstElementChild, title = part.querySelector('.deep-part-title');
-  const ripple = document.createElement('span'), wave = document.createElement('span');
-  ripple.className = 'part-two-ripple';
-  ripple.setAttribute('aria-hidden', 'true');
-  ripple.append(wave);
-  let layout, lastTop, armed, followedFrom;
+  const root = document.documentElement, word = source.firstElementChild;
+  const reveal = document.createElement('div'), heading = part.cloneNode(true);
+  reveal.className = 'part-two-reveal';
+  reveal.setAttribute('aria-hidden', 'true');
+  reveal.inert = true;
+  heading.removeAttribute('id');
+  heading.removeAttribute('tabindex');
+  for (const child of heading.querySelectorAll('[id]')) child.removeAttribute('id');
+  reveal.append(heading);
 
-  function settle() {
-    if (!ripple.isConnected) return;
-    ripple.remove();
+  const sweepStart = 210, sweepEnd = 1540, readHold = 1000;
+  let transition, listeners, frame;
+  const canPlay = () => !reducedMotion.matches && !document.hidden &&
+    CSS.supports('mask-image', 'radial-gradient(black, transparent)');
+
+  function land() {
+    if (transition.followLink && location.hash !== source.hash) {
+      history.pushState(history.state, '', source.hash);
+    }
+    part.scrollIntoView({ block: 'start', behavior: 'instant' });
+    transition.top = scrollY;
+    transition.arrived = true;
+    reveal.remove();
     word.style.removeProperty('transform');
+    if (transition.followLink) part.focus({ preventScroll: true });
   }
 
-  function measure(top, height) {
-    const from = bounds(source, top), to = bounds(title, top);
-    const x = from.x + from.w / 2, y = from.y + from.h / 2;
-    // Keep the source visible for the press, including when the plot stacks below it.
-    const cue = Math.max(bounds(plate, top).y + height * .05, y - height * .24);
-    const reach = Math.hypot(to.x + to.w / 2 - x, to.y + to.h / 2 - y) + height * .16;
-    return { x, y, cue, reach, end: bounds(part, top).y };
+  function release(followLink = false) {
+    if (!transition) return;
+    if (followLink && transition.followLink && !transition.arrived) land();
+    cancelAnimationFrame(frame);
+    transition = undefined;
+    reveal.remove();
+    word.style.removeProperty('transform');
+    root.classList.remove('deep-part-two-hold');
+    scheduleMotion();
+  }
+
+  function play(followLink) {
+    const wordBox = word.getBoundingClientRect();
+    if (wordBox.top < 0 || wordBox.bottom > innerHeight) {
+      source.scrollIntoView({ block: 'center', behavior: 'instant' });
+    }
+    const { x, y, w, h } = bounds(word, scrollY);
+    const centerX = x + w / 2, centerY = y + h * .69 - scrollY;
+    const reach = Math.hypot(Math.max(centerX, innerWidth - centerX), Math.max(centerY, innerHeight - centerY)) + 20;
+    transition = { top: scrollY, followLink, arrived: false };
+    root.classList.add('deep-part-two-hold');
+    reveal.style.setProperty('--ripple-center', `${centerX}px ${centerY}px`);
+    reveal.style.setProperty('--ripple-radius', '0px');
+    chapter.append(reveal);
+
+    const started = performance.now();
+    function tick(now) {
+      const elapsed = now - started;
+      if (elapsed < sweepEnd) {
+        const press = ease(0, 155, elapsed) * (1 - ease(sweepStart, 375, elapsed));
+        word.style.transform = `translateY(${press * .09}em) scale(${1 - press * .04}, ${1 - press * .16})`;
+        const spread = stage(sweepStart, sweepEnd, elapsed);
+        const radius = reach * (1 - (1 - spread) ** 2.2);
+        reveal.style.setProperty('--ripple-radius', `${radius}px`);
+        reveal.style.setProperty('--ripple-crest', ease(sweepStart, 360, elapsed) * (1 - ease(1310, sweepEnd, elapsed)));
+      } else if (!transition.arrived) land();
+      if (elapsed >= sweepEnd + readHold) return release();
+      frame = requestAnimationFrame(tick);
+    }
+    frame = requestAnimationFrame(tick);
+  }
+
+  function approach(top, height) {
+    const wordTop = bounds(word, top).y;
+    const end = bounds(part, top).y;
+    const cue = Math.max(bounds(plate, top).y, Math.min(end - height, wordTop - 8));
+    return { cue, end };
+  }
+
+  function canBegin(event, direction) {
+    if (direction < 0 || event.defaultPrevented || !event.cancelable || !canPlay()) return false;
+    if (transition) return true;
+    if (root.classList.contains('deep-pauses-hold')) return false;
+    const { cue, end } = approach(scrollY, innerHeight);
+    if (scrollY >= end - 1) return false;
+    if (scrollY >= cue - 2) return true;
+    // Stage a compact scene before the browser starts an inertial swipe.
+    if (event.type === 'touchmove' || event.key === 'PageDown' || event.key === ' ') return true;
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
+    return event.type === 'wheel' && scrollY + event.deltaY * unit > cue;
+  }
+
+  function begin(event) {
+    event.preventDefault();
+    if (transition) return;
+    const { cue } = approach(scrollY, innerHeight);
+    if (scrollY < cue - 2) {
+      scrollTo({ top: cue, behavior: 'instant' });
+      return;
+    }
+    if (word.getBoundingClientRect().top < 0) scrollTo({ top: cue, behavior: 'instant' });
+    play(false);
+  }
+
+  function interrupt(direction, event) {
+    if (transition && !transition.arrived && direction === -1 && event.cancelable) event.preventDefault();
+    release();
   }
 
   source.addEventListener('click', event => {
-    if (reducedMotion.matches || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-    followedFrom = scrollY;
-    layout = undefined;
-    // Let the native fragment link set the hash, history and focus.
-    const root = document.documentElement;
-    root.classList.add('part-two-link-scroll');
-    requestAnimationFrame(() => root.classList.remove('part-two-link-scroll'));
+    if (!canPlay() || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    event.preventDefault();
+    if (transition) transition.followLink = true;
+    else play(true);
   });
+  plate.addEventListener('focusin', event => { if (event.target !== source) release(); });
 
-  watchScrollMotion((top, height, needsMeasure) => {
-    if (reducedMotion.matches || document.hidden) {
-      followedFrom = undefined;
-      return settle();
+  watchScrollMotion((top, height) => {
+    const { cue, end } = approach(top, height);
+    if (transition && Math.abs(top - transition.top) > 2) release();
+    if (canPlay() && (transition || (top >= cue - height * .25 && top < end - 1))) {
+      listeners ??= capturePageGesture(canBegin, begin, interrupt);
+    } else {
+      listeners?.abort();
+      listeners = undefined;
     }
-    if (needsMeasure || !layout) {
-      settle();
-      layout = measure(top, height);
-      armed = top <= layout.cue;
-      lastTop = top;
-    }
-    const { x, y, cue, reach, end } = layout;
-    const jumped = Math.abs(top - lastTop) > height * .5;
-    lastTop = top;
-    if (followedFrom !== undefined && (jumped || top < followedFrom || top >= end || location.hash !== source.hash)) {
-      followedFrom = undefined;
-    }
-    if (top <= cue) armed = true;
-    else if (jumped) armed = false;
-    const start = followedFrom ?? cue;
-    if ((!armed && followedFrom === undefined) || top <= start || top >= end) return settle();
-
-    const progress = stage(start, end, top);
-    const press = ease(0, .043, progress) * (1 - ease(.048, .115, progress));
-    word.style.transform = press ? `translateY(${press * .05}em) scale(${1 - press * .06}, ${1 - press * .11})` : '';
-    const radius = mix(18, reach, stage(.075, .98, progress));
-    wave.style.transform = `translate3d(${x}px, ${y - top}px, 0) scale(${radius / 64}) translate(-50%, -50%)`;
-    wave.style.opacity = .22 * ease(.055, .17, progress) * (1 - ease(.83, 1, progress));
-    if (!ripple.isConnected) chapter.append(ripple);
   });
-
-  const contentSize = new ResizeObserver(() => {
-    layout = undefined;
-    scheduleMotion();
-  });
-  contentSize.observe(chapter);
-  contentSize.observe(source.closest('.plate-words'));
+  for (const event of ['hashchange', 'popstate', 'pagehide']) addEventListener(event, () => release());
+  addEventListener('resize', () => release(true));
+  document.addEventListener('visibilitychange', () => { if (document.hidden) release(true); });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) release(true); });
 }
 
 function watchSoaking(source, scene) {
