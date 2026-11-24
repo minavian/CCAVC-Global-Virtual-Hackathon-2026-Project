@@ -219,6 +219,10 @@ function sheetPoint(u, hinge, curl, width) {
   return [along * h / 3, up * h / 3];
 }
 
+// A pause for the page: lets a frame be drawn before the next heavy piece of loading, so
+// building the 3D never holds up the page for long in one go.
+const breathe = () => new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+
 export async function createCardScene(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'high-performance' });
   renderer.setClearColor(0, 0);
@@ -241,12 +245,14 @@ export async function createCardScene(canvas) {
     throw error;
   }
 
+  await breathe();
   const studio = new THREE.PMREMGenerator(renderer);
   const room = new RoomEnvironment();
   world.environment = studio.fromScene(room, .04).texture;
   world.environmentIntensity = .82;
   room.dispose();
   studio.dispose();
+  await breathe();
   const sky = new THREE.HemisphereLight(0xfffcf5, 0x93938e, 1.2);
   world.add(sky);
   const keys = [[-5, 8, 6, 0xfffbf3, 2.25], [6, 2, -6, 0xe4e4e0, 2.8]].map(([x, y, z, color, intensity]) => {
@@ -645,6 +651,7 @@ export async function createCardScene(canvas) {
     world.traverse(object => { for (const material of [].concat(object.material ?? [])) materials.add(material); });
     for (const material of materials)
       for (const key in material) if (material[key]?.isTexture) renderer.initTexture(material[key]);
+    await breathe();
     await renderer.compileAsync(world, camera);
     const solid = [...materials].filter(material => !material.transparent);
     // Some graphics drivers (Chrome on Windows draws through Direct3D) only finish a shader
@@ -653,13 +660,16 @@ export async function createCardScene(canvas) {
     const kept = [];
     world.traverse(object => { kept.push([object, object.visible, object.frustumCulled]); object.visible = true; object.frustumCulled = false; });
     renderer.render(world, camera);
+    await breathe();
     for (const material of solid) { material.transparent = true; material.needsUpdate = true; }
     await renderer.compileAsync(world, camera);
+    await breathe();
     renderer.render(world, camera);
     for (const material of solid) { material.transparent = false; material.needsUpdate = true; }
     for (const [object, visible, culled] of kept) { object.visible = visible; object.frustumCulled = culled; }
     renderer.clear();
   }
+  await breathe();
   try { await warmUp(); } catch (error) { console.warn('Could not prepare the shaders ahead.', error); }
 
   return { resize, draw, project, mouth, anchor, setReader, parts: { copper, die, reader, renderer, table, card, rig, camera, world } };

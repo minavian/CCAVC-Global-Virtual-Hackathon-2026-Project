@@ -1233,11 +1233,20 @@ function intro(experience) {
     if (onScreen) invalidate();
   }).observe(stage);
 
-  // Load the 3D card shortly before the section scrolls into view.
+  // Load the 3D card shortly before the section scrolls into view, but not while the
+  // landing's opening plays (about 8 s): building it then would make the opening stutter. It
+  // starts once the opening is over, or as soon as the visitor scrolls, whichever is first.
+  let near = false, calm = false, begun = false;
+  const begin = () => { if (near && calm && !begun) { begun = true; start(); } };
+  const settle = () => { calm = true; removeEventListener('scroll', onScroll); begin(); };
+  const onScroll = () => { if (scrollY > 40) settle(); };
+  addEventListener('scroll', onScroll, { passive: true });
+  setTimeout(settle, 9000);
   const loader = new IntersectionObserver(([entry]) => {
     if (!entry.isIntersecting) return;
     loader.disconnect();
-    start();
+    near = true;
+    begin();
   }, { rootMargin: '150% 0px' });
   loader.observe(experience);
 
