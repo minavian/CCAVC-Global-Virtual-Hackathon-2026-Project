@@ -939,10 +939,14 @@ function watchTuning(previous, plate) {
 
     const travel = ease(gatherEnd, pluck, elapsed);
     const release = stage(pluck, end, elapsed);
-    const shape = ease(.55, .92, release);
+    const shape = ease(0, .39, release);
     const leave = ease(0, .17, merge), arrive = ease(.83, 1, release);
     const { box, points, X, Y, color } = curve;
-    const middle = mix(from.y + from.h * .52, to.y + box.y + box.h * .72, travel) - viewport;
+    const peakIndex = points.reduce((peak, [, volts], i) => volts > points[peak][1] ? i : peak, 0);
+    const [peakFrequency, peakVolts] = points[peakIndex];
+    const peakPosition = peakIndex / (points.length - 1), peakY = Y(peakVolts);
+    const lineY = Math.max(box.y + box.h * .72, Math.min(box.y + box.h + 8, peakY + box.h * .22));
+    const middle = mix(from.y + from.h * .52, to.y + lineY, travel) - viewport;
     // While the controls pass through the center on narrow screens, carry the line down the right margin.
     const tuck = stacked ? ease(.04, .24, travel) * (1 - ease(.73, .98, travel)) : 0;
     const rail = to.x + to.w + 4;
@@ -973,20 +977,22 @@ function watchTuning(previous, plate) {
       return;
     }
 
-    const launch = stage(0, .24, release), fall = stage(.24, .41, release);
-    const pull = ease(.41, .52, release), spring = ease(.52, .66, release);
-    const exit = stage(.52, .79, release);
-    const bend = 21 * pull * (1 - spring);
-    const below = height + 24, contact = middle - 4;
-    const apex = contact - Math.min(26, height * .04);
-    const rise = mix(below, apex, launch * (2 - launch));
-    const landing = mix(rise, contact, fall * fall);
-    // Contact bends the line down. Its recoil sends the capacitor back out of view.
-    const chipY = mix(landing + bend, below, exit * (2 - exit));
-    const chipX = left + span / 2;
-    const angle = mix(-18, 4, launch) + 19 * exit;
-    capacitor.style.opacity = release > 0 && exit < 1 ? 1 : 0;
-    capacitor.style.transform = `translate(${chipX - 21}px, ${chipY - 7.5}px) rotate(${angle}deg) scale(.62)`;
+    const launch = stage(pluck - 320, pluck, elapsed);
+    const draw = ease(.36, .53, release), recoil = ease(.56, .77, release);
+    const lift = Math.min(28, box.h * .09) * draw * (1 - recoil);
+    const lineAt = (u, y) => {
+      const stretch = (u - peakPosition) / .17;
+      return mix(middle, to.y + y - viewport, shape) - lift * Math.exp(-stretch * stretch);
+    };
+
+    // Keep the capacitor against the rising crest until the extra pull is released.
+    const exit = stage(.56, .92, release), drop = exit * (.35 + .65 * exit);
+    const below = height + 24, contact = lineAt(peakPosition, peakY) + 6;
+    const chipY = mix(mix(below, contact, launch * (1.7 - .7 * launch)), below, drop);
+    const chipX = to.x + X(peakFrequency) + 12 * drop;
+    const angle = mix(-12, 0, launch) + 24 * drop;
+    capacitor.style.opacity = launch > 0 && exit < 1 ? 1 : 0;
+    capacitor.style.transform = `translate(${chipX - 21}px, ${chipY - 7.5}px) rotate(${angle}deg) scale(.8)`;
 
     ctx.save();
     if (release > 0) {
@@ -1000,7 +1006,7 @@ function watchTuning(previous, plate) {
     points.forEach(([frequency, volts], i) => {
       const u = i / (points.length - 1);
       const x = mix(left + span * u, to.x + X(frequency), shape);
-      const y = mix(middle + bend * (1 - Math.abs(2 * u - 1)), to.y + Y(volts) - viewport, shape);
+      const y = lineAt(u, Y(volts));
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     });
