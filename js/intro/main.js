@@ -1118,6 +1118,12 @@ function intro(experience) {
     orbit.spin = orbit.tilt = 0;
   }
 
+  // The browser's own drag and drop has no place on the stage: a press here moves the card or
+  // turns the view. Otherwise a selection left behind (a fast spin, a double click) was dragged
+  // by the next press instead, with the "no drop" cursor, and the view stopped turning.
+  stage.addEventListener('dragstart', event => event.preventDefault());
+  stage.addEventListener('selectstart', event => { if (detected) event.preventDefault(); });
+
   // After the drop, dragging anywhere on the stage (not on a button) turns the camera.
   stage.addEventListener('pointerdown', event => {
     if (!detected || step < 0 || step >= LAST || event.button !== 0) return;

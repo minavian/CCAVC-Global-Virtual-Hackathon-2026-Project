@@ -22,7 +22,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # Always the newest main. GitHub can start runs out of order (on 2026-11-24 an older
+      # commit's run started late and put old code back on the site); this way the last run
+      # to finish still publishes the latest code.
       - uses: actions/checkout@v7
+        with:
+          ref: main
 
       - name: Put the site in ccavc/RFIDtechnology
         run: |
