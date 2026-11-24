@@ -57,6 +57,7 @@ function intro(experience) {
     readout: $('.readout'), words: $('.readout-words'), text: $('.readout-text'), detail: $('.readout-detail'),
     middleLabel: $('.readout-middle small'), middleValue: $('.readout-middle b'), middleBar: $('.readout-middle i'),
     powerValue: $('.readout-power b'), powerBar: $('.readout-power i'),
+    frequency: $('.readout-frequency'), frequencyValue: $('.readout-frequency b'),
     nav: $('.readout-nav'), back: $('.readout-back'), next: $('.readout-next'), count: $('.readout-count'),
     dotList: $('.readout-dots'), dots: [],
     // The parts named on screen, each with a thin line to its part (paintLabels in paintFilm).
@@ -143,6 +144,7 @@ function intro(experience) {
   ];
   const shown = Object.fromEntries(Object.keys(IDLE).map(key => [key, spring(IDLE[key])]));
   let lens = null;
+  let lastLevels = null;   // what the close-up drew last (the debug hook reads it)
 
   function wake() {
     if (!raf && onScreen) raf = requestAnimationFrame(frame);
@@ -521,7 +523,8 @@ function intro(experience) {
     reading('reach', m.reach < .05 ? 'Nowhere' : m.reach.toFixed(1) + ' cm', m.reach >= lab.set.distance);
     reading('answer', m.awake ? (m.dip * 100).toFixed(1) + '%' : 'None', m.awake ? m.dip > .01 : false);
     paintPlot();
-    labUi.ask.disabled = Boolean(lab.talk);
+    labUi.ask.disabled = Boolean(lab.talk) || !m.on;
+    labUi.ask.title = m.on ? '' : 'The reader is off: no field to ask with.';
   }
 
   // The chart: the voltage at the chip across distance or across tuning, everything else as
@@ -543,7 +546,7 @@ function intro(experience) {
     const yMax = 8;
     const X = v => tuning ? left + (W - left - right) * Math.log(v / x0) / Math.log(x1 / x0) : left + (W - left - right) * (v - x0) / (x1 - x0);
     const Y = v => top + (H - top - bottom) * (1 - Math.min(v, yMax) / yMax);
-    g.font = '600 9px ui-monospace, Menlo, Consolas, monospace';
+    g.font = '600 10px "Inter Tight", system-ui, sans-serif';
     g.fillStyle = 'rgba(244,241,234,.5)';
     g.strokeStyle = 'rgba(255,255,255,.1)';
     g.lineWidth = 1;
@@ -552,14 +555,22 @@ function intro(experience) {
       g.fillText(v + ' V', 2, Y(v) + 3);
     }
     const ticks = tuning ? [5, 10, 13.56, 20, 30] : [2, 4, 6, 8, 10];
-    for (const v of ticks) g.fillText(tuning ? String(v) : v + ' cm', X(v) - (tuning ? 8 : 10), H - 4);
+    // Each under its place; the last one ends at the chart's edge, so it is never cut off.
+    for (const v of ticks) {
+      const last = v === ticks[ticks.length - 1];
+      g.textAlign = last ? 'right' : 'center';
+      g.fillText(tuning ? (last ? v + ' MHz' : String(v)) : v + ' cm', last ? W - right : X(v), H - 4);
+    }
+    g.textAlign = 'left';
     // What the chip needs to wake.
     g.strokeStyle = 'rgba(244,241,234,.75)';
     g.setLineDash([3, 3]);
     g.beginPath(); g.moveTo(left, Y(2)); g.lineTo(W - right, Y(2)); g.stroke();
     g.setLineDash([]);
     g.fillStyle = 'rgba(244,241,234,.8)';
-    g.fillText('wakes', W - right - 34, Y(2) - 4);
+    g.textAlign = 'right';
+    g.fillText('wakes', W - right, Y(2) - 4);
+    g.textAlign = 'left';
     if (tuning) {
       // The reader's frequency.
       g.strokeStyle = 'rgba(74,147,255,.7)';
@@ -576,6 +587,14 @@ function intro(experience) {
     const nowX = tuning ? 13.56 : lab.set.distance, nowV = lab.m.raw;
     g.fillStyle = lab.m.awake ? '#ffffff' : '#ff8f7a';
     g.beginPath(); g.arc(X(nowX), Y(nowV), 4, 0, Math.PI * 2); g.fill();
+    // Above the scale (very close, or a strong reader): a small peak over the dot, and the value.
+    if (nowV > yMax) {
+      const x = X(nowX);
+      g.beginPath(); g.moveTo(x - 4, top + 5); g.lineTo(x, top - 1); g.lineTo(x + 4, top + 5); g.fill();
+      g.textAlign = x > W / 2 ? 'right' : 'left';
+      g.fillText(nowV.toFixed(0) + ' V', x + (x > W / 2 ? -8 : 8), top + 8);
+      g.textAlign = 'left';
+    }
     canvas.setAttribute('aria-label', tuning
       ? `Voltage at the chip against the reader's frequency, with the card tuned to ${lab.set.tune.toFixed(2)} MHz. At 13.56 MHz it gets ${lab.m.raw.toFixed(1)} volts; it needs 2.`
       : `Voltage at the chip against distance. At ${lab.set.distance.toFixed(1)} cm it gets ${lab.m.raw.toFixed(1)} volts; it needs 2. It works up to ${lab.m.reach.toFixed(1)} cm.`);
@@ -583,7 +602,8 @@ function intro(experience) {
 
   // Ask in the lab: the question goes out; the card answers only if its chip is awake.
   function labAsk() {
-    if (step !== LAB || lab.talk) return;
+    // A reader that is off makes no field, so it has no way to ask.
+    if (step !== LAB || lab.talk || !lab.m?.on) return;
     lab.talk = { start: clock, answers: Boolean(lab.m?.awake), still: reduce.matches };
     labUi.ask.disabled = true;
     // With reduced motion the clock stands still: the outcome shows, still, for a while.
@@ -670,9 +690,21 @@ function intro(experience) {
         film.middleBar.style.setProperty('--to', Math.max(said ? from + said.realMs : to, from + .06) / REAL_MS);
       }
       // The chip's own power: none at the start of the tap, full once the current reaches it.
-      film.powerValue.textContent = Math.round(b.charge * 100) + '%';
-      film.powerBar.style.setProperty('--to', b.charge);
+      // In the lab, the physics' own number (the level shown is still gliding toward it).
+      const charge = plan.lab && lab.m ? Math.min(1, lab.m.raw / lab.m.wake) : b.charge;
+      film.powerValue.textContent = Math.round(charge * 100) + '%';
+      film.powerBar.style.setProperty('--to', charge);
+      // The radio frequency: off with the lab's reader, and its wave stops.
+      const off = Boolean(plan.lab && lab.m && !lab.m.on);
+      if (film.frequency.classList.contains('is-off') !== off) {
+        film.frequency.classList.toggle('is-off', off);
+        film.frequencyValue.textContent = off ? 'Off' : '13.56 MHz';
+      }
     } else if (on) {
+      if (film.frequency.classList.contains('is-off')) {
+        film.frequency.classList.remove('is-off');
+        film.frequencyValue.textContent = '13.56 MHz';
+      }
       band = approachBand(cm, band);
       say(APPROACH_TEXT[band], APPROACH_DETAIL[band]);
       film.middleLabel.textContent = 'Distance';
@@ -905,7 +937,7 @@ function intro(experience) {
     // shows. With reduced motion they hold still on one frame.
     if (live && !reduce.matches && !document.hidden) clock += dt;
     if (reduce.matches) clock = .4;
-    const b = { ...levels, clock, message: said,
+    const b = lastLevels = { ...levels, clock, message: said,
       view: { zoom: Math.exp(z), focus: [fx, fy, fz], at: [ax, ay], tilt: tiltAngle, spin, yaw, fov } };
 
     // Where the letters and the spray leave from: the gap of the open mouth.
@@ -1106,6 +1138,11 @@ function intro(experience) {
         nowBefore = undefined;
       },
       state: () => ({ onScreen, canDrop, detected, step, needsMeasure }),
+      // The levels the close-up drew last (cinema.js), and the lab's setting and physics.
+      levels: () => lastLevels && Object.fromEntries(Object.entries(lastLevels).filter(([, value]) => typeof value === 'number')),
+      lab: () => ({ set: { ...lab.set }, m: lab.m && { ...lab.m }, talk: Boolean(lab.talk) }),
+      setLab: next => setLab(next),
+      ask: () => labAsk(),
       shots: SHOTS,
       scene: () => scene,
     };

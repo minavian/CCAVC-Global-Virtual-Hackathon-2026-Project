@@ -283,17 +283,20 @@ export function buildEffects() {
     const sent = b.reply * (.45 + .55 * load);
     readerBand.uniforms.uAmount.value = talk.reader;
     // Round the same way as the copper's comets under it, and back the other way as the
-    // reader takes the answer in.
-    readerBand.uniforms.uPhase.value += dt * 1.5 * (1 - 2 * talk.reading);
+    // reader takes the answer in. As fast as its current is strong (the lab's reader power).
+    readerBand.uniforms.uPhase.value += dt * 1.5 * (1 - 2 * talk.reading) * (b.readerPace ?? 1);
     readerBand.uniforms.uColor.value.copy(WARM).lerp(COOL, talk.reading);
     readerBand.mesh.visible = talk.reader > .003;
+    // The light runs as fast as the current is strong (the lab: a weak current crawls); the
+    // card's answer always runs at its own pace.
+    const pace = lerp(b.cardPace ?? 1, 1, tint);
     const flows = [[coilBand, Math.max(b.receive * amp, sent), 1.4, .05],
       [moduleBand, Math.max(b.power * amp, b.receive * .6 * amp, sent), 1.3, .08],
       ...wires.map(wire => [wire, Math.max(b.power * amp, sent), 1.6, .3])];
     for (const [{ mesh, uniforms }, amount, speed, base] of flows) {
       uniforms.uAmount.value = amount;
       uniforms.uBase.value = base;
-      uniforms.uPhase.value += dt * speed * way;
+      uniforms.uPhase.value += dt * speed * way * pace;
       uniforms.uColor.value.copy(WARM).lerp(COOL, tint);
       mesh.visible = amount > .003;
     }

@@ -27,6 +27,8 @@ export const PRESETS = {
 };
 
 const physics = () => globalThis.RFID?.physics;
+// Below this power (%) the reader counts as off: it sends no question.
+export const READER_ON = 1;
 const clampTo = (value, [lo, hi]) => Math.min(hi, Math.max(lo, value));
 
 // The engine's options for a setting (SI units).
@@ -58,6 +60,10 @@ export function measure(s) {
     awake: r.awake, limited: r.limited, dip: r.dip, resonance: r.resonance,
     reach: P.range(o, .2) * 100,
     shield: bare.field > 0 ? Math.max(0, 1 - r.field / bare.field) : 0,
+    // The current in the card's coil, as a share of a normal tap's (see `labLevels`).
+    current: r.rawVolts / normal(),
+    // Whether the reader makes a field at all: off, it can neither power nor ask.
+    on: s.drive >= READER_ON,
     H_MIN: P.H_MIN,
   };
 }
@@ -83,23 +89,42 @@ export function curve(s, kind) {
   return points;
 }
 
-// What the 3D shows for a setting (cinema.js levels), from its measurement.
+// What the close-up draws as full strength: the voltage a normal tap induces in the card's
+// coil (the lab's start, on the card reader: about 4.2 V). Worked out once, when first needed.
+let normalVolts = 0;
+function normal() {
+  const P = physics();
+  if (!normalVolts && P) normalVolts = P.solve(options(LAB_START)).rawVolts;
+  return normalVolts || 4.2;
+}
+
+// What the 3D shows for a setting (cinema.js levels), from its measurement. Every level is
+// the physics, not a guess: with no field nothing moves, and a current too small to matter
+// barely shows.
 export function labLevels(s, m) {
   const gap = Math.max(.0016, s.distance / 100 - .0032);
   if (!m) return { gap };
   const drive = s.drive / 100;
+  // The current in the card's coil, as a share of a normal tap's (it goes with the voltage
+  // induced in it). Too far, it is about a fifth; with the reader off, none.
+  const current = m.raw / normal();
   return {
     gap,
     tilt: s.angle * Math.PI / 180,
     metal: s.metal > 0 ? 1 : 0,
     plate: METAL_GAPS[Math.round(s.metal)] ?? .02,
     shield: m.shield,
-    // The reader's coil and its field follow its power; the card's current follows what is
-    // induced in it; the chip lights only once it is awake.
-    emit: Math.min(1.1, .1 + .9 * drive),
-    field: Math.min(1.1, .15 + .85 * drive),
-    receive: Math.min(1, (m.raw / 4.2) ** .7),
-    power: m.awake ? 1 : 0,
+    // The reader's coil current is set by its power, and its field follows it: off is none.
+    emit: Math.min(1.25, drive),
+    field: Math.min(1.25, drive),
+    readerPace: Math.min(1.5, drive),
+    // The card's current is drawn as bright as the power it carries (the current squared), so
+    // a fifth of the current shows a twenty-fifth as bright, and its light runs as fast as the
+    // current is strong: a weak current is a faint crawl, not electricity at full flow.
+    receive: Math.min(1.15, current * current),
+    cardPace: Math.min(1.5, current),
+    // Into the chip: only once it is awake, as much as it gets (its limiter holds it at 3.3 V).
+    power: m.awake ? Math.max(.6, Math.min(1, m.volts / m.clamp)) : 0,
     blink: m.awake ? .3 : 0,
     charge: Math.min(1, m.raw / m.wake),
     answerScale: Math.max(.15, Math.min(1.2, m.dip / .06)),
@@ -127,14 +152,14 @@ export function status(s, m) {
   if (!m) return { text: 'Change anything. Watch what happens.', detail: '' };
   const reach = m.reach < .05 ? 'Like this, it works at no distance.' : `Like this, it works up to ${m.reach.toFixed(1)} cm.`;
   if (m.awake) {
-    if (s.drive < 5) return { text: 'The chip is awake.', detail: reach };
+    if (s.drive < 5) return { text: 'Awake, on a very weak field.', detail: reach };
     if (s.angle > 45 && !wakes({ ...s, angle: s.angle + 15 })) return { text: 'Awake, but only just: it is turned away.', detail: 'Less field passes through a tilted coil.' };
     if (s.metal > 0) return { text: 'Awake, but metal soaks up the field.', detail: reach };
     if (s.drive < 70) return { text: 'Awake, on a weak field.', detail: reach };
     if (Math.abs(s.tune - 13.56) > 3) return { text: 'Awake, though its tuning is off.', detail: reach };
     return { text: 'The chip is awake. It can answer.', detail: reach };
   }
-  if (s.drive < 5) return { text: 'The reader is off. No field, no power.', detail: 'Turn the reader’s power up.' };
+  if (s.drive < READER_ON) return { text: 'The reader is off. No field, no power.', detail: 'Turn the reader’s power up.' };
   switch (cause(s)) {
     case 'drive': return { text: 'Asleep: the reader is too weak.', detail: reach };
     case 'angle': return { text: 'Asleep: the card is turned away.', detail: 'Little field passes through a tilted coil.' };

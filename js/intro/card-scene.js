@@ -539,14 +539,16 @@ export async function createCardScene(canvas) {
     const dt = lastClock === null ? 0 : Math.min(.1, Math.max(0, clock - lastClock));
     lastClock = clock;
     const sent = b.reply * (.45 + .55 * load);
+    // As fast as the current is strong (the lab: a weak current crawls); the answer at its own pace.
+    const pace = THREE.MathUtils.lerp(b.cardPace ?? 1, 1, tint);
     // The copper only takes a tint of it: the bright moving light is drawn over the outer
     // turn (effects.js), so it reads as light running round, not as the copper's own colour.
     perimeter.uniforms.uCurrent.value = Math.max(b.receive * amp, sent) * .3;
-    perimeter.uniforms.uPhase.value += dt * 1.1 * way;
+    perimeter.uniforms.uPhase.value += dt * 1.1 * way * pace;
     perimeter.uniforms.uCurrentColor.value.copy(warm).lerp(cool, tint);
     perimeter.uniforms.uNeutral.value = tint * Math.min(1, b.reply * 1.5);
     module.uniforms.uCurrent.value = Math.max(b.power * amp, b.receive * .6 * amp, sent) * .4;
-    module.uniforms.uPhase.value += dt * 1.4 * way;
+    module.uniforms.uPhase.value += dt * 1.4 * way * pace;
     module.uniforms.uCurrentColor.value.copy(warm).lerp(cool, tint);
     module.uniforms.uNeutral.value = tint * Math.min(1, b.reply * 1.5);
     const work = b.blink * (.5 + .5 * Math.sin(clock * Math.PI * 2 * 1.8)) ** 2;
@@ -563,7 +565,7 @@ export async function createCardScene(canvas) {
     // Its comets run round the same way as the bright beads on its outer turn
     // (effects.js) while it sends, and the other way while it reads, slowing and turning
     // round between the two.
-    readerPhase += dt * (1 - 2 * takingIn);
+    readerPhase += dt * (1 - 2 * takingIn) * (b.readerPace ?? 1);
     let led = [idle, 1.1];
     if (b.check > .01) led = [ledMix.copy(idle).lerp(green, b.check), 1.1 + b.check * 1.6];
     else if (b.read > .05) led = [ledMix.copy(idle).lerp(reading, b.read), 1.1 + b.read * 1.2];

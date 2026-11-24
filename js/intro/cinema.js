@@ -58,11 +58,13 @@ export const WAKE = power(WAKE_CM);   // about 9%: the chip needs this much to s
 //   the metal plate behind the card shows; plate: how far behind it (m); shield: how much of
 //   the field it takes away at the card. falloff: the field's rings fade as they rise, as
 //   the real field does with height. answerScale: how strong the card's answer is.
+//   readerPace, cardPace: how fast the light runs round the reader's coil and the card's, as
+//   a share of a normal tap's (the lab's: a weak current runs slowly).
 export const IDLE = {
   dock: 0, gap: .034, card: 1, xray: 0, copper: 1, reader: 1, shell: 1,
   emit: 0, field: 0, receive: 0, power: 0, blink: 0, reply: 0, read: 0, thinking: 0,
   check: 0, page: 1, panel: 0, explain: 0, charge: 0, dark: 0,
-  tilt: 0, metal: 0, plate: .02, shield: 0, falloff: 0, answerScale: 1,
+  tilt: 0, metal: 0, plate: .02, shield: 0, falloff: 0, answerScale: 1, readerPace: 1, cardPace: 1,
 };
 const DIM = .12;   // what is not being shown fades to this
 
