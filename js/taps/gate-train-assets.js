@@ -254,6 +254,46 @@ function smooth01(t) {
   return x * x * (3 - 2 * x);
 }
 
+function addFareLineRailings(THREE, group) {
+  const steel = new THREE.MeshStandardMaterial({ color: 0x858a8a, metalness: 0.76, roughness: 0.34 });
+  const infill = new THREE.MeshStandardMaterial({ color: 0x717573, metalness: 0.61, roughness: 0.43 });
+  const postGeo = new RoundedBoxGeometry(0.052, 0.965, 0.055, 2, 0.008);
+  const footGeo = new RoundedBoxGeometry(0.102, 0.012, 0.116, 2, 0.004);
+  const picketGeo = new THREE.CylinderGeometry(0.009, 0.009, 0.66, 10);
+  const matrix = new THREE.Matrix4();
+  const z = -0.065;
+  for (const [start, end] of [[-2.98, -0.59], [0.59, 2.0]]) {
+    const length = end - start;
+    const sections = Math.ceil(length / 1.15);
+    const spacing = length / sections;
+    const railGeo = new RoundedBoxGeometry(length, 0.036, 0.042, 2, 0.007);
+    for (const y of [0.23, 0.91]) {
+      const rail = new THREE.Mesh(railGeo, steel);
+      rail.position.set((start + end) / 2, y, z);
+      group.add(rail);
+    }
+    for (let i = 0; i <= sections; i++) {
+      if ((i === 0 && start > 0) || (i === sections && end < 0)) continue;
+      const x = start + i * spacing;
+      const post = new THREE.Mesh(postGeo, steel);
+      post.position.set(x, 0.483, z);
+      const foot = new THREE.Mesh(footGeo, infill);
+      foot.position.set(x, 0.007, z);
+      group.add(post, foot);
+    }
+    const picketsPerSection = Math.ceil(spacing / 0.16) - 1;
+    const pickets = new THREE.InstancedMesh(picketGeo, infill, sections * picketsPerSection);
+    for (let section = 0; section < sections; section++) {
+      for (let i = 0; i < picketsPerSection; i++) {
+        const x = start + spacing * (section + (i + 1) / (picketsPerSection + 1));
+        matrix.makeTranslation(x, 0.57, z);
+        pickets.setMatrixAt(section * picketsPerSection + i, matrix);
+      }
+    }
+    group.add(pickets);
+  }
+}
+
 /**
  * Builds the modern metro/railway fare collection gate resting on y = 0.
  * Entry faces +Z, exit faces -Z, leaving a 0.72m center aisle (x in [-0.36, +0.36]).
@@ -267,7 +307,7 @@ function buildGate(THREE, metalTextures) {
     color: 0xffffff,
     map: metalTextures.map,
     bumpMap: metalTextures.bumpMap,
-    bumpScale: 0.0022,
+    bumpScale: 0.0011,
     metalness: 0.78,
     roughness: 0.28,
     envMapIntensity: 1.05
@@ -295,16 +335,18 @@ function buildGate(THREE, metalTextures) {
     roughness: 0.22
   });
   const glassMat = new THREE.MeshPhysicalMaterial({
-    color: 0xcfe4de,
-    roughness: 0.05,
+    color: 0xa7c9c5,
+    roughness: 0.15,
     metalness: 0.0,
     clearcoat: 1.0,
-    clearcoatRoughness: 0.04,
-    reflectivity: 0.9,
+    clearcoatRoughness: 0.12,
+    reflectivity: 0.55,
     transparent: true,
-    opacity: 0.46,
-    side: THREE.DoubleSide,
+    opacity: 0.25,
     depthWrite: false
+  });
+  const glassEdgeMat = new THREE.MeshStandardMaterial({
+    color: 0x5c8984, roughness: 0.26, transparent: true, opacity: 0.76, depthWrite: false,
   });
   const readerGlassMat = new THREE.MeshPhysicalMaterial({
     color: 0x0f1215,
@@ -370,6 +412,8 @@ function buildGate(THREE, metalTextures) {
 
     group.add(plinth, body, foreClad, aftClad, slotBack, deck, strip, endLed, footShadow);
   }
+
+  addFareLineRailings(THREE, group);
 
   // Right cabinet angled contactless reader module
   const readerAnchor = new THREE.Vector3(0.48, 1.06, 0.42);
@@ -454,10 +498,10 @@ function buildGate(THREE, metalTextures) {
   group.add(frontDisplayBezel, frontDisplayScreen, frontDisplayGlass);
 
   let lastDisplayKey = '';
-  function updateFrontDisplay(readProg, auth) {
+  function updateFrontDisplay(readProg, auth, passageClear) {
     const rq = Math.round(clamp01(readProg) * 16);
     const aq = Math.round(clamp01(auth) * 32);
-    const key = `${rq}:${aq}`;
+    const key = `${rq}:${aq}:${passageClear}`;
     if (key === lastDisplayKey) return;
     lastDisplayKey = key;
 
@@ -514,13 +558,20 @@ function buildGate(THREE, metalTextures) {
       displayCtx.fill();
 
       displayCtx.strokeStyle = '#ffffff';
-      drawCheckmark(displayCtx, w / 2 - 22, 245, 68 * scale, 14);
-      drawArrowRight(displayCtx, w / 2 + 34, 245, 58 * scale, 12);
+      if (passageClear) {
+        displayCtx.save();
+        displayCtx.translate(w / 2, 245);
+        displayCtx.rotate(-Math.PI / 2);
+        drawArrowRight(displayCtx, 0, 0, 111 * scale, 15);
+        displayCtx.restore();
+      } else {
+        drawCheckmark(displayCtx, w / 2, 245, 103 * scale, 14);
+      }
 
       displayCtx.fillStyle = '#e7f8ef';
       displayCtx.font = '700 30px "Inter Tight", Arial, sans-serif';
       displayCtx.textAlign = 'center';
-      displayCtx.fillText('ENTER', w / 2, 428);
+      displayCtx.fillText(passageClear ? 'ENTER' : 'OPENING', w / 2, 428);
       displayCtx.restore();
     }
 
@@ -534,7 +585,7 @@ function buildGate(THREE, metalTextures) {
     const xStart = dir * 0.005;
     const xEnd = dir * 0.345;
     const Hh = 0.68; // y = 0.26..0.94
-    const R = 0.085;
+    const R = 0.039;
     if (dir > 0) {
       shape.moveTo(xStart, 0);
       shape.lineTo(xEnd - R, 0);
@@ -568,15 +619,12 @@ function buildGate(THREE, metalTextures) {
   const leftBarrierGeo = createBarrierGeometry(1);
   const rightBarrierGeo = createBarrierGeometry(-1);
   const shaftGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.72, 20);
-  const clampGeo = new RoundedBoxGeometry(0.044, 0.068, 0.028, 3, 0.007);
-  const edgeStripeGeo = new THREE.BoxGeometry(0.30, 0.014, 0.0155);
-  const edgeStripeMat = new THREE.MeshPhysicalMaterial({
-    color: 0xeff5f2,
-    roughness: 0.45,
-    metalness: 0.05,
-    transparent: true,
-    opacity: 0.42,
-    depthWrite: false
+  const clampGeo = new RoundedBoxGeometry(0.063, 0.064, 0.043, 3, 0.007);
+  const collarGeo = new THREE.CylinderGeometry(0.028, 0.028, 0.029, 24);
+  const bumperGeo = new RoundedBoxGeometry(0.011, 0.58, 0.016, 2, 0.005);
+  const markingGeo = new THREE.CircleGeometry(0.008, 16);
+  const markingMat = new THREE.MeshBasicMaterial({
+    color: 0xf2f5ef, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false,
   });
 
   function createHingedBarrier(side, geo) {
@@ -587,19 +635,28 @@ function buildGate(THREE, metalTextures) {
     shaft.position.set(0, 0.34, 0);
 
     const clampLow = new THREE.Mesh(clampGeo, clampMat);
-    clampLow.position.set(-side * 0.014, 0.11, 0);
+    clampLow.position.set(-side * 0.020, 0.13, 0);
 
     const clampHigh = new THREE.Mesh(clampGeo, clampMat);
-    clampHigh.position.set(-side * 0.014, 0.57, 0);
+    clampHigh.position.set(-side * 0.020, 0.55, 0);
 
-    const barrier = new THREE.Mesh(geo, glassMat);
+    const barrier = new THREE.Mesh(geo, [glassMat, glassEdgeMat]);
     barrier.renderOrder = 2;
 
-    const safetyBand = new THREE.Mesh(edgeStripeGeo, edgeStripeMat);
-    safetyBand.position.set(-side * 0.18, 0.44, 0);
-    safetyBand.renderOrder = 3;
-
-    hinge.add(shaft, clampLow, clampHigh, barrier, safetyBand);
+    const bumper = new THREE.Mesh(bumperGeo, slotMat);
+    bumper.position.set(-side * 0.341, 0.34, 0);
+    hinge.add(shaft, clampLow, clampHigh, barrier, bumper);
+    for (let i = 0; i < 6; i++) {
+      const marking = new THREE.Mesh(markingGeo, markingMat);
+      marking.position.set(-side * (0.089 + i * 0.041), 0.449, 0.008);
+      marking.renderOrder = 3;
+      hinge.add(marking);
+    }
+    for (const y of [0.26, 0.945]) {
+      const collar = new THREE.Mesh(collarGeo, clampMat);
+      collar.position.set(side * 0.355, y, -0.05);
+      group.add(collar);
+    }
     group.add(hinge);
     return hinge;
   }
@@ -624,6 +681,7 @@ function buildGate(THREE, metalTextures) {
     authorized = 0,
     pulse = 0,
     barrierOpen = 0,
+    passageClear = false,
     opacity = 1
   } = {}) {
     const rp = clamp01(readProgress);
@@ -649,16 +707,14 @@ function buildGate(THREE, metalTextures) {
     ringHaloMat.opacity = (0.32 + 0.45 * rp + 0.58 * auth) * op;
     readerIconMat.color.copy(iconIdleColor).lerp(readAmberColor, readMix * 0.65).lerp(greenBrightColor, auth);
 
-    // Top aisle directional LED strips & entry corner LEDs
-    for (let i = 0; i < aisleStrips.length; i++) {
-      aisleStrips[i].color.copy(standbyStripColor).lerp(readAmberColor, readMix * 0.7).lerp(greenColor, auth);
-    }
-    for (let i = 0; i < endLeds.length; i++) {
-      endLeds[i].color.copy(ledIdleColor).lerp(readAmberColor, readMix).lerp(greenBrightColor, auth);
-    }
+    // Keep the aisle signal amber while the leaves are crossing the passage.
+    const busy = Math.max(auth, readMix);
+    const clear = Number(passageClear);
+    for (const strip of aisleStrips) strip.color.copy(standbyStripColor).lerp(readAmberColor, busy * 0.7).lerp(greenColor, clear);
+    for (const led of endLeds) led.color.copy(ledIdleColor).lerp(readAmberColor, busy).lerp(greenBrightColor, clear);
 
-    ripples.update(pl, 0.055, 0.23, 0.8 * op, auth);
-    updateFrontDisplay(rp, auth);
+    ripples.update(pl, 0.055, 0.155, 0.52 * op, auth);
+    updateFrontDisplay(rp, auth, passageClear);
   }
 
   setState({ readProgress: 0, authorized: 0, pulse: 0, barrierOpen: 0, opacity: 1 });

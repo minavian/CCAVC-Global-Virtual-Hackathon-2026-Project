@@ -442,12 +442,14 @@ function evaluateTerminal(t) {
 }
 
 function evaluateGate(t) {
+  const barrierOpen = inOutCubic(cue(t, 7.12, 8.16));
   return {
     pos: vec3(), scale: 1, visible: t < 12, opacity: 1,
     readProgress: smoothstep(cue(t, 6.58, 6.96)),
     authorized: smoothstep(cue(t, 6.90, 7.12)),
     pulse: cue(t, 6.66, 7.53),
-    barrierOpen: inOutCubic(cue(t, 7.12, 8.16)),
+    barrierOpen,
+    passageClear: barrierOpen >= 0.97,
   };
 }
 

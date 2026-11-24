@@ -625,6 +625,7 @@ function init() {
         authorized: gate.authorized,
         pulse: gate.pulse,
         barrierOpen: gate.barrierOpen,
+        passageClear: gate.passageClear,
         opacity: gate.opacity,
       });
     }

@@ -139,7 +139,7 @@ export function createVehicleReflection(T, pmrem) {
     panel.lookAt(0, 0, 0);
     studio.add(panel);
   }
-  const reflections = pmrem.fromScene(studio, 0.055);
+  const reflections = pmrem.fromScene(studio, 0.035);
   for (const panel of studio.children) {
     panel.geometry.dispose();
     panel.material.dispose();
@@ -162,8 +162,12 @@ function buildCar(T, { add, box, line, textures }, reflections) {
   const brushed = new T.MeshStandardMaterial({ color: 0x8b9295, metalness: 0.76, roughness: 0.36 });
   const graphite = new T.MeshStandardMaterial({ color: 0x292d2f, metalness: 0.52, roughness: 0.41 });
   const rubber = new T.MeshStandardMaterial({ color: 0x1b1c1c, roughness: 0.88 });
+  const mirrorGlass = new T.MeshPhysicalMaterial({
+    color: 0x9da8ae, metalness: 0.8, roughness: 0.12, envMap: reflections,
+  });
+  const wheelLinerMat = new T.MeshStandardMaterial({ color: 0x131414, roughness: 0.92, side: T.DoubleSide });
   const upholstery = new T.MeshStandardMaterial({ color: 0x93877a, roughness: 0.84 });
-  const cabinTrim = new T.MeshStandardMaterial({ color: 0x2c2926, roughness: 0.72 });
+  const cabinTrim = new T.MeshStandardMaterial({ color: 0x2c2926, roughness: 0.72, side: T.DoubleSide });
   const drl = new T.MeshStandardMaterial({ color: 0xd0d9de, emissive: 0xc9ddff, emissiveIntensity: 0.26, roughness: 0.2 });
   const indicators = new T.MeshStandardMaterial({ color: 0x693b21, emissive: 0xff8127, emissiveIntensity: 0, roughness: 0.26 });
   const tail = new T.MeshStandardMaterial({ color: 0x70231e, emissive: 0xff241c, emissiveIntensity: 0.28, roughness: 0.24 });
@@ -183,12 +187,31 @@ function buildCar(T, { add, box, line, textures }, reflections) {
 
   const hinge = new T.Group();
   const pivotZ = sideSurface(DOOR[0], 0.7, 1)[2];
+  const frontEdge = DOOR[0] + 0.007;
+  const rearEdge = DOOR[1] - 0.008;
+  const doorPoint = (x, height, inset) => {
+    const [body, y, z] = sideSurface(x, height, 1);
+    return [body - DOOR[0], y, z - pivotZ - inset];
+  };
   hinge.position.set(DOOR[0], 0, pivotZ);
   group.add(hinge);
   drawSide(group, FRONT, DOOR[0], 1);
-  drawSide(hinge, DOOR[0] + 0.007, DOOR[1] - 0.008, 1, DOOR[0], pivotZ);
+  drawSide(hinge, frontEdge, rearEdge, 1, DOOR[0], pivotZ);
   drawSide(group, DOOR[1], REAR, 1);
   drawSide(group, FRONT, REAR, -1);
+
+  // The door's inner panel follows the outer shell instead of stopping at a flat card edge.
+  const doorWidth = samples(frontEdge, rearEdge, 24);
+  const doorHeight = samples(0, 1, 20);
+  const doorThickness = 0.062;
+  add(hinge, skin(T, doorWidth, doorHeight, (x, v) => doorPoint(x, v, doorThickness), true), cabinTrim);
+  for (const x of [frontEdge, rearEdge]) {
+    add(hinge, skin(T, [0, doorThickness], doorHeight, (inset, v) => doorPoint(x, v, inset)), paint);
+  }
+  for (const height of [0, 1]) {
+    add(hinge, skin(T, doorWidth, [0, doorThickness], (x, inset) => doorPoint(x, height, inset)), paint);
+  }
+  line(hinge, rubber, doorHeight.map(v => doorPoint(rearEdge - 0.009, v, doorThickness)), 0.006);
 
   for (const x of [FRONT, REAR]) {
     add(group, skin(T, samples(-1, 1, 25), samples(0, 1, 16), (u, v) => {
@@ -217,7 +240,17 @@ function buildCar(T, { add, box, line, textures }, reflections) {
   ].map(([x, y, z]) => [x, y + 0.002, z]);
   line(group, black, hoodShutline, 0.004);
   drawTop(2.19, REAR, belt, x => sideSurface(x, 1, 1)[2], paint);
-  drawTop(-0.98, -0.28, roof, roofWidth, glass);
+  const windshieldBase = -0.98;
+  const windshieldTop = -0.28;
+  const windshield = topPoint(windshieldBase, windshieldTop, roof, roofWidth);
+  drawTop(windshieldBase, windshieldTop, roof, roofWidth, glass);
+  const windshieldRim = [
+    ...samples(windshieldBase, windshieldTop, 21).map(x => windshield(x, -0.99)),
+    ...samples(-0.99, 0.99, 18).slice(1).map(v => windshield(windshieldTop, v)),
+    ...samples(windshieldTop, windshieldBase, 21).slice(1).map(x => windshield(x, 0.99)),
+    ...samples(0.99, -0.99, 18).slice(1).map(v => windshield(windshieldBase, v)),
+  ].map(([x, y, z]) => [x, y + 0.003, z]);
+  line(group, black, windshieldRim, 0.009);
   drawTop(-0.28, 1.72, roof, roofWidth, paint);
   drawTop(1.72, 2.19, roof, roofWidth, glass);
 
@@ -284,11 +317,19 @@ function buildCar(T, { add, box, line, textures }, reflections) {
     const mirrorX = -0.73 - (moving ? DOOR[0] : 0);
     box(parent, black, [0.12, 0.045, 0.14], [mirrorX, y + 0.036, z + sign * 0.045 - mirrorShift], 0.023);
     box(parent, paint, [0.24, 0.092, 0.139], [mirrorX + 0.015, y + 0.085, z + sign * 0.137 - mirrorShift], 0.045);
+    const mirrorFace = box(parent, mirrorGlass, [0.008, 0.056, 0.109],
+      [mirrorX + 0.124, y + 0.084, z + sign * 0.137 - mirrorShift], 0.003);
+    mirrorFace.rotation.y = -sign * 0.16;
     box(parent, indicators, [0.12, 0.014, 0.025], [mirrorX - 0.035, y + 0.081, z + sign * 0.199 - mirrorShift], 0.007);
 
     for (const axle of AXLES) {
       const edge = samples(axle - 0.401, axle + 0.401, 32).map(x => sideSurface(x, 0, sign, 0.007));
       line(group, black, edge, 0.029);
+      add(group, skin(T, samples(0, Math.PI, 32), [0.66, 0.917], (angle, depth) => [
+        axle + Math.cos(angle) * 0.395,
+        TIRE + Math.sin(angle) * 0.395,
+        sign * depth,
+      ]), wheelLinerMat);
     }
     box(group, black, [1.93, 0.057, 0.085], [-0.01, 0.26, sign * 0.84], 0.023);
     box(group, graphite, [1.87, 0.018, 0.041], [-0.01, 0.285, sign * 0.882], 0.008);
@@ -391,17 +432,25 @@ function buildCar(T, { add, box, line, textures }, reflections) {
   steering.rotation.y = Math.PI / 2.4;
   box(group, cabinTrim, [0.06, 0.07, 0.21], [-0.53, 0.94, 0.42], 0.027);
   box(group, black, [0.042, 0.65, 0.084], [DOOR[1] + 0.008, 0.66, pivotZ - 0.139], 0.018);
-  box(hinge, cabinTrim, [1.09, 0.58, 0.075], [0.575, 0.642, -0.135], 0.037);
   box(hinge, upholstery, [0.84, 0.12, 0.045], [0.60, 0.84, -0.16], 0.022);
   box(hinge, graphite, [0.41, 0.072, 0.047], [0.54, 0.75, -0.17], 0.023);
 
   const tireProfile = [[0.244, -0.111], [0.292, -0.117], [0.334, -0.106], [0.357, -0.085],
-    [TIRE, -0.059], [TIRE, 0.059], [0.357, 0.085], [0.334, 0.106], [0.292, 0.117],
+    [TIRE, -0.059], [TIRE, -0.043], [0.364, -0.040], [0.364, -0.034], [TIRE, -0.031],
+    [TIRE, 0.031], [0.364, 0.034], [0.364, 0.040], [TIRE, 0.043], [TIRE, 0.059],
+    [0.357, 0.085], [0.334, 0.106], [0.292, 0.117],
     [0.244, 0.112], [0.244, -0.111]];
   const tireGeo = new T.LatheGeometry(tireProfile.map(([r, z]) => new T.Vector2(r, z)), 64);
   tireGeo.rotateX(Math.PI / 2);
   const disk = new T.CylinderGeometry(0.215, 0.215, 0.026, 48);
   disk.rotateX(Math.PI / 2);
+  const rotor = new T.RingGeometry(0.082, 0.192, 48);
+  const rotorMat = new T.MeshStandardMaterial({
+    color: 0x4b4e50, metalness: 0.7, roughness: 0.44, side: T.DoubleSide,
+  });
+  const caliperGeo = new RoundedBoxGeometry(0.053, 0.10, 0.027, 2, 0.009);
+  const lugGeo = new T.CylinderGeometry(0.006, 0.006, 0.004, 6);
+  lugGeo.rotateX(Math.PI / 2);
   const rim = new T.TorusGeometry(0.247, 0.014, 12, 56);
   const spokeShape = new T.Shape();
   spokeShape.moveTo(-0.026, 0.047);
@@ -419,12 +468,15 @@ function buildCar(T, { add, box, line, textures }, reflections) {
     group.add(wheel);
     add(wheel, tireGeo, rubber);
     add(wheel, disk, graphite, 0, 0, 0.048);
+    add(wheel, rotor, rotorMat, 0, 0, 0.066);
+    add(wheel, caliperGeo, cabinTrim, 0.164, 0.055, 0.076).rotation.z = 0.27;
     add(wheel, rim, graphite, 0, 0, 0.107);
     add(wheel, rim, brushed, 0, 0, 0.115).scale.setScalar(0.986);
     for (let i = 0; i < 5; i++) {
       const angle = i * Math.PI * 2 / 5;
       add(wheel, spoke, brushed, 0, 0, 0.101).rotation.z = angle;
       add(wheel, spoke, graphite, 0, 0, 0.097).rotation.z = angle + 0.23;
+      add(wheel, lugGeo, brushed, 0.042 * Math.sin(angle), 0.042 * Math.cos(angle), 0.127);
     }
     add(wheel, disk, graphite, 0, 0, 0.118).scale.set(0.29, 0.29, 0.49);
   }

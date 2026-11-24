@@ -19,9 +19,22 @@ test('payment stays confirmed while the station card crosses the counter before 
   }
   assert.ok(evaluateTimeline(4.7).stationCard.pos.y > pickup.stationCard.pos.y);
   assert.ok(evaluateTimeline(5).camera.target.x < pickup.camera.target.x);
-  assert.equal(evaluateTimeline(6.45).gate.barrierOpen, 0);
-  assert.equal(evaluateTimeline(8.2).gate.barrierOpen, 1);
   assert.ok(evaluateTimeline(9.5).camera.pos.z < evaluateTimeline(8.2).camera.pos.z);
+});
+
+test('the fare gate signals entry only after the glass leaves clear the aisle', () => {
+  const locked = evaluateTimeline(6.45).gate;
+  assert.equal(locked.barrierOpen, 0);
+  assert.equal(locked.passageClear, false);
+
+  const opening = evaluateTimeline(7.55).gate;
+  assert.equal(opening.authorized, 1);
+  assert.ok(opening.barrierOpen > 0 && opening.barrierOpen < 1);
+  assert.equal(opening.passageClear, false);
+
+  const open = evaluateTimeline(8.2).gate;
+  assert.equal(open.barrierOpen, 1);
+  assert.equal(open.passageClear, true);
 });
 
 test('the waiting train closes its doors, accelerates right, and rolls through the descent', () => {
