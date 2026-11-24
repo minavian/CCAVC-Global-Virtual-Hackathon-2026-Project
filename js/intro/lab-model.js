@@ -11,19 +11,42 @@
 //   metal     which metal plate is behind the card: 0 none, then 20, 10, 5 or 2 mm behind it
 //   drive     the reader's power, % of normal (0 to 150)
 //   tune      the frequency the card's coil is tuned to, MHz (5 to 30; real cards: 13.56)
+//   reader    which reader: 'pad', a shop's card reader, or 'phone', a phone's NFC
 export const METAL_GAPS = [null, .02, .01, .005, .002];
-export const LAB_START = { distance: 3, angle: 0, metal: 0, drive: 100, tune: 13.56 };
+export const LAB_START = { distance: 3, angle: 0, metal: 0, drive: 100, tune: 13.56, reader: 'pad' };
 export const LIMITS = {
   distance: [.5, 10], angle: [0, 90], metal: [0, METAL_GAPS.length - 1], drive: [0, 150], tune: [5, 30],
 };
-// Situations to try, one click each.
+// The two readers. A phone's coil is smaller and weaker (js/rfid/physics.js READERS: 2 turns of
+// 21 mm against the pad's 35 mm, 0.21 A against 0.525 A), so it only reaches about 2.4 cm and a
+// normal tap is about 1 cm. Its camera island stands 7 mm proud of its coil (phone-reader.js),
+// so a card can't come closer than 0.8 cm.
+export const READERS = {
+  pad: { label: 'Card reader', noun: 'reader', start: 3, nearest: .5 },
+  phone: { label: 'Phone', noun: 'phone', start: 1, nearest: .8 },
+};
+const readerOf = s => READERS[s.reader] ? s.reader : 'pad';
+// Where a setting starts for a reader: everything normal, the card at that reader's normal tap.
+export const startFor = reader => ({ ...LAB_START, reader, distance: READERS[reader].start });
+// Situations to try, one click each, for each reader. Every one is checked against the physics:
+// the normal tap wakes the chip, and each of the others puts it to sleep for its own reason.
 export const PRESETS = {
-  tap: { label: 'Normal tap', ...LAB_START },
-  far: { label: 'Too far', ...LAB_START, distance: 7 },
-  side: { label: 'Side-on', ...LAB_START, distance: 2, angle: 80 },
-  metal: { label: 'On metal', ...LAB_START, distance: 2.5, metal: 4 },
-  weak: { label: 'Weak reader', ...LAB_START, distance: 3.5, drive: 40 },
-  tuned: { label: 'Badly tuned', ...LAB_START, distance: 2, tune: 6 },
+  pad: {
+    tap: { label: 'Normal tap', ...startFor('pad') },
+    far: { label: 'Too far', ...startFor('pad'), distance: 7 },
+    side: { label: 'Side-on', ...startFor('pad'), distance: 2, angle: 80 },
+    metal: { label: 'On metal', ...startFor('pad'), distance: 2.5, metal: 4 },
+    weak: { label: 'Weak reader', ...startFor('pad'), distance: 3.5, drive: 40 },
+    tuned: { label: 'Badly tuned', ...startFor('pad'), distance: 2, tune: 6 },
+  },
+  phone: {
+    tap: { label: 'Normal tap', ...startFor('phone') },
+    far: { label: 'Too far', ...startFor('phone'), distance: 3.5 },
+    side: { label: 'Side-on', ...startFor('phone'), angle: 80 },
+    metal: { label: 'On metal', ...startFor('phone'), metal: 4 },
+    weak: { label: 'Weak phone', ...startFor('phone'), distance: 1.2, drive: 50 },
+    tuned: { label: 'Badly tuned', ...startFor('phone'), tune: 6 },
+  },
 };
 
 const physics = () => globalThis.RFID?.physics;
@@ -35,7 +58,7 @@ const clampTo = (value, [lo, hi]) => Math.min(hi, Math.max(lo, value));
 function options(s, distanceCm = s.distance) {
   const P = physics(), C0 = P.TAGS.card.capacitance;
   return {
-    tag: 'card', reader: 'pad',
+    tag: 'card', reader: readerOf(s),
     distance: distanceCm / 100,
     angle: s.angle * Math.PI / 180,
     metal: METAL_GAPS[Math.round(s.metal)] ?? null,
@@ -94,7 +117,7 @@ export function curve(s, kind) {
 let normalVolts = 0;
 function normal() {
   const P = physics();
-  if (!normalVolts && P) normalVolts = P.solve(options(LAB_START)).rawVolts;
+  if (!normalVolts && P) normalVolts = P.solve(options(startFor('pad'))).rawVolts;
   return normalVolts || 4.2;
 }
 
@@ -129,6 +152,8 @@ export function labLevels(s, m) {
     charge: Math.min(1, m.raw / m.wake),
     answerScale: Math.max(.15, Math.min(1.2, m.dip / .06)),
     falloff: 1,
+    // Which reader shows: the pad (0) or the phone (1). It glides, so the swap is animated.
+    phone: readerOf(s) === 'phone' ? 1 : 0,
   };
 }
 
@@ -143,13 +168,15 @@ function wakes(s) {
 // would wake the chip by itself is the reason. Null if none would on its own.
 const CAUSES = ['drive', 'angle', 'metal', 'tune', 'distance'];
 function cause(s) {
-  for (const key of CAUSES) if (s[key] !== LAB_START[key] && wakes({ ...s, [key]: LAB_START[key] })) return key;
+  const normal = startFor(readerOf(s));
+  for (const key of CAUSES) if (s[key] !== normal[key] && wakes({ ...s, [key]: normal[key] })) return key;
   return null;
 }
 
 // The one plain sentence (and its small print) for a setting: the most important reason.
 export function status(s, m) {
   if (!m) return { text: 'Change anything. Watch what happens.', detail: '' };
+  const phone = readerOf(s) === 'phone', noun = READERS[readerOf(s)].noun;
   const reach = m.reach < .05 ? 'Like this, it works at no distance.' : `Like this, it works up to ${m.reach.toFixed(1)} cm.`;
   if (m.awake) {
     if (s.drive < 5) return { text: 'Awake, on a very weak field.', detail: reach };
@@ -157,23 +184,27 @@ export function status(s, m) {
     if (s.metal > 0) return { text: 'Awake, but metal soaks up the field.', detail: reach };
     if (s.drive < 70) return { text: 'Awake, on a weak field.', detail: reach };
     if (Math.abs(s.tune - 13.56) > 3) return { text: 'Awake, though its tuning is off.', detail: reach };
+    if (phone) return { text: 'The phone powers the chip. It can answer.', detail: reach + ' A phone’s coil is small.' };
     return { text: 'The chip is awake. It can answer.', detail: reach };
   }
-  if (s.drive < READER_ON) return { text: 'The reader is off. No field, no power.', detail: 'Turn the reader’s power up.' };
+  if (s.drive < READER_ON) return phone
+    ? { text: 'The phone’s NFC is off. No field, no power.', detail: 'Turn the phone’s power up.' }
+    : { text: 'The reader is off. No field, no power.', detail: 'Turn the reader’s power up.' };
   switch (cause(s)) {
-    case 'drive': return { text: 'Asleep: the reader is too weak.', detail: reach };
+    case 'drive': return { text: `Asleep: the ${noun} is too weak.`, detail: reach };
     case 'angle': return { text: 'Asleep: the card is turned away.', detail: 'Little field passes through a tilted coil.' };
     case 'metal': return { text: 'Asleep: the metal blocks the field.', detail: 'Metal makes currents that cancel the field.' };
     case 'tune': return { text: 'Asleep: the card is tuned wrong.', detail: 'Its coil must be tuned to 13.56 MHz.' };
-    case 'distance': return { text: 'Asleep: too far from the reader.', detail: reach };
+    case 'distance': return { text: `Asleep: too far from the ${noun}.`, detail: phone ? `${reach} A phone reaches less than a reader.` : reach };
     default: return { text: 'Asleep: not enough power.', detail: 'Several things are working against it.' };
   }
 }
 
-// A setting kept inside its limits.
+// A setting kept inside its limits (the phone's camera island keeps the card 0.8 cm away).
 export function clampSetting(s) {
-  const out = { ...s };
+  const out = { ...s, reader: readerOf(s) };
   for (const key in LIMITS) out[key] = clampTo(+out[key], LIMITS[key]);
+  out.distance = Math.max(out.distance, READERS[out.reader].nearest);
   return out;
 }
 

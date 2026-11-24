@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
-  <link rel="stylesheet" href="styles.css?v=19">
+  <link rel="stylesheet" href="styles.css?v=20">
   <script type="importmap">
     {"imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -43,7 +43,7 @@
   <script src="js/landing.js?v=7" defer></script>
   <script src="js/present.js?v=5" defer></script>
   <script type="module" src="js/taps.js"></script>
-  <script type="module" src="js/intro/main.js?v=47"></script>
+  <script type="module" src="js/intro/main.js?v=48"></script>
 </head>
 <body>
   <main class="hero">
@@ -164,6 +164,7 @@
           <span class="cine-label" data-part="cardCoil">Card’s coil</span>
           <span class="cine-label" data-part="cardChip">Chip</span>
           <span class="cine-label" data-part="metal">Metal</span>
+          <span class="cine-label" data-part="phoneCoil">Phone’s NFC coil</span>
         </div>
         <!-- The lab (cinema.js `lab` step, js/intro/lab-model.js, main.js): change the tap and
              watch it respond. Every number is worked out live by js/rfid/physics.js. -->
@@ -186,6 +187,10 @@
             </div>
             <canvas class="try-plot" role="img" aria-label="Voltage at the chip against distance"></canvas>
           </div>
+          <div class="try-reader" role="group" aria-label="Reader">
+            <button type="button" data-reader="pad" aria-pressed="true">Card reader</button>
+            <button type="button" data-reader="phone" aria-pressed="false">Phone</button>
+          </div>
           <div class="try-controls">
             <label class="try-control"><span>Distance</span><output data-for="distance">3.0 cm</output>
               <input type="range" name="distance" min="0.5" max="10" step="0.1" value="3"></label>
@@ -193,7 +198,7 @@
               <input type="range" name="angle" min="0" max="90" step="1" value="0"></label>
             <label class="try-control"><span>Metal behind the card</span><output data-for="metal">None</output>
               <input type="range" name="metal" min="0" max="4" step="1" value="0"></label>
-            <label class="try-control"><span>Reader’s power</span><output data-for="drive">100%</output>
+            <label class="try-control try-control-drive"><span>Reader’s power</span><output data-for="drive">100%</output>
               <input type="range" name="drive" min="0" max="150" step="1" value="100"></label>
             <label class="try-control"><span>Card tuned to</span><output data-for="tune">13.56 MHz</output>
               <input type="range" name="tune" min="0" max="1000" step="1" value="499"></label>

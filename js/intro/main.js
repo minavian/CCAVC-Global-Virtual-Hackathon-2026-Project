@@ -10,7 +10,7 @@ import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose
 import { renderSignals } from './signals.js?v=2';
 import { ANSWER_AFTER, APPROACH_DETAIL, APPROACH_TEXT, ASK, SAMPLES_PER_BIT, CARD_ID, IDLE, LAB, LAST, NEAREST, REAL_MS, SHOTS, STEPS, TALK, approach, approachBand, approachView, centimetres,
   checkByte, hex, message, power, setCardId, talkLevels, view } from './cinema.js';
-import { LAB_START, PRESETS, clampSetting, curve, labLevels, measure as measureLab, parseId, status as labStatus } from './lab-model.js';
+import { LAB_START, PRESETS, READERS, clampSetting, curve, labLevels, measure as measureLab, parseId, startFor, status as labStatus } from './lab-model.js';
 
 // Resolves once the landing's opening is over (js/landing.js), the visitor scrolls, or
 // `fallback` ms pass, whichever is first: the moment to load 3D without stuttering it.
@@ -76,6 +76,7 @@ function intro(experience) {
     inputs: Object.fromEntries([...experience.querySelectorAll('.try-controls input')].map(input => [input.name, input])),
     outputs: Object.fromEntries([...experience.querySelectorAll('.try-controls output')].map(output => [output.dataset.for, output])),
     id: $('.try-id input'), check: $('.try-check b'), ask: $('.try-ask'), reset: $('.try-reset'), presets: $('.try-presets'),
+    readers: [...experience.querySelectorAll('.try-reader button')], driveLabel: $('.try-control-drive span'),
   };
   // A dot for each step, as a button that jumps to it.
   film.dots = STEPS.slice(0, LAST).map((plan, i) => {
@@ -140,7 +141,13 @@ function intro(experience) {
     [0, { distance: 3, angle: 0, metal: 0 }], [1.6, { distance: 3 }], [5.2, { distance: 7.2 }], [6.6, { distance: 7.2 }],
     [8.8, { distance: 2.2 }], [9.4, { angle: 0 }], [11.8, { angle: 82 }], [13, { angle: 82 }], [14.6, { angle: 0 }],
     [15, { metal: 0 }], [15.1, { metal: 4 }], [17.6, { metal: 4 }], [17.7, { metal: 0 }],
+    // Then the phone: the pad slides away and the phone comes in, the card lowers to a phone's
+    // tap (1 cm), is taken out past its reach (2.4 cm) and back, then the pad returns.
+    [17.8, { distance: 2.2 }], [18.4, { distance: 3 }], [18.8, { distance: 1 }], [20.8, { distance: 1 }],
+    [24, { distance: 3.4 }], [25.2, { distance: 3.4 }], [27.2, { distance: 1 }], [29.4, { distance: 1 }], [30, { distance: 3 }],
   ];
+  // Which reader the demo uses, from when.
+  const DEMO_READER = [[0, 'pad'], [18.8, 'phone'], [29.4, 'pad']];
   const shown = Object.fromEntries(Object.keys(IDLE).map(key => [key, spring(IDLE[key])]));
   let lens = null;
   let lastLevels = null;   // what the close-up drew last (the debug hook reads it)
@@ -459,10 +466,12 @@ function intro(experience) {
         }
         next[key] = key === 'metal' ? Math.round(value) : Math.round(value * 10) / 10;
       }
+      next.reader = DEMO_READER.filter(([t]) => auto.held >= t).at(-1)[1];
       // What the demo doesn't move stays normal, whatever the visitor set before pressing Play
       // (a card left tuned to 6 MHz made the whole demo say it was tuned wrong).
       next.drive = LAB_START.drive;
       next.tune = LAB_START.tune;
+      if (next.reader === 'phone' && available) scene.usePhone();
       if (Object.keys(next).some(key => next[key] !== lab.set[key])) setLab(next);
       if (auto.held >= plan.hold) go(step + 1);
     } else if (auto.held >= plan.hold) go(step + 1);
@@ -476,7 +485,9 @@ function intro(experience) {
 
   // A new setting: work it out, and show it on the controls (when it did not come from them).
   function setLab(next, fromControl) {
+    const before = lab.set.reader;
     lab.set = clampSetting({ ...lab.set, ...next });
+    if (lab.set.reader !== before || !labUi.presets.childElementCount) paintReader();
     lab.m = measureLab(lab.set);
     lab.points = curve(lab.set, lab.chart);
     if (!fromControl) syncControls();
@@ -485,8 +496,42 @@ function intro(experience) {
     invalidate();
   }
 
+  // The reader's switch, and what depends on the reader: the nearest the card can come (the
+  // phone's camera island), the power control's name, and the situations to try.
+  function paintReader() {
+    const reader = lab.set.reader, info = READERS[reader];
+    for (const button of labUi.readers) button.setAttribute('aria-pressed', String(button.dataset.reader === reader));
+    labUi.inputs.distance.min = info.nearest;
+    labUi.driveLabel.textContent = reader === 'phone' ? 'Phone’s power' : 'Reader’s power';
+    labUi.presets.replaceChildren(...Object.values(PRESETS[reader]).map(preset => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = preset.label;
+      button.addEventListener('click', event => {
+        if (event.isTrusted) takeOver();
+        const { label, ...set } = preset;
+        setLab(set);
+      });
+      return button;
+    }));
+  }
+
+  // The visitor picks a reader: the phone loads the first time (its button says so meanwhile),
+  // then the card goes to that reader's normal tap distance and the readers swap.
+  async function chooseReader(reader) {
+    if (reader === lab.set.reader) return;
+    if (reader === 'phone' && available) {
+      const button = labUi.readers.find(b => b.dataset.reader === 'phone');
+      button.setAttribute('aria-busy', 'true');
+      await scene.usePhone();
+      button.removeAttribute('aria-busy');
+    }
+    setLab({ reader, distance: READERS[reader].start });
+  }
+
   function syncControls() {
     const { inputs } = labUi;
+    inputs.distance.min = READERS[lab.set.reader].nearest;
     inputs.distance.value = lab.set.distance;
     inputs.angle.value = lab.set.angle;
     inputs.metal.value = Math.round(lab.set.metal);
@@ -670,10 +715,11 @@ function intro(experience) {
         ({ text, detail } = labStatus(lab.set, lab.m));
         if (lab.talk) {
           const e = lab.talk.still ? 99 : clock - lab.talk.start, asked = TALK.ask.length / SAMPLES_PER_BIT * .15;
-          if (e < asked) { text = 'The reader asks: who are you?'; detail = 'It flicks its field off and on.'; }
+          const noun = READERS[lab.set.reader].noun;
+          if (e < asked) { text = `The ${noun} asks: who are you?`; detail = 'It flicks its field off and on.'; }
           else if (!lab.talk.answers) { text = 'No answer. The chip has no power.'; detail = 'It needs about 2 volts to wake.'; }
           else if (e < ANSWER_AFTER) { text = 'The chip works out its answer.'; detail = 'In life this takes 86 millionths of a second.'; }
-          else { text = 'The card answers: ' + TALK.answer.words + '.'; detail = `The reader feels a ${(lab.m.dip * 100).toFixed(1)}% change.`; }
+          else { text = 'The card answers: ' + TALK.answer.words + '.'; detail = `The ${noun} feels a ${(lab.m.dip * 100).toFixed(1)}% change.`; }
         }
       }
       if (text) say(text, detail);
@@ -746,7 +792,9 @@ function intro(experience) {
     // While the card's chip works out its answer, its label points to it.
     const working = docked && STEPS[step].talk === 'answer' && b.message && !b.message.started;
     const inLab = docked && step === LAB;
-    const names = working ? ['chip'] : inLab ? ['chip', ...(lab.set.metal > 0 ? ['metal'] : [])] : STEPS[step]?.labels ?? [];
+    const names = working ? ['chip'] : inLab
+      ? ['chip', ...(lab.set.metal > 0 ? ['metal'] : []), ...(b.phone > .97 ? ['phoneCoil'] : [])]
+      : STEPS[step]?.labels ?? [];
     paintLabels3D(docked && available ? names : []);
     // The lab's panel shows only in its step, once the readout is in.
     const labShown = inLab && b.panel > .5;
@@ -772,9 +820,11 @@ function intro(experience) {
     const said = b.message;
     if (docked && said?.started && (said.landed < 1 || reduce.matches)) {
       const asking = said.dir > 0;
+      const device = STEPS[step].lab && lab.set.reader === 'phone' ? 'Phone' : 'Reader';
       tag = {
         kind: asking ? 'ask' : 'answer', text: said.words,
-        note: `${asking ? 'Reader → card' : 'Card → reader'} · ${said.bits.length} bits · ${said.frameMs.toFixed(2)} ms`,
+        // (In the lab with the phone, the phone is the reader.)
+        note: `${asking ? `${device} → card` : `Card → ${device.toLowerCase()}`} · ${said.bits.length} bits · ${said.frameMs.toFixed(2)} ms`,
       };
     } else if (docked && available && STEPS[step].shot === 'read') {
       tag = { kind: 'check', text: CARD_ID, note: '', at: scene.anchor('readerChip') };
@@ -895,6 +945,7 @@ function intro(experience) {
       if (said && reduce.matches && said.dir < 0) goal = { ...goal, reply: plan.levels.reply };
       // Aim where the card is going, so the camera and the card arrive together.
       look = view(plan.shot, goal.gap, rest, layout.compact);
+      if (plan.lab) look.zoom *= 1 - .1 * shown.phone.value;
       if (plan.talk && !reduce.matches) {
         // While they talk the camera never quite stops: a slight, slow drift.
         look.spin += Math.sin(clock * .19) * .035;
@@ -1022,6 +1073,8 @@ function intro(experience) {
     auto.held = auto.after = 0;
     // A conversation started in the lab ends when it is left.
     if (lab.talk) { lab.talk = null; labUi.ask.disabled = false; }
+    // Reaching the lab, the phone (its second reader) loads in the background.
+    if (step === LAB && available) scene.usePhone();
     // The card answers by itself, a moment after the step starts; the question waits for Ask.
     talk = STEPS[step].talk === 'answer' ? { name: 'answer', start: Math.max(answerAt ?? 0, clock + .2) } : null;
     unturn();
@@ -1060,18 +1113,13 @@ function intro(experience) {
       setLab({}, true);
     });
   }
-  // Situations to try, one click each.
-  labUi.presets.replaceChildren(...Object.entries(PRESETS).map(([key, preset]) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = preset.label;
+  // Which reader: the card reader or a phone.
+  for (const button of labUi.readers) {
     button.addEventListener('click', event => {
       if (event.isTrusted) takeOver();
-      const { label, ...set } = preset;
-      setLab(set);
+      chooseReader(button.dataset.reader);
     });
-    return button;
-  }));
+  }
   // The card's ID: four bytes in hex. Its check byte follows as it is typed, and its answer
   // carries the new ID.
   labUi.id.addEventListener('input', event => {
@@ -1094,7 +1142,7 @@ function intro(experience) {
     labUi.id.value = DEFAULT_ID;
     labUi.id.setAttribute('aria-invalid', 'false');
     labUi.check.textContent = hex([checkByte(bytes)]);
-    setLab({ ...LAB_START });
+    setLab({ ...startFor('pad') });
   });
   setLab({});
   film.back.addEventListener('click', event => { if (event.isTrusted) takeOver(); go(step - 1); });
@@ -1147,6 +1195,7 @@ function intro(experience) {
       levels: () => lastLevels && Object.fromEntries(Object.entries(lastLevels).filter(([, value]) => typeof value === 'number')),
       lab: () => ({ set: { ...lab.set }, m: lab.m && { ...lab.m }, talk: Boolean(lab.talk) }),
       setLab: next => setLab(next),
+      reader: reader => chooseReader(reader),
       ask: () => labAsk(),
       shots: SHOTS,
       scene: () => scene,

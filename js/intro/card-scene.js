@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { buildReader, SIZE, TOP, COIL_Z, COIL_HALF, CHIP as READER_CHIP } from './reader-model.js';
 import { buildEffects } from './effects.js';
+import { buildPhone, PHONE_COIL, PHONE_CHIP } from './phone-reader.js';
 import { HOVER } from './cinema.js';
 
 const cardURL = new URL('../../models/contactless-card.glb', import.meta.url);
@@ -350,6 +351,9 @@ export async function createCardScene(canvas) {
   const reader = buildReader();
   const table = new THREE.Group();
   table.add(reader.group);
+  // The lab's second reader: a phone, loaded the first time it is asked for (`usePhone`).
+  const phone = buildPhone();
+  table.add(phone.group);
   world.add(table);
   const fx = buildEffects();
   table.add(fx.table);
@@ -520,6 +524,15 @@ export async function createCardScene(canvas) {
     shade(Math.max(pose.xray, b.xray), b.card, b.copper, b.xray);
 
     const dark = b.dark || 0;
+    // Which reader (the lab's switch, `b.phone`): the pad slides out to the right and fades over
+    // the first half of the swap, then the phone slides in from the left over the second half,
+    // so the two never stand in each other. The field and the current swap with them (effects.js).
+    const swap = b.phone || 0;
+    const padOut = THREE.MathUtils.smoothstep(swap, 0, .55), phoneIn = THREE.MathUtils.smoothstep(swap, .45, 1);
+    // Halfway through the swap no reader is under the card, so no field reaches it: its current
+    // and its chip go dark, and come back as the new reader slides in.
+    const present = Math.max(1 - padOut, phoneIn);
+    if (present < .999) b = { ...b, receive: b.receive * present, power: b.power * present, blink: b.blink * present };
     // Current in the card's coils: the reader's power coming in (orange, one way round and
     // into the chip), the answer going out (blue, the other way, out of the chip).
     const clock = b.clock;
@@ -570,8 +583,22 @@ export async function createCardScene(canvas) {
     if (b.check > .01) led = [ledMix.copy(idle).lerp(green, b.check), 1.1 + b.check * 1.6];
     else if (b.read > .05) led = [ledMix.copy(idle).lerp(reading, b.read), 1.1 + b.read * 1.2];
     const readerCurrent = Math.max(sending, said ? b.read : 0);
+    const padShift = { x: padOut * .15, z: -padOut * .012 }, phoneShift = { x: -(1 - phoneIn) * .17, z: -(1 - phoneIn) * .012 };
+    reader.group.position.set(padShift.x, 0, padShift.z);
+    phone.group.position.set(phoneShift.x, 0, phoneShift.z);
+    phone.set({
+      opacity: readerRest.opacity * b.reader * phoneIn,
+      shellOpacity: Math.max(b.shell, .1),
+      glow: readerCurrent * (1 - .75 * dark),
+      dim: dark,
+      color: mixColor.copy(warm).lerp(cool, takingIn),
+      // Its screen, lying under it, lights the table: blue while it takes the answer in, green
+      // once it has read the card.
+      screen: b.check > .01 ? [green, b.check * 1.1] : [reading, b.read * .6 + b.thinking * .3],
+      thinking: b.thinking * (.6 + .4 * Math.sin(clock * Math.PI * 2 * 1.4)),
+    });
     reader.set({
-      opacity: readerRest.opacity * b.reader,
+      opacity: readerRest.opacity * b.reader * (1 - padOut),
       shellOpacity: b.shell,
       // A tint on the copper; the bright moving light is drawn over its outer turn
       // (effects.js). In the dark the copper itself goes darker, so the light stands out.
@@ -586,11 +613,12 @@ export async function createCardScene(canvas) {
     });
 
     cardTop = TOP + b.gap + .0008;
+    usingPhone = swap > .5;
     plate.visible = (b.metal || 0) > .01;
     plate.material.opacity = (b.metal || 0) * .62;
     plate.position.set(-.0003, 0, .0009 + (b.plate ?? .02));
     plateHeight = .0009 + (b.plate ?? .02);
-    fx.update(b, TOP + b.gap + .0004, { amp, load, reader: readerCurrent * dark, reading: takingIn });
+    fx.update(b, TOP + b.gap + .0004, { amp, load, reader: readerCurrent * dark, reading: takingIn, padShift, phoneShift });
 
     // The lights go down for the conversation: less room light, more rim.
     world.environmentIntensity = .82 * (1 - .58 * dark);
@@ -619,8 +647,11 @@ export async function createCardScene(canvas) {
     const c = Math.cos(HOVER.spin), s = Math.sin(HOVER.spin);
     return point.set(HOVER.x + x * c - y * s, HOVER.y + x * s + y * c, z);
   };
+  let usingPhone = false;
   const PARTS = {
-    readerCoil: () => point.set(COIL_HALF, -COIL_HALF * .35, COIL_Z),
+    readerCoil: () => usingPhone ? point.set(PHONE_COIL.radius * .94, -PHONE_COIL.radius * .34, COIL_Z)
+      : point.set(COIL_HALF, -COIL_HALF * .35, COIL_Z),
+    phoneCoil: () => point.set(PHONE_COIL.radius * .94, -PHONE_COIL.radius * .34, COIL_Z),
     field: () => point.set(COIL_HALF * 1.08, -COIL_HALF * .3, (COIL_Z + cardTop) / 2),
     cardCoil: () => onCard(.0402, -.008, cardTop),
     cardChip: () => onCard(-.0277, .0031, cardTop + .0004),
@@ -631,7 +662,10 @@ export async function createCardScene(canvas) {
   function anchor(name) {
     if (PARTS[name]) return toScreen(table.localToWorld(PARTS[name]()));
     if (name === 'chip') return project(-.0277, .0031, .0004);
-    if (name === 'readerChip') return toScreen(table.localToWorld(point.set(READER_CHIP.x, READER_CHIP.y, READER_CHIP.z + .002)));
+    if (name === 'readerChip') {
+      const chip = usingPhone ? PHONE_CHIP : READER_CHIP;
+      return toScreen(table.localToWorld(point.set(chip.x, chip.y, chip.z + .002)));
+    }
     return toScreen(table.localToWorld(point.set(0, .006, TOP)));   // the reader's top
   }
 
@@ -674,5 +708,16 @@ export async function createCardScene(canvas) {
   await breathe();
   try { await warmUp(); } catch (error) { console.warn('Could not prepare the shaders ahead.', error); }
 
-  return { resize, draw, project, mouth, anchor, setReader, parts: { copper, die, reader, renderer, table, card, rig, camera, world } };
+  // The phone as the lab's reader: loaded once, then its shaders prepared before it shows.
+  let phoneReady = null;
+  function usePhone() {
+    phoneReady ??= phone.load().then(async () => {
+      try { await renderer.compileAsync(world, camera); } catch (error) { /* drawn without warming */ }
+      return true;
+    }).catch(error => { console.warn('Could not load the phone.', error); return false; });
+    return phoneReady;
+  }
+
+  return { resize, draw, project, mouth, anchor, setReader, usePhone, phoneLoaded: () => phone.loaded(),
+    parts: { copper, die, reader, phone, renderer, table, card, rig, camera, world } };
 }
