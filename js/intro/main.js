@@ -643,7 +643,15 @@ function intro(experience) {
       const barNode = node.querySelector('.try-bar');
       if (barNode) { barNode.style.setProperty('--to', clamp(bar)); barNode.style.setProperty('--need', need); }
     };
-    reading('field', m.field.toFixed(2) + ' A/m', m.field >= m.H_MIN, m.field / 7.5, m.H_MIN / 7.5);
+    // The standard's window, 1.5 to 7.5 A/m, both marked on a 0 to 10 A/m bar. Over 7.5 the
+    // reading turns red: the card is in a stronger field than it must cope with (its limiter
+    // takes the extra).
+    const over = m.field > m.H_MAX;
+    reading('field', m.field.toFixed(2) + ' A/m', over ? false : m.field >= m.H_MIN, m.field / 10, m.H_MIN / 10);
+    const fieldNode = labUi.readings.field;
+    fieldNode.classList.toggle('is-over', over);
+    fieldNode.querySelector('.try-max').style.left = `${m.H_MAX / 10 * 100}%`;
+    fieldNode.title = over ? 'Over the standard’s 7.5 A/m: the chip’s limiter takes the extra.' : '';
     reading('volts', m.volts.toFixed(2) + ' V', m.awake, m.volts / m.clamp, m.wake / m.clamp);
     reading('reach', m.reach < .05 ? 'Nowhere' : m.reach.toFixed(1) + ' cm', m.reach >= lab.set.distance);
     reading('answer', m.awake ? (m.dip * 100).toFixed(1) + '%' : 'None', m.awake ? m.dip >= .02 : false);

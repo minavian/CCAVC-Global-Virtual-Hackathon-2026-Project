@@ -109,7 +109,7 @@ export function measure(s) {
     // takes at most 13.9 mW, and the limiter burns off the rest. The reader is the battery.
     watts: r.chipVolts ** 2 / (2 * P.TAGS.card.chipLoad),
     needs: r.wake ** 2 / (2 * P.TAGS.card.chipLoad),
-    H_MIN: P.H_MIN,
+    H_MIN: P.H_MIN, H_MAX: P.H_MAX,
   };
 }
 

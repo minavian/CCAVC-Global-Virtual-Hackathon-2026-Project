@@ -982,6 +982,7 @@ html[data-intro] .stage-light { opacity: 0; }
 .intro .try-bar { position: relative; display: block; height: .3rem; margin-top: .3rem; border-radius: 1rem; background: rgba(255, 255, 255, .12); }
 .intro .try-bar span { position: absolute; inset: 0 auto 0 0; width: calc(var(--to, 0) * 100%); border-radius: inherit; background: #ffb52e; transition: width .15s linear; }
 .intro .try-reading.is-low .lab-bar span { background: #ff8f7a; }
+.intro .try-reading.is-over .try-bar span { background: #ff8f7a; }
 .intro .try-bar em { position: absolute; top: -.2rem; bottom: -.2rem; left: calc(var(--need, 0) * 100%); width: 2px; background: #f4f1ea; border-radius: 1px; }
 .intro .try-chart { display: grid; gap: .35rem; }
 .intro .try-tabs { display: inline-flex; gap: .25rem; justify-self: start; padding: .15rem; border-radius: 999px; background: rgba(255, 255, 255, .07); }
