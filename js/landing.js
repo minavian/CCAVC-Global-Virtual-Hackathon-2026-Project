@@ -125,8 +125,16 @@
   // ---------- Story state ----------
   // Scrolling plays the story (js/story.js). Its progress `scrollNow` is measured in screens
   // and eases toward the real scroll position, so wheel steps still feel like a film.
-  const story = window.RFIDStory ? window.RFIDStory.create() : null;
-  const lab = window.RFIDLab ? window.RFIDLab.create() : null;
+  // The key-fob scroll story (js/story.js, js/lab.js) is off the page's path: the card
+  // close-up (js/intro/) tells the mechanism once, and its lab does what the story's lab did
+  // (distance, turning, metal). `?story` in the address brings it back.
+  const STORY = new URLSearchParams(location.search).has('story');
+  if (!STORY) {
+    document.getElementById('story')?.remove();
+    document.querySelector('.track')?.remove();
+  }
+  const story = STORY && window.RFIDStory ? window.RFIDStory.create() : null;
+  const lab = STORY && window.RFIDLab ? window.RFIDLab.create() : null;
   const FEATURED = 0;                        // the key fob is the object the story opens
   const CARD = 2;
   let scrollGoal = 0, scrollNow = 0, storyOn = false, storyState = null, labState = null, paintedAt = null;
@@ -782,7 +790,8 @@
   // The story starts where its track starts: after the everyday taps (js/taps.js) and the card intro (js/intro/).
   const track = document.querySelector('.track');
   addEventListener('scroll', () => {
-    scrollGoal = Math.max(0, scrollY - (track ? track.offsetTop : 0)) / Math.max(1, viewH());
+    // Without the story, scrolling never plays it: the objects stay where they are.
+    scrollGoal = track ? Math.max(0, scrollY - track.offsetTop) / Math.max(1, viewH()) : 0;
     if (intro !== null && started && frozenAt === null && scrollY / Math.max(1, viewH()) > .01) finishIntro(true);
     wake();
   }, { passive: true });
