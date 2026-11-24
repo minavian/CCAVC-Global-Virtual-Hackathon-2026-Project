@@ -395,7 +395,6 @@ function watchFlipping(previous, plate, settlePrevious) {
   const ctx = plot.getContext('2d');
   const theme = getComputedStyle(chapter);
   const colors = ['--ink', '--copper'].map(name => theme.getPropertyValue(name).trim());
-  const paper = theme.getPropertyValue('--paper').trim();
   const motions = [];
   const wordsInFlight = [];
   const traceTime = 2180, guideTime = 2720, readHold = 1000;
@@ -534,6 +533,7 @@ function watchFlipping(previous, plate, settlePrevious) {
     const p = stage(200, traceTime, elapsed);
     const gather = ease(.03, .36, p), travel = ease(.20, .75, p), open = waves ? ease(.67, 1, p) : 0;
     const lift = gather * (1 - open);
+    const merged = ease(.65, 1, gather) * (1 - ease(0, .38, open));
     const alpha = ease(200, 410, elapsed) * (1 - targetChart.flippingEntrance.traces);
     ctx.clearRect(0, 0, width, height);
     if (alpha === 0) return;
@@ -542,59 +542,34 @@ function watchFlipping(previous, plate, settlePrevious) {
       { x: target.x + target.w * .53, y: Math.min(target.y + target.h * .51, height * .84) }, travel, Math.min(70, height * .10));
     const angle = mix(.36, .77, travel);
     const dx = Math.cos(angle), dy = Math.sin(angle);
-    const length = Math.min(width * .57, 270);
-    const radius = Math.min(width * .073, height * .052, 36);
-    const strandWidth = mix(2, 1.5, lift);
-    const strands = outgoing.map(({ box, points }, index) => {
+    const length = Math.min(width * .60, 284);
+    const bend = Math.min(length * .18, height * .062);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = mix(2, 1.45, lift);
+    outgoing.forEach(({ box, points }, index) => {
+      if (index === 0 && merged === 1) return;
       const wave = waves?.[index];
-      return Array.from({ length: 201 }, (_, i) => {
+      ctx.globalAlpha = alpha * (index === 0 ? 1 - merged : 1);
+      ctx.strokeStyle = colors[index];
+      ctx.beginPath();
+      for (let i = 0; i <= 200; i++) {
         const u = i / 200, sample = u * (points.length - 1), j = Math.floor(sample);
         const [ax, ay] = points[j], [bx, by] = points[Math.min(j + 1, points.length - 1)];
         const x = source.x + box.x + mix(ax, bx, sample - j) * box.w;
         const y = source.y + box.y + mix(ay, by, sample - j) * box.h;
-        // Both strands follow a traveling bend, with opposite phases around it.
-        const spin = u * Math.PI * 4.4 - travel * Math.PI * 1.75 + index * Math.PI;
+        // Both traces converge on the same curve. Each keeps its own destination wave.
         const along = (u - .5) * length;
-        const bend = Math.sin((u - travel * .78) * Math.PI * 2) * radius * .68;
-        const curl = Math.cos(spin) * radius * (.38 + .62 * Math.sin(u * Math.PI));
-        const across = bend + curl;
-        const helixX = center.x + along * dx - across * dy, helixY = center.y + along * dy + across * dx;
-        const mergeX = mix(x, helixX, gather), mergeY = mix(y, helixY, gather);
-        return {
-          x: wave ? mix(mergeX, target.x + wave.box.x + wave.box.w * u, open) : mergeX,
-          y: wave ? mix(mergeY, target.y + wave.box.y + wave.box.h * wave.yAt(u), open) : mergeY,
-          front: Math.sin(spin) > .03,
-        };
-      });
-    });
-
-    function stroke(points, color, width, frontOnly = false) {
-      ctx.strokeStyle = color;
-      ctx.lineWidth = width;
-      ctx.beginPath();
-      let connect = false;
-      for (const point of points) {
-        const visible = !frontOnly || point.front;
-        if (visible) {
-          if (connect) ctx.lineTo(point.x, point.y);
-          else ctx.moveTo(point.x, point.y);
-        }
-        connect = visible;
+        const across = Math.sin((u - .5 - travel * .55) * 2 * Math.PI) * bend;
+        const mergeX = mix(x, center.x + along * dx - across * dy, gather);
+        const mergeY = mix(y, center.y + along * dy + across * dx, gather);
+        const px = wave ? mix(mergeX, target.x + wave.box.x + wave.box.w * u, open) : mergeX;
+        const py = wave ? mix(mergeY, target.y + wave.box.y + wave.box.h * wave.yAt(u), open) : mergeY;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
       }
       ctx.stroke();
-    }
-
-    ctx.globalAlpha = alpha;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    strands.forEach((points, i) => stroke(points, colors[i], strandWidth));
-    const depth = ease(.30, .68, lift);
-    if (depth) {
-      ctx.globalAlpha = alpha * depth;
-      for (const points of strands) stroke(points, paper, strandWidth + depth * 3, true);
-      ctx.globalAlpha = alpha;
-      strands.forEach((points, i) => stroke(points, colors[i], strandWidth, true));
-    }
+    });
     ctx.globalAlpha = 1;
   }
 
