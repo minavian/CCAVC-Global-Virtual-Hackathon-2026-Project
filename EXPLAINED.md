@@ -558,3 +558,4 @@ Owner: Mina Vian · 2026-11-24 · Issue #33
 **Likely questions.**
 - Q: Why are the Markdown notes left out? A: They are for the team. They stay readable in the public repo, but the site doesn't need them.
 - Q: What if GitHub is down? A: The site is down too. Any static host would work as a backup, because there is no server code.
+- Q: Why version 4 of `upload-pages-artifact`, not the newest? A: Version 5 stores the files in a way that `deploy-pages` could not find ("No artifacts named github-pages"), so the first publish failed twice. Version 4 is the one `deploy-pages` is known to work with.

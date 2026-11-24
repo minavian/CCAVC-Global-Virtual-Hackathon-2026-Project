@@ -37,7 +37,7 @@ jobs:
           cp hosting/index.html hosting/404.html _site/
           test -f "$site/index.html"
 
-      - uses: actions/upload-pages-artifact@v5
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: _site
 
