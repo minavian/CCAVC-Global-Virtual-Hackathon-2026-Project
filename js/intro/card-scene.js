@@ -327,6 +327,16 @@ export async function createCardScene(canvas) {
     return { material, uniforms, original: material.color.clone(), metalness: material.metalness };
   });
   const die = card.getObjectByName('silicon-die').material;
+
+  // The lab's metal plate (a steel sheet, like a phone's back or a keyring's tag), behind the
+  // card at `b.plate` metres, in the card's own frame so it turns with it.
+  const plate = new THREE.Mesh(
+    new THREE.BoxGeometry(.094, .062, .0008),
+    new THREE.MeshStandardMaterial({ color: 0xb4bcc6, metalness: 1, roughness: .3, transparent: true, opacity: 0, depthWrite: false }),
+  );
+  plate.renderOrder = 7;
+  plate.visible = false;
+  card.add(plate);
   const dieGlow = new THREE.Color('#ff9a2e');
 
   // The reader and what moves between it and the card. The reader's frame (`table`) is
@@ -391,9 +401,12 @@ export async function createCardScene(canvas) {
     out.scale = pose.width / widthInMeters * Math.min(zoom, GROW) / zoom;
   }
 
-  // Lying flat over the reader, `gap` metres above its top.
-  function dockPose(gap, out) {
+  // Lying over the reader, `gap` metres above its top, turned `tilt` radians about its long
+  // side (the lab).
+  const tiltQuaternion = new THREE.Quaternion();
+  function dockPose(gap, out, tilt = 0) {
     hoverQuaternion.setFromAxisAngle(point.set(0, 0, 1), HOVER.spin);
+    hoverQuaternion.multiply(tiltQuaternion.setFromAxisAngle(point.set(1, 0, 0), tilt));
     hover.compose(point.set(HOVER.x, HOVER.y, TOP + gap + .0004), hoverQuaternion, unitScale);
     dockMatrix.multiplyMatrices(table.matrixWorld, hover);
     dockMatrix.decompose(out.position, out.quaternion, tmpScale);
@@ -492,7 +505,7 @@ export async function createCardScene(canvas) {
       free.position.set(camera2D.x + (free.position.x - camera2D.x) * k, camera2D.y + (free.position.y - camera2D.y) * k, point.z + ahead);
       free.scale *= k;
     }
-    dockPose(b.gap, docked);
+    dockPose(b.gap, docked, b.tilt || 0);
     blend(free, docked, b.dock, shown);
     rig.position.copy(shown.position);
     rig.quaternion.copy(shown.quaternion);
@@ -565,6 +578,10 @@ export async function createCardScene(canvas) {
     });
 
     cardTop = TOP + b.gap + .0008;
+    plate.visible = (b.metal || 0) > .01;
+    plate.material.opacity = (b.metal || 0) * .8;
+    plate.position.set(-.0003, 0, .0009 + (b.plate ?? .02));
+    plateHeight = .0009 + (b.plate ?? .02);
     fx.update(b, TOP + b.gap + .0004, { amp, load, reader: readerCurrent * dark, reading: takingIn });
 
     // The lights go down for the conversation: less room light, more rim.
@@ -589,7 +606,7 @@ export async function createCardScene(canvas) {
   // The parts the close-up names, in the reader's frame (the card lying over it, cinema.js
   // HOVER, as high as it is shown): the right side of the reader's coil, the right side of
   // the field's rings halfway up, the right end of the card's coil, and the card's chip.
-  let cardTop = TOP;
+  let cardTop = TOP, plateHeight = .02;
   const onCard = (x, y, z) => {
     const c = Math.cos(HOVER.spin), s = Math.sin(HOVER.spin);
     return point.set(HOVER.x + x * c - y * s, HOVER.y + x * s + y * c, z);
@@ -599,6 +616,7 @@ export async function createCardScene(canvas) {
     field: () => point.set(COIL_HALF * 1.08, -COIL_HALF * .3, (COIL_Z + cardTop) / 2),
     cardCoil: () => onCard(.0402, -.008, cardTop),
     cardChip: () => onCard(-.0277, .0031, cardTop + .0004),
+    metal: () => onCard(.044, .02, cardTop + plateHeight),
     // The middle of the picture: each label sits out from its part, away from here.
     middle: () => point.set(0, 0, (COIL_Z + cardTop) / 2),
   };

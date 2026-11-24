@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
-  <link rel="stylesheet" href="styles.css?v=16">
+  <link rel="stylesheet" href="styles.css?v=17">
   <script type="importmap">
     {"imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -42,7 +42,7 @@
   <script src="js/deep.js" defer></script>
   <script src="js/landing.js?v=6" defer></script>
   <script type="module" src="js/taps.js"></script>
-  <script type="module" src="js/intro/main.js?v=25"></script>
+  <script type="module" src="js/intro/main.js?v=26"></script>
 </head>
 <body>
   <main class="hero">
@@ -163,7 +163,51 @@
           <span class="cine-label" data-part="field">Magnetic field</span>
           <span class="cine-label" data-part="cardCoil">Card’s coil</span>
           <span class="cine-label" data-part="cardChip">Chip</span>
+          <span class="cine-label" data-part="metal">Metal</span>
         </div>
+        <!-- The lab (cinema.js `lab` step, js/intro/lab-model.js, main.js): change the tap and
+             watch it respond. Every number is worked out live by js/rfid/physics.js. -->
+        <section class="try" aria-labelledby="try-title" hidden>
+          <h3 class="try-title" id="try-title">Try it yourself</h3>
+          <dl class="try-readings">
+            <div class="try-reading" data-reading="field">
+              <dt>Field at the card</dt><dd><b>0 A/m</b><i class="try-bar"><span></span><em title="The standard’s minimum"></em></i></dd>
+            </div>
+            <div class="try-reading" data-reading="volts">
+              <dt>Voltage at the chip</dt><dd><b>0 V</b><i class="try-bar"><span></span><em title="What the chip needs to wake"></em></i></dd>
+            </div>
+            <div class="try-reading" data-reading="reach"><dt>Works up to</dt><dd><b>0 cm</b></dd></div>
+            <div class="try-reading" data-reading="answer"><dt>Answer strength</dt><dd><b>None</b></dd></div>
+          </dl>
+          <div class="try-chart">
+            <div class="try-tabs" role="group" aria-label="Chart">
+              <button type="button" data-chart="distance" aria-pressed="true">Distance</button>
+              <button type="button" data-chart="tuning" aria-pressed="false">Tuning</button>
+            </div>
+            <canvas class="try-plot" role="img" aria-label="Voltage at the chip against distance"></canvas>
+          </div>
+          <div class="try-controls">
+            <label class="try-control"><span>Distance</span><output data-for="distance">3.0 cm</output>
+              <input type="range" name="distance" min="0.5" max="10" step="0.1" value="3"></label>
+            <label class="try-control"><span>Card’s angle</span><output data-for="angle">0°</output>
+              <input type="range" name="angle" min="0" max="90" step="1" value="0"></label>
+            <label class="try-control"><span>Metal behind the card</span><output data-for="metal">None</output>
+              <input type="range" name="metal" min="0" max="4" step="1" value="0"></label>
+            <label class="try-control"><span>Reader’s power</span><output data-for="drive">100%</output>
+              <input type="range" name="drive" min="0" max="150" step="1" value="100"></label>
+            <label class="try-control"><span>Card tuned to</span><output data-for="tune">13.56 MHz</output>
+              <input type="range" name="tune" min="0" max="1000" step="1" value="499"></label>
+          </div>
+          <div class="try-id">
+            <label><span>Card’s ID</span><input type="text" name="id" value="04 7B 21 9E" maxlength="11" spellcheck="false" autocomplete="off" aria-describedby="try-check"></label>
+            <p class="try-check" id="try-check">Check byte <b>C0</b></p>
+          </div>
+          <div class="try-actions">
+            <button class="try-ask" type="button">Ask the card</button>
+            <button class="try-reset" type="button">Reset</button>
+          </div>
+          <div class="try-presets" role="group" aria-label="Try a situation"></div>
+        </section>
         <!-- It plays by itself until the visitor steps in; this pauses or plays it again. -->
         <button class="cine-auto is-on" type="button" aria-pressed="true" hidden><i aria-hidden="true"></i><span class="cine-auto-text">Pause</span></button>
         <div class="talk-tag" aria-hidden="true">

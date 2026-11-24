@@ -7,8 +7,9 @@
 import { follow, settle, smoother, spring } from './easing.js';
 import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose, clamp, ease, mix, measureStage, restingFrame, scrollTime } from './timeline.js';
 import { renderSignals } from './signals.js';
-import { ANSWER_AFTER, APPROACH_DETAIL, APPROACH_TEXT, ASK, SAMPLES_PER_BIT, CARD_ID, IDLE, LAST, NEAREST, REAL_MS, SHOTS, STEPS, approach, approachBand, approachView, centimetres,
-  message, power, talkLevels, view } from './cinema.js';
+import { ANSWER_AFTER, APPROACH_DETAIL, APPROACH_TEXT, ASK, SAMPLES_PER_BIT, CARD_ID, IDLE, LAB, LAST, NEAREST, REAL_MS, SHOTS, STEPS, TALK, approach, approachBand, approachView, centimetres,
+  checkByte, hex, message, power, setCardId, talkLevels, view } from './cinema.js';
+import { LAB_START, PRESETS, clampSetting, curve, labLevels, measure as measureLab, parseId, status as labStatus } from './lab-model.js';
 
 const root = document.querySelector('.intro');
 if (root) intro(root);
@@ -53,6 +54,14 @@ function intro(experience) {
     tag: $('.talk-tag'), tagNote: $('.talk-note'), tagWords: $('.talk-words'),
     trace: $('.talk-trace'), traceTrack: $('.talk-track'), traceLine: $('.talk-line'), traceClip: $('.talk-clip rect'),
     traceDot: $('.talk-dot'), bytes: $('.talk-bytes'), traceFor: null,
+  };
+  // The lab (cinema.js `lab` step, lab-model.js): its panel, readings, chart and controls.
+  const labUi = {
+    panel: $('.try'), plot: $('.try-plot'), tabs: [...experience.querySelectorAll('.try-tabs button')],
+    readings: Object.fromEntries([...experience.querySelectorAll('.try-reading')].map(node => [node.dataset.reading, node])),
+    inputs: Object.fromEntries([...experience.querySelectorAll('.try-controls input')].map(input => [input.name, input])),
+    outputs: Object.fromEntries([...experience.querySelectorAll('.try-controls output')].map(output => [output.dataset.for, output])),
+    id: $('.try-id input'), check: $('.try-check b'), ask: $('.try-ask'), reset: $('.try-reset'), presets: $('.try-presets'),
   };
   // A dot for each step, as a button that jumps to it.
   film.dots = STEPS.slice(0, LAST).map((plan, i) => {
@@ -100,6 +109,19 @@ function intro(experience) {
   // `held`: seconds on this step; `after`: seconds since the answer landed.
   const auto = { on: true, wait: 0, held: 0, after: 0 };
   const AUTO_WAIT = 2.2, AUTO_CARRY = 3.4;
+  // The lab: the setting the visitor has made (`set`), what the physics engine makes of it
+  // (`m`), the chart (`chart`, `points`), and a conversation started there (`talk`: when the
+  // question went out, and whether the chip was awake to answer it).
+  const lab = { set: { ...LAB_START }, m: null, chart: 'distance', points: [], talk: null, dirty: true };
+  const DEFAULT_ID = CARD_ID;
+  // Played by itself, the lab shows its controls at work: the card moved away until the chip
+  // sleeps and back, turned side-on and back, then a metal plate slid behind it and away.
+  // Keyframes: [seconds into the step, { setting }]; each value glides between its keyframes.
+  const DEMO = [
+    [0, { distance: 3, angle: 0, metal: 0 }], [1.6, { distance: 3 }], [5.2, { distance: 7.2 }], [6.6, { distance: 7.2 }],
+    [8.8, { distance: 2.2 }], [9.4, { angle: 0 }], [11.8, { angle: 82 }], [13, { angle: 82 }], [14.6, { angle: 0 }],
+    [15, { metal: 0 }], [15.1, { metal: 4 }], [17.6, { metal: 4 }], [17.7, { metal: 0 }],
+  ];
   const shown = Object.fromEntries(Object.keys(IDLE).map(key => [key, spring(IDLE[key])]));
   let lens = null;
 
@@ -359,7 +381,7 @@ function intro(experience) {
 
   // The autoplay button: shown once the card can be dropped, until the close-up is over.
   function paintAuto() {
-    const shown = (canDrop || detected) && step < LAST && !reduce.matches;
+    const shown = (canDrop || detected) && step < LAST && !reduce.matches && !(layout?.compact && step === LAB);
     if (film.auto.hidden === shown) film.auto.hidden = !shown;
     const label = auto.on ? 'Pause' : 'Play';
     if (film.autoText.textContent !== label) {
@@ -406,7 +428,165 @@ function intro(experience) {
       const landed = talk ? message(talk.name, clock - talk.start).landed : 0;
       if (landed >= 1) auto.after += dt;
       if (auto.after >= plan.hold) go(step + 1);
+    } else if (plan.lab) {
+      // The demo: each control glides through its keyframes.
+      const next = {};
+      for (const key of ['distance', 'angle', 'metal']) {
+        const frames = DEMO.filter(([, set]) => key in set);
+        let value = frames[0][1][key];
+        for (let i = 1; i < frames.length; i++) {
+          const [t0, a] = frames[i - 1], [t1, b] = frames[i];
+          if (auto.held >= t1) value = b[key];
+          else if (auto.held > t0) { value = mix(a[key], b[key], smoother(t0, t1, auto.held)); break; }
+        }
+        next[key] = key === 'metal' ? Math.round(value) : Math.round(value * 10) / 10;
+      }
+      if (Object.keys(next).some(key => next[key] !== lab.set[key])) setLab(next);
+      if (auto.held >= plan.hold) go(step + 1);
     } else if (auto.held >= plan.hold) go(step + 1);
+  }
+
+  // ---- The lab ----
+  const MHZ_LOW = 5, MHZ_HIGH = 30;
+  const tuneToSlider = mhz => Math.round(1000 * Math.log(mhz / MHZ_LOW) / Math.log(MHZ_HIGH / MHZ_LOW));
+  const sliderToTune = value => MHZ_LOW * (MHZ_HIGH / MHZ_LOW) ** (value / 1000);
+  const METAL_TEXT = ['None', '2 cm behind', '1 cm behind', '5 mm behind', '2 mm behind'];
+
+  // A new setting: work it out, and show it on the controls (when it did not come from them).
+  function setLab(next, fromControl) {
+    lab.set = clampSetting({ ...lab.set, ...next });
+    lab.m = measureLab(lab.set);
+    lab.points = curve(lab.set, lab.chart);
+    if (!fromControl) syncControls();
+    paintLabOutputs();
+    paintLabPanel();
+    invalidate();
+  }
+
+  function syncControls() {
+    const { inputs } = labUi;
+    inputs.distance.value = lab.set.distance;
+    inputs.angle.value = lab.set.angle;
+    inputs.metal.value = Math.round(lab.set.metal);
+    inputs.drive.value = lab.set.drive;
+    inputs.tune.value = tuneToSlider(lab.set.tune);
+  }
+
+  function paintLabOutputs() {
+    const { outputs, inputs } = labUi, s = lab.set;
+    outputs.distance.textContent = s.distance.toFixed(1) + ' cm';
+    outputs.angle.textContent = Math.round(s.angle) + '°';
+    outputs.metal.textContent = METAL_TEXT[Math.round(s.metal)];
+    outputs.drive.textContent = Math.round(s.drive) + '%';
+    outputs.tune.textContent = s.tune.toFixed(2) + ' MHz';
+    inputs.distance.setAttribute('aria-valuetext', outputs.distance.textContent);
+    inputs.angle.setAttribute('aria-valuetext', Math.round(s.angle) + ' degrees');
+    inputs.metal.setAttribute('aria-valuetext', outputs.metal.textContent);
+    inputs.drive.setAttribute('aria-valuetext', outputs.drive.textContent);
+    inputs.tune.setAttribute('aria-valuetext', outputs.tune.textContent);
+  }
+
+  // The readings and the chart.
+  function paintLabPanel() {
+    const m = lab.m;
+    if (!m) return;
+    const { readings } = labUi;
+    const reading = (name, text, good, bar, need) => {
+      const node = readings[name];
+      node.querySelector('b').textContent = text;
+      node.classList.toggle('is-good', good === true);
+      node.classList.toggle('is-low', good === false);
+      const barNode = node.querySelector('.try-bar');
+      if (barNode) { barNode.style.setProperty('--to', clamp(bar)); barNode.style.setProperty('--need', need); }
+    };
+    reading('field', m.field.toFixed(2) + ' A/m', m.field >= m.H_MIN, m.field / 7.5, m.H_MIN / 7.5);
+    reading('volts', m.volts.toFixed(2) + ' V', m.awake, m.volts / m.clamp, m.wake / m.clamp);
+    reading('reach', m.reach < .05 ? 'Nowhere' : m.reach.toFixed(1) + ' cm', m.reach >= lab.set.distance);
+    reading('answer', m.awake ? (m.dip * 100).toFixed(1) + '%' : 'None', m.awake ? m.dip > .01 : false);
+    paintPlot();
+    labUi.ask.disabled = Boolean(lab.talk);
+  }
+
+  // The chart: the voltage at the chip across distance or across tuning, everything else as
+  // set, with the chip's need (2 V) and where the setting is now.
+  function paintPlot() {
+    const canvas = labUi.plot, box = canvas.getBoundingClientRect();
+    if (!box.width) return;
+    const ratio = Math.min(devicePixelRatio || 1, 2);
+    const w = Math.round(box.width * ratio), h = Math.round(box.height * ratio);
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+    const g = canvas.getContext('2d');
+    g.setTransform(ratio, 0, 0, ratio, 0, 0);
+    const W = box.width, H = box.height, left = 30, right = 8, top = 8, bottom = 18;
+    g.clearRect(0, 0, W, H);
+    const points = lab.points, tuning = lab.chart === 'tuning';
+    if (!points.length) return;
+    const xs = points.map(p => p[0]);
+    const x0 = xs[0], x1 = xs[xs.length - 1];
+    const yMax = 8;
+    const X = v => tuning ? left + (W - left - right) * Math.log(v / x0) / Math.log(x1 / x0) : left + (W - left - right) * (v - x0) / (x1 - x0);
+    const Y = v => top + (H - top - bottom) * (1 - Math.min(v, yMax) / yMax);
+    g.font = '600 9px ui-monospace, Menlo, Consolas, monospace';
+    g.fillStyle = 'rgba(244,241,234,.5)';
+    g.strokeStyle = 'rgba(255,255,255,.1)';
+    g.lineWidth = 1;
+    for (const v of [0, 2, 4, 6, 8]) {
+      g.beginPath(); g.moveTo(left, Y(v) + .5); g.lineTo(W - right, Y(v) + .5); g.stroke();
+      g.fillText(v + ' V', 2, Y(v) + 3);
+    }
+    const ticks = tuning ? [5, 10, 13.56, 20, 30] : [1, 2, 4, 6, 8, 10];
+    for (const v of ticks) g.fillText(tuning ? String(v) : v + ' cm', X(v) - (tuning ? 8 : 10), H - 4);
+    // What the chip needs to wake.
+    g.strokeStyle = 'rgba(244,241,234,.75)';
+    g.setLineDash([3, 3]);
+    g.beginPath(); g.moveTo(left, Y(2)); g.lineTo(W - right, Y(2)); g.stroke();
+    g.setLineDash([]);
+    g.fillStyle = 'rgba(244,241,234,.8)';
+    g.fillText('wakes', W - right - 34, Y(2) - 4);
+    if (tuning) {
+      // The reader's frequency.
+      g.strokeStyle = 'rgba(74,147,255,.7)';
+      g.beginPath(); g.moveTo(X(13.56), top); g.lineTo(X(13.56), H - bottom); g.stroke();
+    }
+    // The curve: warm where the chip wakes, dim where it does not.
+    g.lineWidth = 2;
+    for (let i = 1; i < points.length; i++) {
+      const [a, va] = points[i - 1], [b, vb] = points[i];
+      g.strokeStyle = (va + vb) / 2 >= 2 ? '#ffb52e' : 'rgba(255,181,46,.35)';
+      g.beginPath(); g.moveTo(X(a), Y(va)); g.lineTo(X(b), Y(vb)); g.stroke();
+    }
+    // Where the setting is now.
+    const nowX = tuning ? 13.56 : lab.set.distance, nowV = lab.m.raw;
+    g.fillStyle = lab.m.awake ? '#ffffff' : '#ff8f7a';
+    g.beginPath(); g.arc(X(nowX), Y(nowV), 4, 0, Math.PI * 2); g.fill();
+    canvas.setAttribute('aria-label', tuning
+      ? `Voltage at the chip against the reader's frequency, with the card tuned to ${lab.set.tune.toFixed(2)} MHz. At 13.56 MHz it gets ${lab.m.raw.toFixed(1)} volts; it needs 2.`
+      : `Voltage at the chip against distance. At ${lab.set.distance.toFixed(1)} cm it gets ${lab.m.raw.toFixed(1)} volts; it needs 2. It works up to ${lab.m.reach.toFixed(1)} cm.`);
+  }
+
+  // Ask in the lab: the question goes out; the card answers only if its chip is awake.
+  function labAsk() {
+    if (step !== LAB || lab.talk) return;
+    lab.talk = { start: clock, answers: Boolean(lab.m?.awake) };
+    labUi.ask.disabled = true;
+    invalidate();
+  }
+
+  // The lab's conversation now (cinema.js `message`), or null once it is over.
+  function labMessage() {
+    const t = lab.talk;
+    if (!t) return null;
+    const e = clock - t.start;
+    if (reduce.matches) return t.answers ? message('answer', 99) : message('ask', 99);
+    if (!t.answers || e < ANSWER_AFTER) {
+      const said = message('ask', e);
+      // No answer comes: the readout says so for a few seconds, then it is over.
+      if (!t.answers && e > TALK.ask.length / SAMPLES_PER_BIT * .15 + 4) { lab.talk = null; labUi.ask.disabled = false; return null; }
+      return said;
+    }
+    const said = message('answer', e - ANSWER_AFTER);
+    if (said.landed >= 1 && e - ANSWER_AFTER > TALK.answer.length / SAMPLES_PER_BIT * .15 + 2) { lab.talk = null; labUi.ask.disabled = false; return null; }
+    return said;
   }
 
   // The visitor did something: stop playing by itself.
@@ -440,16 +620,33 @@ function intro(experience) {
       let text = plan.text, detail = plan.detail;
       if (plan.talk === 'ask' && talk) { text = plan.asking; detail = plan.askingDetail; }
       else if (plan.talk === 'answer' && msg && !msg.started) { text = plan.waiting; detail = plan.waitingDetail; }
+      if (plan.lab) {
+        // The lab says what the setting does, or how the conversation is going.
+        ({ text, detail } = labStatus(lab.set, lab.m));
+        if (lab.talk) {
+          const e = clock - lab.talk.start, asked = TALK.ask.length / SAMPLES_PER_BIT * .15;
+          if (e < asked) { text = 'The reader asks: who are you?'; detail = 'It flicks its field off and on.'; }
+          else if (!lab.talk.answers) { text = 'No answer. The chip has no power.'; detail = 'It needs about 2 volts to wake.'; }
+          else if (e < ANSWER_AFTER) { text = 'The chip works out its answer.'; detail = 'In life this takes 86 millionths of a second.'; }
+          else { text = 'The card answers: ' + TALK.answer.words + '.'; detail = `The reader feels a ${(lab.m.dip * 100).toFixed(1)}% change.`; }
+        }
+      }
       if (text) say(text, detail);
-      film.middleLabel.textContent = 'Real time';
+      film.middleLabel.textContent = plan.lab ? 'Distance' : 'Real time';
       const said = b.message?.started && !b.message.done ? b.message : null;
       // While a message is on the air, the real time it has taken so far (in µs steps), so
       // you can see how slowed down it is.
       const places = to - from < 1 ? 2 : 1;
-      film.middleValue.textContent = said ? `${(from + said.realMs).toFixed(3)} ms`
-        : from === to ? `${to.toFixed(1)} ms` : `${from.toFixed(places)}–${to.toFixed(places)} ms`;
-      film.middleBar.style.setProperty('--from', from / REAL_MS);
-      film.middleBar.style.setProperty('--to', Math.max(said ? from + said.realMs : to, from + .06) / REAL_MS);
+      if (plan.lab) {
+        film.middleValue.textContent = lab.set.distance.toFixed(1) + ' cm';
+        film.middleBar.style.setProperty('--from', 0);
+        film.middleBar.style.setProperty('--to', 1 - (lab.set.distance - NEAREST) / (10 - NEAREST));
+      } else {
+        film.middleValue.textContent = said ? `${(from + said.realMs).toFixed(3)} ms`
+          : from === to ? `${to.toFixed(1)} ms` : `${from.toFixed(places)}–${to.toFixed(places)} ms`;
+        film.middleBar.style.setProperty('--from', from / REAL_MS);
+        film.middleBar.style.setProperty('--to', Math.max(said ? from + said.realMs : to, from + .06) / REAL_MS);
+      }
       // The chip's own power: none at the start of the tap, full once the current reaches it.
       film.powerValue.textContent = Math.round(b.charge * 100) + '%';
       film.powerBar.style.setProperty('--to', b.charge);
@@ -491,7 +688,17 @@ function intro(experience) {
     paintAuto();
     // While the card's chip works out its answer, its label points to it.
     const working = docked && STEPS[step].talk === 'answer' && b.message && !b.message.started;
-    paintLabels3D(docked && available ? (working ? ['chip'] : STEPS[step].labels ?? []) : []);
+    const inLab = docked && step === LAB;
+    const names = working ? ['chip'] : inLab ? ['chip', ...(lab.set.metal > 0 ? ['metal'] : [])] : STEPS[step]?.labels ?? [];
+    paintLabels3D(docked && available ? names : []);
+    // The lab's panel shows only in its step, once the readout is in.
+    const labShown = inLab && b.panel > .5;
+    if (labUi.panel.hidden === labShown) {
+      labUi.panel.hidden = !labShown;
+      if (labShown) requestAnimationFrame(() => { labUi.panel.classList.add('is-shown'); paintPlot(); });
+      else labUi.panel.classList.remove('is-shown');
+    }
+    stage.classList.toggle('is-lab', inLab);
 
     // The lights going down: the backdrop, and the readout turning dark with it.
     film.backdrop.style.opacity = b.dark;
@@ -616,6 +823,14 @@ function intro(experience) {
       // With reduced motion, a message shows finished, on one still frame.
       said = plan.talk && talk?.name === plan.talk ? message(talk.name, reduce.matches ? 99 : clock - talk.start) : null;
       goal = said ? talkLevels(plan.levels, said) : plan.levels;
+      if (plan.lab) {
+        // The lab: what the setting makes of the tap, and its own conversation.
+        if (!lab.m) setLab({});
+        said = labMessage();
+        const levels = { ...plan.levels, ...labLevels(lab.set, lab.m), reply: lab.talk?.answers ? 1 : 0 };
+        goal = said ? talkLevels(levels, said) : levels;
+        if (said && reduce.matches && said.dir < 0) goal = { ...goal, reply: 1 };
+      }
       // With reduced motion the answer's one still frame keeps it on its way down to the
       // reader, so the picture still shows which way it goes.
       if (said && reduce.matches && said.dir < 0) goal = { ...goal, reply: plan.levels.reply };
@@ -630,7 +845,7 @@ function intro(experience) {
       look.tilt = clamp(look.tilt + orbit.tilt, .2, 1.48);
       // The question is over: the camera goes to the card's chip, which answers the standard's
       // wait after the reader's last gap (ANSWER_AFTER), on the same clock.
-      if (said?.done && talk.name === 'ask') {
+      if (said?.done && talk?.name === 'ask' && !plan.lab) {
         talk.doneAt ??= clock;
         if (clock - talk.doneAt > .1) go(step + 1, talk.start + ANSWER_AFTER);
       }
@@ -745,6 +960,8 @@ function intro(experience) {
     const leaving = stage.contains(document.activeElement) && document.activeElement !== dropButton;
     step = clamp(index, 0, LAST);
     auto.held = auto.after = 0;
+    // A conversation started in the lab ends when it is left.
+    if (lab.talk) { lab.talk = null; labUi.ask.disabled = false; }
     // The card answers by itself, a moment after the step starts; the question waits for Ask.
     talk = STEPS[step].talk === 'answer' ? { name: 'answer', start: Math.max(answerAt ?? 0, clock + .2) } : null;
     orbit.spin = orbit.tilt = 0;
@@ -768,6 +985,58 @@ function intro(experience) {
   }
 
   film.next.addEventListener('click', event => { if (event.isTrusted) takeOver(); forward(); });
+
+  // The lab's controls. Moving any of them, by hand, stops it playing by itself.
+  for (const [name, input] of Object.entries(labUi.inputs)) {
+    input.addEventListener('input', event => {
+      if (event.isTrusted) takeOver();
+      setLab({ [name]: name === 'tune' ? sliderToTune(+input.value) : +input.value }, true);
+    });
+  }
+  for (const tab of labUi.tabs) {
+    tab.addEventListener('click', () => {
+      lab.chart = tab.dataset.chart;
+      for (const other of labUi.tabs) other.setAttribute('aria-pressed', String(other === tab));
+      setLab({}, true);
+    });
+  }
+  // Situations to try, one click each.
+  labUi.presets.replaceChildren(...Object.entries(PRESETS).map(([key, preset]) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = preset.label;
+    button.addEventListener('click', event => {
+      if (event.isTrusted) takeOver();
+      const { label, ...set } = preset;
+      setLab(set);
+    });
+    return button;
+  }));
+  // The card's ID: four bytes in hex. Its check byte follows as it is typed, and its answer
+  // carries the new ID.
+  labUi.id.addEventListener('input', event => {
+    if (event.isTrusted) takeOver();
+    const bytes = parseId(labUi.id.value);
+    labUi.id.setAttribute('aria-invalid', String(!bytes));
+    if (!bytes) { labUi.check.textContent = '··'; return; }
+    setCardId(bytes);
+    labUi.check.textContent = hex([checkByte(bytes)]);
+  });
+  labUi.id.addEventListener('blur', () => {
+    const bytes = parseId(labUi.id.value);
+    if (bytes) labUi.id.value = hex(bytes);
+  });
+  labUi.ask.addEventListener('click', event => { if (event.isTrusted) takeOver(); labAsk(); });
+  labUi.reset.addEventListener('click', event => {
+    if (event.isTrusted) takeOver();
+    const bytes = parseId(DEFAULT_ID);
+    setCardId(bytes);
+    labUi.id.value = DEFAULT_ID;
+    labUi.id.setAttribute('aria-invalid', 'false');
+    labUi.check.textContent = hex([checkByte(bytes)]);
+    setLab({ ...LAB_START });
+  });
+  setLab({});
   film.back.addEventListener('click', event => { if (event.isTrusted) takeOver(); go(step - 1); });
   // Watch again plays it again by itself.
   film.replay.addEventListener('click', () => {
@@ -785,6 +1054,8 @@ function intro(experience) {
   // The space bar (outside a button) plays or pauses it.
   stage.addEventListener('keydown', event => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
+    // In the lab's panel the keys belong to its sliders, its ID and its buttons.
+    if (event.target.closest('.try')) return;
     if (event.key === ' ' && (canDrop || detected) && !event.target.closest('button')) {
       event.preventDefault();
       film.auto.click();
@@ -820,7 +1091,7 @@ function intro(experience) {
   // After the drop, dragging anywhere on the stage (not on a button) turns the camera.
   stage.addEventListener('pointerdown', event => {
     if (!detected || step < 0 || step >= LAST || event.button !== 0) return;
-    if (event.target.closest('button, a, .readout, .cine-explain')) return;
+    if (event.target.closest('button, a, input, .readout, .cine-explain, .try')) return;
     takeOver();
     orbitDrag = { id: event.pointerId, x: event.clientX, y: event.clientY, spin: orbit.spin, tilt: orbit.tilt };
     stage.setPointerCapture(event.pointerId);

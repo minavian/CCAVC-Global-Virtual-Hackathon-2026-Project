@@ -54,10 +54,15 @@ export const WAKE = power(WAKE_CM);   // about 9%: the chip needs this much to s
 //   the explanation at the end.
 // charge: the chip's power, as the readout shows it. dark: the lights going down for the
 //   close-up after the drop, so the current and the field glow.
+// The lab's (lab-model.js): tilt: the card turned from facing the reader (radians). metal:
+//   the metal plate behind the card shows; plate: how far behind it (m); shield: how much of
+//   the field it takes away at the card. falloff: the field's rings fade as they rise, as
+//   the real field does with height. answerScale: how strong the card's answer is.
 export const IDLE = {
   dock: 0, gap: .034, card: 1, xray: 0, copper: 1, reader: 1, shell: 1,
   emit: 0, field: 0, receive: 0, power: 0, blink: 0, reply: 0, read: 0, thinking: 0,
   check: 0, page: 1, panel: 0, explain: 0, charge: 0, dark: 0,
+  tilt: 0, metal: 0, plate: .02, shield: 0, falloff: 0, answerScale: 1,
 };
 const DIM = .12;   // what is not being shown fades to this
 
@@ -127,9 +132,11 @@ export function approachBand(cm, before = -1) {
 // lasts 9.44 µs. So one clock, the real one slowed down, runs all of it.
 const iso = globalThis.RFID?.iso, air = globalThis.RFID?.air;
 const ID = [0x04, 0x7b, 0x21, 0x9e];
-const check = iso ? iso.bcc(ID) : ID.reduce((a, b) => a ^ b, 0);
-const hex = bytes => bytes.map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
-export const CARD_ID = hex(ID);
+export const checkByte = bytes => (iso ? iso.bcc(bytes) : bytes.reduce((a, b) => a ^ b, 0));
+const check = checkByte(ID);
+export const hex = bytes => bytes.map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
+// The card's ID. The lab lets the visitor change it (`setCardId`).
+export let CARD_ID = hex(ID);
 // One sample is 4 carrier cycles; one bit is 32 samples (9.44 µs). See iso14443a.js.
 const BIT = iso?.BIT ?? 32, SUB = iso?.SUB ?? 4, RATE = iso?.SAMPLE_RATE ?? 3.39e6;
 export const SAMPLES_PER_BIT = BIT;
@@ -182,6 +189,12 @@ export const TALK = {
   ask: say(1, 'Who are you?', [iso?.SEL1 ?? 0x93, iso?.NVB_ALL ?? 0x20]),
   answer: say(-1, 'ID ' + CARD_ID, [...ID, check]),
 };
+// A new ID for the card (four bytes): its answer is rebuilt, with its own check byte, on
+// the air the same way. Every answer frame is 45 bits, so its timing does not change.
+export function setCardId(bytes) {
+  CARD_ID = hex(bytes);
+  TALK.answer = say(-1, 'ID ' + CARD_ID, [...bytes, checkByte(bytes)]);
+}
 // The card answers the standard's wait after the reader's last gap (in samples: about 86 µs).
 const DELAY = iso ? iso.answerDelay(TALK.ask.bits[TALK.ask.bits.length - 1]) : 300;
 // As shown: seconds from the question's start to the answer's, on the same clock.
@@ -278,6 +291,12 @@ export const STEPS = [
   { text: 'Verified. Card detected.', detail: 'The whole tap took about 5 milliseconds.',
     ms: [5, 5], shot: 'done', hold: 3.5,
     levels: { gap: .0016, xray: 0, shell: 1, check: 1, charge: 1, dark: 0 } },
+  // The lab: the visitor changes the tap (distance, angle, metal, the reader's power, the
+  // card's tuning, its ID) and watches it respond, worked out live (lab-model.js). Its
+  // levels come from there; these are only where it starts.
+  { text: 'Now you try. Change anything.', detail: 'Everything here is worked out live.',
+    ms: [0, 5], shot: 'lab', lab: true, labels: ['chip'], hold: 20,
+    levels: { falloff: 1, emit: 1, field: 1, receive: 1, power: 1, charge: 1 } },
   { text: '', ms: [5, 5], shot: 'rest', explain: true,
     levels: { gap: .0016, xray: 0, shell: 1, check: 1, page: 1, panel: 0, explain: 1, charge: 1, dark: 0 } },
 ].map(step => ({ ...step, levels: { ...IDLE, dock: 1, gap: TALK_GAP, page: DIM, panel: 1, xray: 1, shell: .14, dark: 1, ...step.levels } }));
@@ -285,6 +304,7 @@ export const STEPS = [
 // are the tap itself, slowed down, so they always begin with the reader's signal.
 export const LAST = STEPS.length - 1;
 export const ASK = STEPS.findIndex(step => step.talk === 'ask');
+export const LAB = STEPS.findIndex(step => step.lab);
 
 // Points the camera looks at, in the reader's frame (metres). `gap` is the card's height.
 const cardZ = gap => TOP + gap;
@@ -318,6 +338,9 @@ export const SHOTS = {
   coils: { zoom: 2.05, focus: 'gap', at: [.5, .42], tilt: 1.2, spin: .12, yaw: 0, fov: 30, phone: { at: [.5, .46], zoom: 2.1 } },
   chip: { zoom: 2.9, focus: 'chipSide', at: [.5, .42], tilt: .95, spin: .12, yaw: 0, fov: 30, phone: { at: [.5, .46], zoom: 1.8 } },
   read: { zoom: 1.85, focus: 'readerChip', at: [.5, .47], tilt: .92, spin: -.75, yaw: .02, fov: 16 },
+  // The lab: the coils' view, left of the lab's panel (on a phone, under it), pulling back
+  // as the card is moved away so it stays in the picture (see `view`).
+  lab: { zoom: 1.9, focus: 'gap', at: [.38, .46], tilt: 1.15, spin: .12, yaw: 0, fov: 30, phone: { at: [.5, .68], zoom: 1.45 } },
   done: { zoom: 2.1, focus: 'top', at: [.5, .42], tilt: .96, spin: -.92, yaw: .03, fov: 0 },
 };
 
@@ -327,7 +350,10 @@ export function view(name, gap, rest, compact) {
   const shot = SHOTS[name];
   if (!shot) return { zoom: 1, focus: FOCUS.reader(), at: [rest.x, rest.y], ...REST, fov: 0 };
   const at = compact ? shot.phone?.at ?? [.5, shot.at[1] - .03] : shot.at;
-  const zoom = compact ? shot.phone?.zoom ?? (shot.zoom > 1 ? shot.zoom * .82 : shot.zoom) : shot.zoom;
+  let zoom = compact ? shot.phone?.zoom ?? (shot.zoom > 1 ? shot.zoom * .82 : shot.zoom) : shot.zoom;
+  // In the lab the card can be up to 10 cm away: the camera pulls back so the reader and the
+  // card both stay in the picture (framed for 3 cm).
+  if (name === 'lab') zoom *= clamp((.03 + .04) / (gap + .04), .5, 1.12);
   return { zoom, focus: FOCUS[shot.focus](gap), at, tilt: shot.tilt, spin: shot.spin, yaw: shot.yaw, fov: shot.fov };
 }
 
