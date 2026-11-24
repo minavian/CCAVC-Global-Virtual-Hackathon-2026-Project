@@ -556,6 +556,7 @@ Owner: Mina Vian · 2026-11-24 · Issue #33
 - It adds the domain's own two pages from `hosting/` to the top of `_site`:
   - `index.html` sends the bare domain to the site, keeping anything after the address (so `hackathon.minavian.com/?play` starts presenter mode).
   - `404.html` is what GitHub Pages shows for an address it has no file for. Addresses are case-sensitive there, so it sends `/ccavc`, `/ccavc/` and any other spelling of `/ccavc/rfidtechnology/…` to the exact one. Anything else says "Nothing here." with a link to the site.
+- It runs in two jobs: `build` copies the files and uploads them, then `deploy` hands them to GitHub Pages. `deploy` waits for `build` to finish (`needs: build`).
 - GitHub Pages publishes `_site`. The repo's Pages settings give it the custom domain `hackathon.minavian.com`, and one DNS record in Cloudflare (`CNAME hackathon → minavian.github.io`) points the name at GitHub.
 
 **Why it is built this way.** The site is plain files that run from any folder, because every path in it is relative (`js/lab.js`, never `/js/lab.js`). So it can sit two folders deep with no changes. GitHub Pages is free for a public repo, needs no keys or passwords in the repo, and the publish runs in the open where judges can see it. The folder `ccavc/RFIDtechnology/` leaves room for other hackathon projects on the same domain later. We looked at Cloudflare (where minavian.com lives), but publishing there from GitHub would need a Cloudflare key stored as a secret.
@@ -565,4 +566,4 @@ Owner: Mina Vian · 2026-11-24 · Issue #33
 **Likely questions.**
 - Q: Why are the Markdown notes left out? A: They are for the team. They stay readable in the public repo, but the site doesn't need them.
 - Q: What if GitHub is down? A: The site is down too. Any static host would work as a backup, because there is no server code.
-- Q: Why version 4 of `upload-pages-artifact`, not the newest? A: Version 5 stores the files in a way that `deploy-pages` could not find ("No artifacts named github-pages"), so the first publish failed twice. Version 4 is the one `deploy-pages` is known to work with.
+- Q: Why two jobs, not one? A: With upload and deploy in one job, the deploy step sometimes asked for the files a moment before GitHub had registered them, and failed with "No artifacts named github-pages". It happened on 3 of the first 6 tries. We first blamed version 5 of the upload action and moved to version 4, but the failure came back. In two jobs, the deploy starts only after the upload job has finished. That is the layout of GitHub's own Pages template.

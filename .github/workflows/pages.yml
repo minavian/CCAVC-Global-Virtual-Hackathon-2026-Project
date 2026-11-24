@@ -19,11 +19,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}ccavc/RFIDtechnology/
     steps:
       - uses: actions/checkout@v7
 
@@ -41,5 +38,14 @@ jobs:
         with:
           path: _site
 
+  # Its own job, so it starts only once the upload has finished. In one job the deploy
+  # sometimes asked for the files before GitHub had them ("No artifacts named github-pages").
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}ccavc/RFIDtechnology/
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v5
