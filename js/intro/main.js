@@ -484,6 +484,8 @@ function intro(experience) {
       next.drive = LAB_START.drive;
       next.tune = LAB_START.tune;
       if (next.reader === 'phone' && available) scene.usePhone();
+      // Only once the phone is there to show (still loading, or failed to: the pad stays).
+      if (next.reader === 'phone' && !(available && scene.phoneLoaded())) next.reader = 'pad';
       if (Object.keys(next).some(key => next[key] !== lab.set[key])) setLab(next);
       if (auto.held >= plan.hold) go(step + 1);
     } else if (auto.held >= plan.hold) go(step + 1);
@@ -583,8 +585,14 @@ function intro(experience) {
     if (reader === 'phone' && available) {
       const button = labUi.readers.find(b => b.dataset.reader === 'phone');
       button.setAttribute('aria-busy', 'true');
-      await scene.usePhone();
+      const loaded = await scene.usePhone();
       button.removeAttribute('aria-busy');
+      // If the phone could not load, the card reader stays: its field would show with no phone.
+      if (!loaded) {
+        button.disabled = true;
+        button.title = 'The phone could not load.';
+        return;
+      }
     }
     setLab({ reader, distance: READERS[reader].start });
   }
