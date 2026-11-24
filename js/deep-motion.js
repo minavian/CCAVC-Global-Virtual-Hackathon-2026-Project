@@ -2073,101 +2073,255 @@ function watchWhispering(previous, scene) {
 }
 
 function watchCounting(previous, scene) {
-  const chapter = scene.closest('.deep');
+  const root = document.documentElement, chapter = scene.closest('.deep');
+  const before = previous.querySelector('.plate-words'), after = scene.querySelector('.plate-words');
   const source = previous.querySelector('#s12-chart'), chart = scene.querySelector('#s13-chart');
+  const readout = scene.querySelector('.plate-readout'), exactBtn = scene.querySelector('#s13-exact');
   const copy = document.createElement('canvas');
   copy.className = 's13-spectrum-copy';
   copy.setAttribute('aria-hidden', 'true');
   const ctx = copy.getContext('2d');
-  let layout, copiedTrace, armed = false, lastTop = scrollY;
+  const cut = 640, carryEnd = 900, sweepStart = 840, sweepEnd = 2420, arrivalEnd = 2520, readHold = 1000;
+  let run, frame, listeners, armed = false, lastTop = scrollY, readoutFlip;
+  const canPlay = () => ctx && !reducedMotion.matches && !document.hidden &&
+    CSS.supports('clip-path', 'polygon(0 0, 100% 0, 100% 100%, 0 100%)');
 
-  function settle() {
-    if (!copy.isConnected) return;
+  function clearEffects() {
+    if (!copy.isConnected && !scene.classList.contains('s13-staged')) return;
     copy.remove();
     source.style.removeProperty('--s13-spectrum-opacity');
     chart.style.removeProperty('clip-path');
+    scene.classList.remove('s13-staged');
+    run?.animations.forEach(animation => animation.cancel());
   }
 
-  function copySpectrum(trace) {
-    if (copiedTrace === trace) return;
-    const { box, X, Y, points, color } = trace;
-    const dpr = Math.min(devicePixelRatio || 1, 2);
-    copy.width = Math.round(box.w * dpr);
-    copy.height = Math.round(box.h * dpr);
-    Object.assign(copy.style, { width: `${box.w}px`, height: `${box.h}px` });
-    ctx.setTransform(dpr, 0, 0, dpr, -box.x * dpr, -box.y * dpr);
-    ctx.strokeStyle = color;
-    ctx.beginPath();
-    points.forEach(([frequency, strength], i) => {
-      const x = X(frequency), y = Y(strength);
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-    copiedTrace = trace;
-  }
-
-  watchScrollMotion((top, height, needsMeasure) => {
-    if (reducedMotion.matches || document.hidden) return settle();
-    if (needsMeasure || !layout) {
-      const from = bounds(source, top), to = bounds(chart, top);
-      const stacked = matchMedia('(max-width: 860px)').matches;
-      const start = Math.max(from.y + from.h * .36 - height * .27, to.y - height * 1.04);
-      const end = Math.max(start + height * .24, to.y + to.h * .8 - height * .64);
-      layout = { from, to, stacked, start, end };
-      armed = false;
-    }
-    if (Math.abs(top - lastTop) > height * .42) armed = false;
-    lastTop = top;
-    const { from, to, stacked, start, end } = layout;
-    if (top <= start) armed = true;
-    if (!armed || top <= start || top >= end || chapter.querySelector('.s12-vortex')) return settle();
-
-    const spectrum = source.spectrumTrace, timing = chart.timingTrace;
-    if (!spectrum || !timing) return settle();
-    const progress = stage(start, end, top);
-    const count = timing.sent.length;
-    const arriving = stage(.34, .99, progress) * count;
-    if (arriving >= count) return settle();
-
-    copySpectrum(spectrum);
-    if (!copy.isConnected) chapter.append(copy);
-    const fromBox = spectrum.box, toBox = timing.box;
-    const travel = stacked ? 1 : ease(.05, .34, progress);
-    const sideways = stacked ? 1 : ease(.03, .34, progress);
-    const x = mix(from.x + fromBox.x, to.x + toBox.x, sideways);
-    const y = mix(from.y + fromBox.y, to.y + timing.Y(1), travel) - top;
-    const width = mix(fromBox.w, toBox.w, sideways);
-    const plotHeight = mix(fromBox.h, timing.Y(0) - timing.Y(1), travel);
-    copy.style.transform = `translate(${x}px, ${y}px) scale(${width / fromBox.w}, ${plotHeight / fromBox.h})`;
-    const fade = ease(0, stacked ? .25 : .16, progress);
-    copy.style.opacity = fade;
-    source.style.setProperty('--s13-spectrum-opacity', 1 - (stacked ? ease(.3, .52, progress) : fade));
-
-    // The number leads its column so each bit has time to register before the next arrives.
-    const whole = Math.floor(arriving), fraction = arriving - whole;
-    const labels = (whole + ease(0, .36, fraction)) / count;
-    const replaced = (whole + ease(.24, 1, fraction)) / count;
-    const digitsX = labels ? toBox.x + toBox.w * labels : 0;
-    const waveX = replaced ? toBox.x + toBox.w * replaced : 0;
-    const caption = toBox.y - 24, row = toBox.y;
-    copy.style.clipPath = `inset(0 0 0 ${replaced * 100}%)`;
-    chart.style.clipPath = `polygon(0 0, 100% 0, 100% ${caption}px, ${digitsX}px ${caption}px,
-      ${digitsX}px ${row}px, ${waveX}px ${row}px, ${waveX}px 100%, 0 100%)`;
-  });
-
-  const contentSize = new ResizeObserver(() => {
-    layout = undefined;
+  function finish() {
+    if (!run) return;
+    cancelAnimationFrame(frame);
+    clearEffects();
+    run = undefined;
+    root.classList.remove('deep-counting-hold');
+    lastTop = scrollY;
     scheduleMotion();
+  }
+
+  function land() {
+    scrollTo({ top: run.destination, behavior: 'instant' });
+    run.top = scrollY;
+    lastTop = run.top;
+    run.landed = true;
+    scene.classList.remove('s13-staged');
+    for (const [i, node] of Array.from(after.children).entries()) {
+      run.animations.push(node.animate([
+        { opacity: 0, transform: 'translateY(9px)' },
+        { opacity: 1, transform: 'none' },
+      ], { duration: 420, delay: 70 + i * 52, easing: arrivalEase, fill: 'both' }));
+    }
+  }
+
+  function drawHandoff(elapsed) {
+    const { width, height, stacked, fromBox, toBox, toChartTop, spectrum, timing } = run;
+    const count = timing.sent.length;
+    const carry = ease(80, carryEnd, elapsed);
+    const arc = stacked ? 0 : Math.sin(Math.PI * carry) * -22;
+    const curX = mix(fromBox.x, toBox.x, carry);
+    const curY = mix(fromBox.y, toBox.y, carry) + arc;
+    const curW = mix(fromBox.w, toBox.w, carry);
+    const curH = mix(fromBox.h, toBox.h, carry);
+
+    const arriving = ease(sweepStart, sweepEnd, elapsed) * count;
+    const whole = Math.floor(arriving), fraction = arriving - whole;
+    const labels = arriving >= count ? 1 : (whole + ease(0, .38, fraction)) / count;
+    const replaced = arriving >= count ? 1 : (whole + ease(.22, 1, fraction)) / count;
+
+    ctx.clearRect(0, 0, width, height);
+    if (replaced < 1) {
+      const specBox = spectrum.box;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(curX + curW * replaced, 0, width, height);
+      ctx.clip();
+      ctx.strokeStyle = spectrum.color;
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = ease(0, 140, elapsed) * (1 - ease(sweepEnd - 140, arrivalEnd, elapsed));
+      ctx.beginPath();
+      spectrum.points.forEach(([frequency, strength], i) => {
+        const px = curX + (spectrum.X(frequency) - specBox.x) / specBox.w * curW;
+        const py = curY + (spectrum.Y(strength) - specBox.y) / specBox.h * curH;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    const timBox = timing.box;
+    if (run.landed && elapsed >= sweepStart && replaced < 1) {
+      const cursorAlpha = ease(sweepStart, sweepStart + 160, elapsed) * (1 - ease(sweepEnd - 180, arrivalEnd, elapsed));
+      if (cursorAlpha > 0) {
+        const cursorX = toBox.x + toBox.w * replaced;
+        ctx.save();
+        ctx.strokeStyle = '#b8652a';
+        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = cursorAlpha * .78;
+        ctx.beginPath();
+        ctx.moveTo(cursorX, toChartTop + timBox.y - 24);
+        ctx.lineTo(cursorX, toChartTop + timBox.y + timBox.h + 36);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    if (!run.landed) return;
+    const digitsX = labels ? timBox.x + timBox.w * labels : 0;
+    const waveX = replaced ? timBox.x + timBox.w * replaced : 0;
+    const caption = timBox.y - 24, row = timBox.y;
+    chart.style.clipPath = arriving >= count ? 'none'
+      : `polygon(0 0, 100% 0, 100% ${caption}px, ${digitsX}px ${caption}px, ${digitsX}px ${row}px, ${waveX}px ${row}px, ${waveX}px 100%, 0 100%)`;
+  }
+
+  function animate(now) {
+    const elapsed = now - run.start;
+    if (elapsed >= cut && !run.landed) land();
+    if (elapsed < arrivalEnd) drawHandoff(elapsed);
+    else if (copy.isConnected) clearEffects();
+    if (elapsed >= arrivalEnd + readHold) return finish();
+    frame = requestAnimationFrame(animate);
+  }
+
+  function approach(top, height) {
+    const start = bounds(previous, top).y, end = bounds(scene, top).y;
+    const cue = Math.max(start, end - height);
+    return { start, cue, end };
+  }
+
+  function canBegin(event, direction) {
+    if (direction < 0 || event.defaultPrevented || !canPlay()) return false;
+    if (run) return true;
+    if (!event.cancelable && event.type !== 'wheel') return false;
+    if (!source.spectrumTrace || !chart.timingTrace || root.classList.contains('deep-whispering-hold')) return false;
+    const { cue, end } = approach(scrollY, innerHeight);
+    if (scrollY >= end - 1) return false;
+    if (scrollY >= cue - 2 || event.type === 'touchmove' || event.key === 'PageDown' || event.key === ' ') return true;
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
+    return event.type === 'wheel' && scrollY + event.deltaY * unit > cue;
+  }
+
+  function startRun(height) {
+    const spectrum = source.spectrumTrace, timing = chart.timingTrace;
+    if (run || !canPlay() || !spectrum || !timing) return;
+    const width = innerWidth;
+    const { cue, end } = approach(scrollY, height);
+    if (scrollY > cue + 1) scrollTo({ top: cue, behavior: 'instant' });
+    const top = scrollY;
+    armed = false;
+
+    const from = bounds(source, top), to = bounds(chart, top);
+    const extra = Math.max(0, Math.min(to.y + to.h + 6 - end - height, scene.offsetHeight - height));
+    const destination = end + extra;
+    const stacked = matchMedia('(max-width: 860px)').matches;
+    const specBox = spectrum.box, timBox = timing.box;
+    const fromBox = { x: from.x + specBox.x, y: from.y - top + specBox.y, w: specBox.w, h: specBox.h };
+    const toChartTop = to.y - destination;
+    const toBox = { x: to.x + timBox.x, y: toChartTop + timing.Y(1), w: timBox.w, h: timing.Y(0) - timing.Y(1) };
+
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    copy.width = Math.round(width * dpr);
+    copy.height = Math.round(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.lineCap = ctx.lineJoin = 'round';
+
+    run = { top, width, height, stacked, start: performance.now(), destination, fromBox, toBox, toChartTop,
+      spectrum, timing, animations: [] };
+
+    lastTop = top;
+    root.classList.add('deep-counting-hold');
+    scene.classList.add('s13-staged');
+    source.style.setProperty('--s13-spectrum-opacity', 0);
+    chart.style.clipPath = 'inset(0 100% 0 0)';
+    chapter.append(copy);
+    for (const node of before.children) {
+      run.animations.push(node.animate([{ opacity: 1 }, { opacity: 0 }],
+        { duration: 420, delay: 40, fill: 'both' }));
+    }
+    drawHandoff(0);
+    frame = requestAnimationFrame(animate);
+  }
+
+  function begin(event) {
+    if (event.cancelable) event.preventDefault();
+    if (run) {
+      if (Math.abs(scrollY - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
+      return;
+    }
+    const height = innerHeight, { cue } = approach(scrollY, height);
+    if (scrollY < cue - 2) {
+      scrollTo({ top: cue, behavior: 'instant' });
+      return;
+    }
+    startRun(height);
+  }
+
+  function interrupt(direction, event) {
+    if (run && direction === -1 && event?.type === 'wheel' && Math.abs(event.deltaY) < 24) {
+      if (event.cancelable) event.preventDefault();
+      return;
+    }
+    if (run && !run.landed && direction === -1 && event?.cancelable) event.preventDefault();
+    finish();
+  }
+
+  function flipReadout() {
+    readoutFlip?.cancel();
+    if (!reducedMotion.matches && !document.hidden) {
+      readoutFlip = readout?.animate([
+        { transform: 'perspective(440px) rotateX(-28deg)', opacity: .66 },
+        { transform: 'none', opacity: 1 },
+      ], { duration: 210, easing: arrivalEase });
+    }
+  }
+
+  for (const radio of scene.querySelectorAll('input[name="s13-code"]')) {
+    radio.addEventListener('change', flipReadout);
+  }
+  exactBtn?.addEventListener('click', flipReadout);
+
+  watchScrollMotion((top, height) => {
+    const { start, cue, end } = approach(top, height);
+    if (run) {
+      if (!canPlay() || Math.abs(top - run.top) > height * .45) finish();
+      else if (Math.abs(top - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
+    } else {
+      if (top >= end - 1 || scene.contains(document.activeElement)) {
+        armed = false;
+      } else if (top >= start - height * .2 && top <= cue + 4) {
+        armed = true;
+      } else if (Math.abs(top - lastTop) > height * .45) {
+        armed = false;
+      }
+      if (armed && canPlay() && source.spectrumTrace && chart.timingTrace &&
+        !root.classList.contains('deep-whispering-hold') &&
+        top > cue + 2 && top < end - 1 && top > lastTop) {
+        startRun(height);
+      }
+    }
+    lastTop = scrollY;
+    const activeBounds = approach(lastTop, height);
+    if (canPlay() && (run || (lastTop >= activeBounds.cue - height * .25 && lastTop < activeBounds.end - 1))) {
+      listeners ??= capturePageGesture(canBegin, begin, interrupt);
+    } else {
+      listeners?.abort();
+      listeners = undefined;
+    }
   });
-  for (const node of [chapter, source, chart]) contentSize.observe(node);
+
   for (const plate of [previous, scene]) {
     const controls = plate.querySelector('.plate-controls');
-    for (const event of ['focusin', 'pointerdown', 'input']) controls.addEventListener(event, () => {
-      if (copy.isConnected) armed = false;
-      settle();
-    });
+    for (const event of ['focusin', 'pointerdown', 'input']) controls.addEventListener(event, finish);
   }
+  for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, finish);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { finish(); readoutFlip?.cancel(); } });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) { finish(); readoutFlip?.cancel(); } });
 }
 
 function watchMistakes(previous, scene) {

@@ -100,13 +100,14 @@ body::after {
 #part-one-power { white-space: nowrap; }
 html.deep-blink-hold, html.deep-closer-hold, html.deep-flipping-hold, html.deep-tuning-hold,
 html.deep-metal-hold, html.deep-pauses-hold, html.deep-part-two-hold, html.deep-soaking-hold,
-html.deep-whispering-hold { overflow-y: hidden; }
-html.deep-whispering-hold, html.deep-whispering-hold body {
+html.deep-whispering-hold, html.deep-counting-hold { overflow-y: hidden; }
+html.deep-whispering-hold, html.deep-whispering-hold body,
+html.deep-counting-hold, html.deep-counting-hold body {
   overflow-y: hidden;
   overscroll-behavior-y: none;
 }
-html.deep-whispering-hold .deep { touch-action: none; }
-html.deep-whispering-hold .plate-controls { touch-action: manipulation; }
+html.deep-whispering-hold .deep, html.deep-counting-hold .deep { touch-action: none; }
+html.deep-whispering-hold .plate-controls, html.deep-counting-hold .plate-controls { touch-action: manipulation; }
 .deep-blink-cover {
   position: fixed;
   inset: 0;
@@ -846,62 +847,131 @@ input.s7-track-copy {
 .s12-wave-copy { width: 100%; height: 100%; }
 
 #s12-chart { opacity: var(--s13-spectrum-opacity, 1); }
+.s13-staged:not(:focus-within) > * { visibility: hidden; }
+.deep-counting-hold #s12 { border-bottom-color: transparent; }
 .s13-spectrum-copy {
   position: fixed;
-  inset: 0 auto auto 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   z-index: 2;
-  transform-origin: 0 0;
   pointer-events: none;
 }
 
-#s13 .s13-clock { min-inline-size: 0; margin: 0; padding: 0; border: 0; }
-#s13 .s13-clock legend { padding: 0; margin-block-end: 6px; }
-#s13 .s13-clock-steps { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-#s13 .s13-clock-steps button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
+#s13 .plate-switch input { accent-color: var(--ink); }
+#s13 .plate-readout { min-block-size: 3lh; transform-origin: left bottom; }
+.s13-drift-control { display: grid; gap: 4px; max-inline-size: 340px; }
+.s13-drift-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.s13-drift-head label { display: inline; cursor: pointer; }
+#s13-drift {
+  font: 600 12px "JetBrains Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--copper) 66%, var(--ink));
+}
+#s13-drift::before { content: none; }
+#s13-drift[data-exact] { color: var(--green); }
+#s13-exact {
+  margin-inline-start: auto;
   min-inline-size: 44px;
-  min-block-size: 44px;
-  padding: 0 10px;
-  border: 1px solid rgba(13, 13, 12, .34);
+  min-block-size: 32px;
+  padding: 4px 12px;
+  border: 1px solid color-mix(in srgb, var(--ink) 28%, transparent);
+  border-radius: 999px;
   background: transparent;
   color: var(--ink);
-  font: 600 13px "JetBrains Mono", ui-monospace, monospace;
+  font: 600 12px "JetBrains Mono", ui-monospace, monospace;
+  cursor: pointer;
   touch-action: manipulation;
 }
-#s13 .s13-clock-steps button[aria-disabled="true"] { color: var(--muted); cursor: default; }
+#s13-exact[aria-disabled="true"] {
+  border-color: color-mix(in srgb, var(--ink) 14%, transparent);
+  color: var(--muted);
+  cursor: default;
+}
 @media (hover: hover) {
-  #s13 .s13-clock-steps button:not([aria-disabled="true"]):hover { background: var(--ink); color: var(--paper); }
+  #s13-exact:not([aria-disabled="true"]):hover {
+    background: var(--ink);
+    color: var(--paper);
+    border-color: var(--ink);
+  }
 }
-#s13 .s13-clock-face {
+.s13-drift-range { display: grid; align-items: center; }
+.s13-drift-range > * { grid-area: 1 / 1; }
+.s13-drift-track {
   position: relative;
-  inline-size: 26px;
-  block-size: 26px;
-  border: 1px solid currentColor;
-  border-radius: 50%;
-  background: linear-gradient(currentColor, currentColor) center 2px / 1px 3px no-repeat;
+  margin-inline: 9px;
+  block-size: 14px;
+  pointer-events: none;
 }
-#s13 .s13-clock-face::after {
+.s13-drift-track::before {
   content: "";
   position: absolute;
-  inset: auto auto 50% calc(50% - 1px);
-  inline-size: 2px;
-  block-size: 35%;
-  border-radius: 2px;
-  background: var(--copper);
-  transform: rotate(var(--s13-clock-angle, 49deg));
-  transform-origin: center bottom;
+  inset: 50% 0 auto;
+  block-size: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 22%, transparent);
+  transform: translateY(-50%);
 }
-#s13-drift { margin-inline-start: 5px; color: var(--ink); font: 500 13px "JetBrains Mono", ui-monospace, monospace; }
-#s13-drift::before { content: none; }
+.s13-drift-track::after {
+  content: "";
+  position: absolute;
+  inset: 1px auto 1px 50%;
+  inline-size: 1.5px;
+  background: color-mix(in srgb, var(--ink) 45%, transparent);
+  transform: translateX(-50%);
+}
+.s13-drift-fill {
+  position: absolute;
+  top: 50%;
+  left: var(--s13-fill-start, 50%);
+  inline-size: var(--s13-fill-size, 0%);
+  block-size: 3px;
+  border-radius: 999px;
+  background: var(--copper);
+  transform: translateY(-50%);
+}
+#s13-drift-input {
+  appearance: none;
+  inline-size: 100%;
+  block-size: 36px;
+  margin: 0;
+  background: transparent;
+  cursor: ew-resize;
+}
+#s13-drift-input::-webkit-slider-runnable-track { block-size: 2px; background: transparent; }
+#s13-drift-input::-webkit-slider-thumb {
+  appearance: none;
+  inline-size: 18px;
+  block-size: 18px;
+  margin-top: -8px;
+  border: 2px solid var(--paper);
+  border-radius: 50%;
+  background: var(--ink);
+}
+#s13-drift-input::-moz-range-track { block-size: 2px; background: transparent; }
+#s13-drift-input::-moz-range-thumb {
+  inline-size: 18px;
+  block-size: 18px;
+  border: 2px solid var(--paper);
+  border-radius: 50%;
+  background: var(--ink);
+}
+.s13-drift-control[data-exact] #s13-drift-input::-webkit-slider-thumb { background: var(--green); }
+.s13-drift-control[data-exact] #s13-drift-input::-moz-range-thumb { background: var(--green); }
+.s13-drift-scale {
+  display: flex;
+  justify-content: space-between;
+  font: 500 11px "JetBrains Mono", ui-monospace, monospace;
+  color: var(--muted);
+  user-select: none;
+}
 @media (prefers-reduced-motion: no-preference) {
-  #s13 .s13-clock-face::after { transition: transform .16s cubic-bezier(.16, 1, .3, 1); }
+  #s13-exact { transition: background-color .16s, border-color .16s, color .16s; }
 }
 @media (forced-colors: active) {
-  #s13 .s13-clock-steps button { border-color: ButtonText; }
-  #s13 .s13-clock-face::after { background: ButtonText; forced-color-adjust: none; }
+  #s13-exact { border-color: ButtonText; }
+  .s13-drift-track { display: none; }
+  #s13-drift-input { appearance: auto; }
 }
 
 #s13-chart { opacity: var(--s14-timing-opacity, 1); }

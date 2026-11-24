@@ -826,26 +826,40 @@
     p.say(right ? `The reader counted all ${sent.length} bits right.`
       : `The reader counted ${read.length} bits instead of ${sent.length}: ${read.filter(b => b === 0).length} zeros where there were ${sent.filter(b => b === 0).length}.`);
   });
-  const clock = counting?.el.querySelector('.s13-clock');
-  if (clock) {
-    const slower = counting.input('slower'), faster = counting.input('faster');
+  const driftControl = counting?.el.querySelector('.s13-drift-control');
+  if (driftControl) {
+    const driftInput = counting.input('drift-input'), exactBtn = counting.input('exact');
+    const driftOut = counting.el.querySelector('#s13-drift');
     const limit = 12;
     function showDrift() {
-      counting.out('drift', clockDrift > 0 ? `+${clockDrift}% fast` : clockDrift < 0 ? `−${-clockDrift}% slow` : '0% exact');
-      clock.style.setProperty('--s13-clock-angle', `${clockDrift * 7}deg`);
-      slower.setAttribute('aria-disabled', clockDrift === -limit);
-      faster.setAttribute('aria-disabled', clockDrift === limit);
+      const label = clockDrift > 0 ? `+${clockDrift}% fast` : clockDrift < 0 ? `−${-clockDrift}% slow` : '0% exact';
+      const exact = clockDrift === 0;
+      const ratio = Math.abs(clockDrift) / limit * 50;
+      counting.out('drift', label);
+      driftInput.value = String(clockDrift);
+      driftInput.setAttribute('aria-valuetext', label);
+      driftOut?.toggleAttribute('data-exact', exact);
+      driftControl.toggleAttribute('data-exact', exact);
+      driftControl.style.setProperty('--s13-fill-start', clockDrift < 0 ? `${50 - ratio}%` : '50%');
+      driftControl.style.setProperty('--s13-fill-size', `${ratio}%`);
+      exactBtn.setAttribute('aria-disabled', String(exact));
     }
     showDrift();
-    clock.addEventListener('click', event => {
-      const button = event.target.closest('button[data-drift-step]');
-      if (!button) return;
-      const step = Number(button.dataset.driftStep);
-      const next = step === 0 ? 0 : clamp(clockDrift + step, -limit, limit);
-      if (next === clockDrift) return;
-      clockDrift = next;
+    driftInput.addEventListener('input', () => {
+      clockDrift = clamp(Math.round(driftInput.valueAsNumber || 0), -limit, limit);
       showDrift();
-      clock.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    driftInput.addEventListener('dblclick', () => {
+      if (clockDrift === 0) return;
+      clockDrift = 0;
+      showDrift();
+      driftInput.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    exactBtn.addEventListener('click', () => {
+      if (clockDrift === 0) return;
+      clockDrift = 0;
+      showDrift();
+      driftInput.dispatchEvent(new Event('input', { bubbles: true }));
     });
   }
 

@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
-  <link rel="stylesheet" href="style.css?v=whisper-spectrum-4">
+  <link rel="stylesheet" href="style.css?v=counting-drift-1">
   <script src="../js/rfid/physics.js" defer></script>
   <script src="../js/rfid/iso14443a.js" defer></script>
   <script src="../js/rfid/lf.js" defer></script>
@@ -18,8 +18,8 @@
   <script src="../js/rfid/air.js" defer></script>
   <script src="../js/rfid/reader.js" defer></script>
   <script src="../js/rfid/channel.js" defer></script>
-  <script src="../js/deep.js?v=whisper-spectrum-4" defer></script>
-  <script type="module" src="../js/deep-motion.js?v=whisper-spectrum-4"></script>
+  <script src="../js/deep.js?v=counting-drift-1" defer></script>
+  <script type="module" src="../js/deep-motion.js?v=counting-drift-1"></script>
 </head>
 <body>
   <main class="deep" id="take-apart" aria-labelledby="deep-title">
@@ -235,15 +235,22 @@
         <div class="plate-controls">
           <label>A letter <input id="s13-letter" type="text" maxlength="1" value="A" autocomplete="off"></label>
           <span class="plate-switch" role="radiogroup" aria-label="How bits are written"><label><input type="radio" name="s13-code" value="simple"> Dip for 1</label><label><input type="radio" name="s13-code" value="manchester" checked> Change in the middle</label></span>
-          <fieldset class="s13-clock">
-            <legend>The reader’s clock</legend>
-            <div class="s13-clock-steps">
-              <button id="s13-slower" type="button" data-drift-step="-1" aria-label="Slow the reader’s clock">−</button>
-              <button id="s13-exact" type="button" data-drift-step="0" aria-label="Reset clock drift to 0%"><span class="s13-clock-face" aria-hidden="true"></span>0%</button>
-              <button id="s13-faster" type="button" data-drift-step="1" aria-label="Speed up the reader’s clock">+</button>
-              <output id="s13-drift" data-for="s13-drift" for="s13-slower s13-exact s13-faster">+7% fast</output>
+          <div class="s13-drift-control">
+            <div class="s13-drift-head">
+              <label for="s13-drift-input">The reader’s clock</label>
+              <output id="s13-drift" data-for="s13-drift" for="s13-drift-input">+7% fast</output>
+              <button id="s13-exact" type="button" class="s13-exact" aria-label="Reset clock drift to 0%">0%</button>
             </div>
-          </fieldset>
+            <div class="s13-drift-range">
+              <span class="s13-drift-track" aria-hidden="true"><span class="s13-drift-fill"></span></span>
+              <input id="s13-drift-input" type="range" min="-12" max="12" step="1" value="7" aria-valuetext="+7% fast">
+            </div>
+            <div class="s13-drift-scale" aria-hidden="true">
+              <span>−12% slow</span>
+              <span>0%</span>
+              <span>+12% fast</span>
+            </div>
+          </div>
         </div>
         <p class="plate-readout" aria-live="polite"></p>
         <p class="plate-real">Real name: Manchester coding.</p>
