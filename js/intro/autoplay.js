@@ -21,7 +21,7 @@ const INTRO = [
 ];
 // Every step takes exactly this long (seconds), however hard or lightly the visitor scrolled,
 // so an animation always plays the same way.
-const GLIDE = 1;
+const GLIDE = 3;
 // A new scroll only once the wheel has been still this long (ms). A trackpad keeps sending
 // small wheel events for a second or so after a swipe (its momentum); they arrive every few
 // milliseconds, so they all belong to the swipe that started them and never count again.
