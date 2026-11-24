@@ -182,16 +182,27 @@
     <section class="plate" id="s11" aria-labelledby="s11-title">
       <div class="plate-words">
         <p class="plate-num">11</p>
-        <h3 id="s11-title">Soaking up more, then less</h3>
+        <h3 id="s11-title"><span id="s11-soaking-s">S</span>oaking up more, then less</h3>
         <p>The chip never sends anything. It changes how much of the field it soaks up, and the reader feels the difference in its own coil.</p>
         <div class="plate-controls">
-          <label class="plate-check"><input id="s11-switch" type="checkbox" checked> The chip’s answer switch</label>
-          <label>Zoom <output data-for="s11-zoom"></output><input id="s11-zoom" type="range" min="0" max="100" value="0"></label>
+          <label class="s11-switch-label" for="s11-switch"><input id="s11-switch" type="checkbox" role="switch" checked> The chip’s answer switch</label>
         </div>
         <p class="plate-readout" aria-live="polite"></p>
         <p class="plate-real">Real name: load modulation.</p>
       </div>
-      <canvas class="plate-canvas" role="img" aria-label="The reader's coil current while the card answers"></canvas>
+      <div class="s11-instrument">
+        <div class="s11-plot">
+          <canvas class="plate-canvas" id="s11-chart" role="img" aria-label="The reader's coil current while the card answers"></canvas>
+          <span class="s11-scan" aria-hidden="true" hidden></span>
+        </div>
+        <div class="plate-controls s11-zoom">
+          <div class="s11-zoom-label">
+            <label for="s11-zoom">Zoom</label>
+            <output for="s11-zoom" data-for="s11-zoom" aria-live="off">true size</output>
+          </div>
+          <input id="s11-zoom" type="range" min="0" max="100" value="0" aria-valuetext="true size">
+        </div>
+      </div>
     </section>
 
     <section class="plate" id="s12" aria-labelledby="s12-title">

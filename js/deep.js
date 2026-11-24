@@ -404,24 +404,61 @@
   };
 
   // ---------- 11. Soaking up more, then less ----------
-  plate('s11', p => {
-    const on = p.input('switch').checked, zoom = +p.input('zoom').value;
-    const s = physics.solve({ tag: 'card', reader: 'pad', distance: .04 });
-    const chip = tags.cardChip();
-    const link = channel.cardChannel([{ chip, depth: on ? s.dip : 0, awake: true }], { noise: .001, seed: 3 });
-    const heard = link.send(iso.shortFrame(iso.REQA));
-    const rec = link.recording[0], from = rec.begin - 64, to = rec.begin + 21 * iso.BIT;
-    const data = heard.samples.subarray(from, to);
-    const z = 1 + zoom / 100 * 29;                                  // 1× (true size) to 30×
-    p.out('zoom', z < 1.05 ? 'true size' : '×' + z.toFixed(0));
-    const ctx = fit(p), bx = box(p, 26, 40);
-    const lo = 1 - 1 / z, hi = 1 + .08 / z;
-    const a = chart(ctx, bx, { from: 0, to: data.length, label: 'Time (the card answering “Here!”, about 200 µs)' },
-      { from: lo, to: hi, ticks: [[1, '100%'], [lo, Math.round(lo * 100) + '%']], label: 'The reader’s coil current' });
-    curve(ctx, Array.from(data, (v, i) => [i, clamp(v, lo, hi)]), a.X, a.Y, on ? COPPER : INK, 1.2);
-    p.say(on ? `Each time the chip closes its switch, the reader’s current changes by ${(s.dip * 100).toFixed(1)}%. Those are the dips.`
+  const answerMotion = { axes: 1, reveal: 1, blend: undefined };
+  let answerRecording;
+  function answerSamples(depth) {
+    const link = channel.cardChannel([{ chip: tags.cardChip(), depth, awake: true }], { noise: .001, seed: 3 });
+    link.send(iso.shortFrame(iso.REQA));
+    const { begin, samples } = link.recording[0];
+    return samples.subarray(begin - 64, begin + 21 * iso.BIT);
+  }
+  const answerScene = plate('s11', p => {
+    if (!answerRecording) {
+      const { dip } = physics.solve({ tag: 'card', reader: 'pad', distance: .04 });
+      answerRecording = { dip, off: answerSamples(0), on: answerSamples(dip) };
+    }
+    const { dip, off, on } = answerRecording;
+    const checked = p.input('switch').checked, slider = p.input('zoom'), zoom = slider.valueAsNumber;
+    const z = 1 + zoom / 100 * 29; // 1× (true size) to 30×
+    const zoomText = z < 1.05 ? 'true size' : '×' + z.toFixed(0);
+    if (slider.getAttribute('aria-valuetext') !== zoomText) {
+      p.out('zoom', zoomText);
+      slider.setAttribute('aria-valuetext', zoomText);
+    }
+    p.say(checked ? `Each time the chip closes its switch, the reader’s current changes by ${(dip * 100).toFixed(1)}%. Those are the dips.`
       : 'Switch removed: the reader’s current never changes. It hears nothing at all.');
+
+    const ctx = fit(p), bx = box(p, 26, 40);
+    const { axes, reveal, blend = Number(checked) } = answerMotion;
+    if (axes < 1) {
+      const base = bx.y + bx.h;
+      ctx.strokeStyle = FAINT; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(bx.x, base - bx.h * axes); ctx.lineTo(bx.x, base);
+      ctx.lineTo(bx.x + bx.w * axes, base); ctx.stroke();
+      return;
+    }
+    const lo = 1 - 1 / z, hi = 1 + .08 / z;
+    const { X, Y } = chart(ctx, bx, { from: 0, to: on.length, ticks: [[0, '0']], label: 'Time (the card answering “Here!”, about 200 µs)' },
+      { from: lo, to: hi, ticks: [[1, '100%'], [lo, Math.round(lo * 100) + '%']], label: 'The reader’s coil current' });
+    const previous = p.canvas.answerTrace;
+    const points = previous?.zoom === zoom && previous.blend === blend ? previous.points
+      : Array.from(on, (v, i) => [i, clamp(off[i] + (v - off[i]) * blend, lo, hi)]);
+    const color = blend === 1 ? COPPER : blend === 0 ? INK : `color-mix(in srgb, ${COPPER} ${blend * 100}%, ${INK})`;
+    // The sweep and the next scene both follow the same coordinates as the drawn trace.
+    p.canvas.answerTrace = { box: bx, points, X, Y, color, zoom, blend };
+    if (!reveal) return;
+    ctx.save();
+    if (reveal < 1) {
+      ctx.beginPath(); ctx.rect(bx.x - 1, bx.y - 1, bx.w * reveal + 1, bx.h + 2); ctx.clip();
+    }
+    curve(ctx, points, X, Y, color, 1.2);
+    ctx.restore();
   });
+  if (answerScene) answerScene.canvas.setAnswerMotion = (axes, reveal, blend) => {
+    if (axes === answerMotion.axes && reveal === answerMotion.reveal && blend === answerMotion.blend) return;
+    Object.assign(answerMotion, { axes, reveal, blend });
+    answerScene.dirty = true;
+  };
 
   // ---------- 12. Whispering next to a shout ----------
   function fft(re, im) {

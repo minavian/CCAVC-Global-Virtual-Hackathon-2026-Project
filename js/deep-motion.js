@@ -1050,6 +1050,187 @@ function watchPartTwo(source, part) {
   contentSize.observe(source.closest('.plate-words'));
 }
 
+function watchSoaking(source, scene) {
+  const chapter = scene.closest('.deep'), part = source.closest('.deep-part');
+  const target = scene.querySelector('#s11-soaking-s');
+  const plot = scene.querySelector('#s11-chart'), scan = scene.querySelector('.s11-scan');
+  const toggle = scene.querySelector('#s11-switch'), readout = scene.querySelector('.plate-readout');
+  const letter = document.createElement('span'), lower = document.createElement('span'), upper = document.createElement('span');
+  letter.className = 's11-letter-flight';
+  letter.setAttribute('aria-hidden', 'true');
+  lower.textContent = source.textContent;
+  upper.textContent = target.textContent;
+  letter.append(lower, upper);
+
+  let layout, lastTop, armed, entered, introStart = null, entrance = 1;
+  let blend = Number(toggle.checked), destination = blend, blendFrom, blendStart, flip;
+  let frame = 0, visible = false, scanStart = null, scannedTrace;
+  const motionAllowed = () => !reducedMotion.matches && !document.hidden;
+  const updatePlot = () => plot.setAnswerMotion?.(ease(0, .28, entrance), ease(.28, 1, entrance), blend);
+
+  function clearLetter() {
+    if (!letter.isConnected) return;
+    letter.remove();
+    source.classList.remove('s11-letter-in-flight');
+    target.classList.remove('s11-letter-in-flight');
+  }
+
+  function settleEntrance() {
+    clearLetter();
+    introStart = null;
+    entrance = 1;
+    updatePlot();
+  }
+
+  function measure(top, height) {
+    const from = bounds(source, top), to = bounds(target, top);
+    const fromType = getComputedStyle(source), toType = getComputedStyle(target);
+    const size = parseFloat(fromType.fontSize);
+    const start = Math.max(bounds(part, top).y, from.y + from.h / 2 - height * .42);
+    const end = Math.max(start + height * .24, to.y + to.h / 2 - height * .64);
+    const cue = Math.max(end, bounds(plot, top).y - height * .82);
+    const deadline = scene.getBoundingClientRect().bottom + top;
+    letter.style.fontSize = fromType.fontSize;
+    return { from, to, start, end, cue, deadline, scale: parseFloat(toType.fontSize) / size };
+  }
+
+  function carryLetter(top, height) {
+    const { from, to, start, end, scale } = layout;
+    const progress = stage(start, end, top), travel = ease(0, 1, progress);
+    const x = mix(from.x + from.w / 2, to.x + to.w / 2, travel);
+    const y = mix(from.y + from.h / 2, to.y + to.h / 2, travel) - top;
+    const arc = Math.sin(Math.PI * progress);
+    const size = mix(1, scale, ease(.17, 1, progress)) * (1 + .28 * arc);
+    const capital = ease(.3, .72, progress);
+    letter.style.transform = `translate3d(${x}px, ${y - height * .045 * arc}px, 0) translate(-50%, -50%) scale(${size})`;
+    letter.style.color = `color-mix(in srgb, var(--copper) ${30 * arc}%, var(--ink))`;
+    lower.style.opacity = 1 - capital;
+    upper.style.opacity = capital;
+    lower.style.transform = `scaleY(${mix(1, 1.24, capital)})`;
+    upper.style.transform = `scaleY(${mix(.8, 1, capital)})`;
+    if (!letter.isConnected) {
+      chapter.append(letter);
+      source.classList.add('s11-letter-in-flight');
+      target.classList.add('s11-letter-in-flight');
+    }
+  }
+
+  function hideScan() {
+    scan.hidden = true;
+    scanStart = null;
+  }
+
+  function requestFrame() {
+    if (!frame && visible && motionAllowed()) frame = requestAnimationFrame(animate);
+  }
+
+  function animate(now) {
+    frame = 0;
+    if (!visible || !motionAllowed()) return;
+    if (introStart !== null) {
+      entrance = stage(0, 620, now - introStart);
+      if (entrance === 1) introStart = null;
+    }
+    if (blend !== destination) blend = mix(blendFrom, destination, ease(0, 280, now - blendStart));
+    updatePlot();
+
+    const trace = plot.answerTrace;
+    if (entrance === 1 && blend === destination && trace?.blend === blend) {
+      const { box, points, X, Y } = trace;
+      scanStart ??= now;
+      const progress = (now - scanStart) % 2800 / 2800;
+      const index = progress * (points.length - 1), i = Math.floor(index);
+      const value = mix(points[i][1], points[i + 1][1], index - i);
+      if (trace !== scannedTrace) {
+        scan.style.blockSize = `${box.h}px`;
+        scannedTrace = trace;
+      }
+      scan.style.transform = `translate3d(${X(index)}px, ${box.y}px, 0)`;
+      scan.style.setProperty('--s11-scan-point', `${Y(value) - box.y}px`);
+      scan.style.opacity = .86 * ease(0, .055, progress) * (1 - ease(.89, 1, progress));
+      scan.hidden = false;
+    } else hideScan();
+    requestFrame();
+  }
+
+  function refreshLoop() {
+    if (visible && motionAllowed()) return requestFrame();
+    cancelAnimationFrame(frame);
+    frame = 0;
+    hideScan();
+    blend = destination;
+    if (introStart !== null || !motionAllowed()) settleEntrance();
+    else updatePlot();
+    if (!motionAllowed()) flip?.cancel();
+  }
+
+  watchScrollMotion((top, height, needsMeasure) => {
+    if (!motionAllowed()) return settleEntrance();
+    if (needsMeasure || !layout) {
+      layout = measure(top, height);
+      armed = top <= layout.start;
+      lastTop = top;
+    }
+    const { start, end, cue, deadline } = layout;
+    const jumped = Math.abs(top - lastTop) > height * .48;
+    lastTop = top;
+    if (top <= start) {
+      armed = !scene.contains(document.activeElement);
+      entered = false;
+      return settleEntrance();
+    }
+    if (jumped || top >= deadline) armed = false;
+    if (!armed) return settleEntrance();
+
+    if (top < end) carryLetter(top, height);
+    else clearLetter();
+    if (!entered) {
+      entrance = 0;
+      updatePlot();
+      if (top >= cue) {
+        entered = true;
+        introStart = performance.now();
+        requestFrame();
+      }
+    }
+  });
+
+  for (const event of ['focusin', 'pointerdown', 'input']) scene.addEventListener(event, ({ target }) => {
+    if (!target.closest('.plate-controls')) return;
+    armed = false;
+    settleEntrance();
+  });
+  toggle.addEventListener('change', () => {
+    destination = Number(toggle.checked);
+    flip?.cancel();
+    if (motionAllowed()) flip = readout.animate?.([
+      { transform: 'perspective(440px) rotateX(-28deg)', opacity: .66 },
+      { transform: 'none', opacity: 1 },
+    ], { duration: 230, easing: arrivalEase });
+    if (visible && motionAllowed()) {
+      blend = blendFrom = plot.answerTrace?.blend ?? blend;
+      blendStart = performance.now();
+      requestFrame();
+    } else blend = destination;
+    updatePlot();
+  });
+
+  const viewport = new IntersectionObserver(([entry]) => {
+    visible = entry.intersectionRatio >= .04;
+    refreshLoop();
+  }, { threshold: .04 });
+  viewport.observe(plot);
+  document.addEventListener('visibilitychange', refreshLoop);
+  reducedMotion.addEventListener('change', refreshLoop);
+
+  const contentSize = new ResizeObserver(() => {
+    layout = undefined;
+    scheduleMotion();
+  });
+  contentSize.observe(chapter);
+  contentSize.observe(scene);
+}
+
 const opener = document.getElementById('deep-title');
 const partOne = document.getElementById('part-one');
 if (opener && partOne) watchPartOne(opener, partOne);
@@ -1070,3 +1251,6 @@ if (metal && pauses) watchPauses(metal, pauses);
 const pausesLink = document.getElementById('s10-pauses');
 const partTwo = document.getElementById('part-two');
 if (pausesLink && partTwo) watchPartTwo(pausesLink, partTwo);
+const answerLetter = document.getElementById('part-two-answer-s');
+const soaking = document.getElementById('s11');
+if (answerLetter && soaking) watchSoaking(answerLetter, soaking);
