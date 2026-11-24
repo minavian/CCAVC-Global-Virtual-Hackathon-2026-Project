@@ -45,7 +45,21 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}ccavc/RFIDtechnology/
+      url: ${{ steps.first.outputs.page_url || steps.second.outputs.page_url || steps.third.outputs.page_url }}ccavc/RFIDtechnology/
     steps:
-      - id: deployment
+      # If GitHub is slow to hand over the files, a try can fail; wait a little and try
+      # again, up to three times, so a merge never needs anyone to press "Re-run".
+      - id: first
+        uses: actions/deploy-pages@v5
+        continue-on-error: true
+      - if: steps.first.outcome == 'failure'
+        run: sleep 30
+      - id: second
+        if: steps.first.outcome == 'failure'
+        uses: actions/deploy-pages@v5
+        continue-on-error: true
+      - if: steps.second.outcome == 'failure'
+        run: sleep 60
+      - id: third
+        if: steps.second.outcome == 'failure'
         uses: actions/deploy-pages@v5
