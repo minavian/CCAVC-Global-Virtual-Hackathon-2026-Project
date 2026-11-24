@@ -101,25 +101,28 @@ body::after {
 html.deep-blink-hold, html.deep-closer-hold, html.deep-flipping-hold, html.deep-tuning-hold,
 html.deep-metal-hold, html.deep-pauses-hold, html.deep-part-two-hold, html.deep-soaking-hold,
 html.deep-whispering-hold, html.deep-counting-hold, html.deep-mistakes-hold, html.deep-conversation-hold,
-html.deep-twocards-hold, html.deep-carkey-hold, html.deep-finale-hold { overflow-y: hidden; }
+html.deep-twocards-hold, html.deep-carkey-hold, html.deep-finale-hold, html.deep-reverse-hold { overflow-y: hidden; }
 html.deep-whispering-hold, html.deep-whispering-hold body,
 html.deep-counting-hold, html.deep-counting-hold body,
 html.deep-mistakes-hold, html.deep-mistakes-hold body,
 html.deep-conversation-hold, html.deep-conversation-hold body,
 html.deep-twocards-hold, html.deep-twocards-hold body,
 html.deep-carkey-hold, html.deep-carkey-hold body,
-html.deep-finale-hold, html.deep-finale-hold body {
+html.deep-finale-hold, html.deep-finale-hold body,
+html.deep-reverse-hold, html.deep-reverse-hold body {
   overflow-y: hidden;
   overscroll-behavior-y: none;
 }
 html.deep-whispering-hold .deep, html.deep-counting-hold .deep, html.deep-mistakes-hold .deep,
 html.deep-conversation-hold .deep, html.deep-twocards-hold .deep,
-html.deep-carkey-hold .deep, html.deep-finale-hold .deep { touch-action: none; }
+html.deep-carkey-hold .deep, html.deep-finale-hold .deep, html.deep-reverse-hold .deep { touch-action: none; }
 html.deep-whispering-hold .plate-controls, html.deep-counting-hold .plate-controls,
 html.deep-mistakes-hold .plate-controls, html.deep-mistakes-hold .s14-instrument,
 html.deep-conversation-hold .plate-controls, html.deep-conversation-hold .plate-river,
 html.deep-twocards-hold .plate-controls, html.deep-twocards-hold .s16-instrument,
-html.deep-carkey-hold .plate-controls, html.deep-finale-hold .plate-controls { touch-action: manipulation; }
+html.deep-carkey-hold .plate-controls, html.deep-finale-hold .plate-controls,
+html.deep-reverse-hold .plate-controls, html.deep-reverse-hold .s14-instrument,
+html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { touch-action: manipulation; }
 .deep-blink-cover {
   position: fixed;
   inset: 0;
@@ -128,7 +131,8 @@ html.deep-carkey-hold .plate-controls, html.deep-finale-hold .plate-controls { t
   pointer-events: none;
   opacity: 0;
 }
-.deep-finale-hold .deep-blink-cover { z-index: 15; }
+.deep-finale-hold .deep-blink-cover,
+.deep-reverse-hold .deep-blink-cover { z-index: 15; }
 
 .plate {
   max-width: 1180px;
@@ -2136,8 +2140,9 @@ input.s7-track-copy {
 .s17-pill-opt:has(input:checked) { color: var(--paper); }
 .s17-why-word { display: inline-block; padding-inline: .04em; border-radius: .06em; }
 
-/* Finale blink + residual afterblink */
+/* Finale blink (one-shot via WAAPI) & bidirectional reverse transition overlays */
 .deep-end-staged:not(:focus-within) > * { visibility: hidden; }
+.deep-rev-staged:not(:focus-within) > * { visibility: hidden; }
 .deep-end-blink {
   display: inline-block;
   padding-inline: .06em;
@@ -2145,16 +2150,25 @@ input.s7-track-copy {
   color: var(--ink);
   background: transparent;
 }
-@keyframes deep-end-afterblink {
-  0%, 74%, 100% { color: var(--ink); background-color: transparent; opacity: 1; }
-  77% { color: var(--paper); background-color: rgba(13, 13, 12, .78); opacity: .94; }
-  80% { color: var(--ink); background-color: transparent; opacity: 1; }
-  83.5% { color: var(--paper); background-color: rgba(13, 13, 12, .42); opacity: .96; }
-  86% { color: var(--ink); background-color: transparent; opacity: 1; }
+.deep-rev-copy, .part-two-reverse-cover {
+  position: fixed;
+  inset: 0;
+  inline-size: 100vw;
+  block-size: 100vh;
+  z-index: 15;
+  pointer-events: none;
+}
+.part-two-reverse-cover {
+  background: var(--paper);
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: clamp(14px, 2.4vh, 22px);
+  text-align: center;
+  font-weight: 800;
 }
 @media (prefers-reduced-motion: no-preference) {
   .s17-pill-thumb { transition: transform .24s cubic-bezier(.16, 1, .3, 1); }
-  .deep-end-blink.is-afterblink { animation: deep-end-afterblink 4.2s ease-in-out infinite; }
 }
 @media (prefers-reduced-motion: reduce) {
   .s17-pill-thumb, .s17-pill-opt { transition: none; }

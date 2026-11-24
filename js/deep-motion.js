@@ -1,59 +1,5 @@
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
-// Listen only near a scene that handles paging, so ordinary scroll stays native elsewhere.
-function capturePageGesture(canBegin, begin, interrupt) {
-  const listeners = new AbortController();
-  const { signal } = listeners;
-  let touch;
-
-  function page(event, direction) {
-    if (canBegin(event, direction)) begin(event, direction);
-    else if (direction < 0) interrupt(direction, event);
-  }
-
-  addEventListener('wheel', event => {
-    if (event.ctrlKey || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
-    page(event, Math.sign(event.deltaY));
-  }, { passive: false, signal });
-
-  addEventListener('keydown', event => {
-    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
-    const { key } = event;
-    if (['Home', 'End', 'Escape'].includes(key)) return interrupt();
-    if (event.target.closest?.('a, button, input, textarea, select, [role="slider"], [contenteditable]')) return;
-    if (['ArrowUp', 'PageUp'].includes(key) || (key === ' ' && event.shiftKey)) page(event, -1);
-    else if (['ArrowDown', 'PageDown', ' '].includes(key)) page(event, 1);
-  }, { signal });
-
-  addEventListener('touchstart', ({ touches, target }) => {
-    const finger = touches[0];
-    const onSlider = target.closest?.('input[type="range"], [role="slider"]');
-    touch = touches.length === 1 && !onSlider ? { x: finger.clientX, y: finger.clientY, highest: finger.clientY } : null;
-  }, { passive: true, signal });
-
-  addEventListener('touchmove', event => {
-    if (!touch || event.touches.length !== 1) return;
-    const { clientX: x, clientY: y } = event.touches[0];
-    if (touch.highest < touch.y && y > touch.highest + 16) touch = { x, y: touch.highest, highest: touch.highest };
-    touch.highest = Math.min(y, touch.highest);
-    const delta = touch.y - y;
-    if (Math.abs(delta) <= Math.abs(x - touch.x)) return;
-    const direction = Math.sign(delta);
-    if (canBegin(event, direction)) {
-      if (Math.abs(delta) < 12) event.preventDefault();
-      else {
-        touch = { x, y, highest: y };
-        begin(event, direction);
-      }
-    } else if (delta <= -16) {
-      touch = { x, y, highest: y };
-      interrupt(direction, event);
-    }
-  }, { passive: false, signal });
-
-  return listeners;
-}
-
 function watchPartOne(word, part) {
   const chapter = part.closest('.deep');
   const root = document.documentElement;
@@ -65,24 +11,26 @@ function watchPartOne(word, part) {
   const inverted = { color: 'var(--paper)', backgroundColor: 'var(--ink)' };
   const sceneHold = 1000;
   let partTop = bounds(part, scrollY).y;
-  let animation, holdTimer, startTop, arrived, inputListeners;
+  let animation, holdTimer;
   const active = () => !!animation || holdTimer !== undefined;
 
   function releaseHold() {
     clearTimeout(holdTimer);
     holdTimer = undefined;
-    root.classList.remove('deep-blink-hold');
+    root.classList.remove('deep-blink-hold', 'deep-reverse-hold');
     scheduleMotion();
   }
 
   function interrupt() {
     if (!active()) return;
     animation?.cancel();
+    cover.remove();
     releaseHold();
   }
 
   async function blink() {
     try {
+      sanitizeChapter();
       root.classList.add('deep-blink-hold');
       animation = word.animate([
         normal, { ...normal, offset: .10 }, { ...inverted, offset: .14 },
@@ -97,10 +45,9 @@ function watchPartOne(word, part) {
       const close = cover.animate({ opacity: [0, 1] }, { duration: 135, easing: 'ease-in', fill: 'forwards' });
       animation = close;
       await close.finished;
-      if (!motionAllowed() || scrollY >= partTop) return;
+      if (!motionAllowed()) return;
 
       // Move to the existing title while the viewport is fully covered.
-      arrived = true;
       part.scrollIntoView({ block: 'start', behavior: 'instant' });
       animation = cover.animate([
         { opacity: 1 }, { opacity: 1, offset: .16, easing: 'ease-out' }, { opacity: 0 },
@@ -118,42 +65,62 @@ function watchPartOne(word, part) {
     }
   }
 
-  function openerReady(top, height) {
-    const openingEnd = Math.max(0, partTop - height);
-    if (top < openingEnd - 1 || top > openingEnd + 24) return false;
-    const wordBox = word.getBoundingClientRect();
-    return wordBox.top >= 0 && wordBox.bottom <= height;
-  }
+  async function reverseBlink() {
+    try {
+      sanitizeChapter();
+      root.classList.add('deep-reverse-hold');
+      chapter.append(cover);
+      const close = cover.animate({ opacity: [0, 1] }, { duration: 130, easing: 'ease-in', fill: 'forwards' });
+      animation = close;
+      await close.finished;
+      if (!motionAllowed()) return;
 
-  function canBegin(event, direction) {
-    return direction > 0 && event.cancelable && !event.defaultPrevented && !active() && motionAllowed() && openerReady(scrollY, innerHeight);
-  }
+      scrollTo({ top: 0, behavior: 'instant' });
+      animation = cover.animate([
+        { opacity: 1 }, { opacity: 1, offset: .14, easing: 'ease-out' }, { opacity: 0 },
+      ], { duration: 250, fill: 'both' });
+      close.cancel();
+      await animation.finished;
+      if (!motionAllowed()) return;
 
-  function begin(event) {
-    event.preventDefault();
-    startTop = scrollY;
-    arrived = false;
-    void blink();
-  }
-
-  function listenForInput(top, height) {
-    if (!motionAllowed() || (!active() && !openerReady(top, height))) {
-      inputListeners?.abort();
-      inputListeners = null;
-      return;
+      animation = word.animate([
+        normal, { ...inverted, offset: .24 }, { ...normal, offset: .52 }, normal,
+      ], { duration: 420 });
+      await animation.finished;
+      holdTimer = setTimeout(releaseHold, 320);
+    } catch (error) {
+      if (error.name !== 'AbortError') throw error;
+    } finally {
+      animation?.cancel();
+      cover.remove();
+      animation = null;
+      if (holdTimer === undefined) releaseHold();
     }
-    inputListeners ??= capturePageGesture(canBegin, begin, interrupt);
   }
 
-  listenForInput(scrollY, innerHeight);
   watchScrollMotion((top, height, needsMeasure) => {
     if (needsMeasure) partTop = bounds(part, top).y;
-    if (active() && (!motionAllowed() || Math.abs(top - (arrived ? partTop : startTop)) > 2)) interrupt();
-    listenForInput(top, height);
+    if (active() && !motionAllowed()) interrupt();
   });
   addEventListener('hashchange', interrupt);
   document.addEventListener('visibilitychange', () => { if (document.hidden) interrupt(); });
   reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) interrupt(); });
+
+  return {
+    forward() {
+      if (!motionAllowed() || active()) return;
+      partTop = bounds(part, scrollY).y;
+      const openEnd = Math.max(0, partTop - innerHeight);
+      if (Math.abs(scrollY - openEnd) > 2) scrollTo({ top: openEnd, behavior: 'instant' });
+      void blink();
+    },
+    reverse() {
+      if (!motionAllowed() || active()) return;
+      void reverseBlink();
+    },
+    cancel: interrupt,
+    active,
+  };
 }
 
 const scrollMotions = [];
@@ -196,6 +163,277 @@ export function watchScrollMotion(update) {
   scheduleMotion();
 }
 
+const ALL_HOLD_CLASSES = [
+  'deep-blink-hold', 'deep-closer-hold', 'deep-flipping-hold', 'deep-tuning-hold',
+  'deep-metal-hold', 'deep-pauses-hold', 'deep-part-two-hold', 'deep-soaking-hold',
+  'deep-whispering-hold', 'deep-counting-hold', 'deep-mistakes-hold', 'deep-conversation-hold',
+  'deep-twocards-hold', 'deep-carkey-hold', 'deep-finale-hold', 'deep-reverse-hold',
+];
+const ALL_STAGED_CLASSES = [
+  's7-awaiting', 's7-entering', 's8-awaiting', 's9-awaiting', 's9-entering',
+  's10-awaiting', 's10-entering', 's12-staged', 's12-title-in-flight', 's13-staged',
+  's14-staged', 's15-staged', 's16-staged', 's17-staged', 'deep-end-staged', 'deep-rev-staged',
+];
+const STRAY_OVERLAY_SELECTOR = [
+  '.deep-rev-copy', '.deep-blink-cover', '.part-two-reveal', '.part-two-reverse-cover',
+  '.s12-vortex', '.s13-spectrum-copy', '.s14-timing-copy',
+  '.s15-handoff-copy', '.s16-handoff-copy', '.s16-title-morph', '.s17-handoff-copy', '.s17-portal-wallet',
+].join(', ');
+
+function sanitizeChapter() {
+  const root = document.documentElement;
+  root.classList.remove(...ALL_HOLD_CLASSES);
+  for (const cls of ALL_STAGED_CLASSES) {
+    for (const el of document.querySelectorAll(`.${cls}`)) el.classList.remove(cls);
+  }
+  for (const node of document.querySelectorAll(STRAY_OVERLAY_SELECTOR)) node.remove();
+  for (const id of ['s6-chart', 's7-chart', 's8-chart', 's9-chart', 's10-chart', 's11-chart', 's12-chart', 's13-chart', 's14-chart', 's15-chart', 's16-chart', 's17-chart']) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.style.removeProperty('opacity');
+    el.style.removeProperty('clip-path');
+    el.style.removeProperty('mask-image');
+    el.style.removeProperty('transform');
+    el.style.removeProperty('--s8-plot-opacity');
+    el.style.removeProperty('--s13-spectrum-opacity');
+    el.style.removeProperty('--s14-signal-opacity');
+    el.style.removeProperty('--s15-river-opacity');
+    el.style.removeProperty('--s16-chart-opacity');
+  }
+  for (const id of ['s14', 's15', 's16-wallet', 's16-title']) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.style.removeProperty('visibility');
+    el.style.removeProperty('opacity');
+    el.style.removeProperty('--s14-timing-opacity');
+    el.style.removeProperty('--s15-source-opacity');
+    el.style.removeProperty('--s16-source-opacity');
+  }
+  for (const el of document.querySelectorAll('.plate-words, .plate-words > *, .s16-desk, #s14-replies > *, #deep-end > *')) {
+    el.style.removeProperty('opacity');
+    el.style.removeProperty('transform');
+    el.style.removeProperty('filter');
+  }
+}
+
+function runReverseCanvasMorph(fromEl, toEl, { mode = 'default', cut = 430, arrivalEnd = 1040, readHold = 360, onDone } = {}) {
+  const root = document.documentElement, chapter = fromEl.closest('.deep');
+  const fromWords = fromEl.querySelector('.plate-words'), toWords = toEl.querySelector('.plate-words');
+  const fromCanvas = fromEl.querySelector('canvas'), toCanvas = toEl.querySelector('canvas');
+  if (!chapter || !fromWords || !toWords) {
+    toEl.scrollIntoView({ block: 'start', behavior: 'instant' });
+    onDone?.();
+    return { active: () => false, cancel: () => {} };
+  }
+
+  sanitizeChapter();
+  const originTop = bounds(fromEl, scrollY).y;
+  if (Math.abs(scrollY - originTop) > 2) scrollTo({ top: originTop, behavior: 'instant' });
+  const destination = bounds(toEl, scrollY).y;
+
+  const copy = document.createElement('canvas');
+  copy.className = 'deep-rev-copy';
+  copy.setAttribute('aria-hidden', 'true');
+  const ctx = copy.getContext('2d');
+  const width = innerWidth, height = innerHeight;
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  copy.width = Math.round(width * dpr);
+  copy.height = Math.round(height * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.lineCap = ctx.lineJoin = 'round';
+
+  const fromBox = fromCanvas ? bounds(fromCanvas, originTop) : { x: width * .5, y: originTop + height * .25, w: 320, h: 180 };
+  const fromView = { x: fromBox.x, y: fromBox.y - originTop, w: Math.max(40, fromBox.w), h: Math.max(40, fromBox.h) };
+  const toBoxRaw = toCanvas ? bounds(toCanvas, originTop) : { x: width * .5, y: destination + height * .25, w: 320, h: 180 };
+  const toView = { x: toBoxRaw.x, y: toBoxRaw.y - destination, w: Math.max(40, toBoxRaw.w), h: Math.max(40, toBoxRaw.h) };
+
+  let snap = null;
+  if (fromCanvas && fromCanvas.width > 0 && fromCanvas.height > 0) {
+    snap = document.createElement('canvas');
+    snap.width = fromCanvas.width;
+    snap.height = fromCanvas.height;
+    snap.getContext('2d')?.drawImage(fromCanvas, 0, 0);
+  }
+
+  let titleMorph = null;
+  if (mode === 'whispering') {
+    const outTitle = fromEl.querySelector('h3'), inTitle = toEl.querySelector('h3');
+    if (outTitle && inTitle) {
+      const ftb = bounds(outTitle, originTop), ttb = bounds(inTitle, originTop);
+      const wrap = document.createElement('div');
+      wrap.className = 's16-title-morph';
+      wrap.setAttribute('aria-hidden', 'true');
+      const outLayer = document.createElement('div');
+      outLayer.className = 's16-title-layer';
+      outLayer.textContent = outTitle.textContent;
+      outLayer.style.width = `${Math.max(180, ftb.w)}px`;
+      const inLayer = document.createElement('div');
+      inLayer.className = 's16-title-layer';
+      inLayer.textContent = inTitle.textContent;
+      inLayer.style.width = `${Math.max(180, ttb.w)}px`;
+      wrap.append(outLayer, inLayer);
+      chapter.append(wrap);
+      titleMorph = {
+        wrap, outLayer, inLayer,
+        from: { x: ftb.x, y: ftb.y - originTop },
+        to: { x: ttb.x, y: ttb.y - destination },
+      };
+    }
+  }
+
+  const animations = [];
+  let frame = 0, landed = false, topPin = originTop, activeFlag = true;
+  const started = performance.now();
+
+  root.classList.add('deep-reverse-hold');
+  toEl.classList.add('deep-rev-staged');
+  if (fromCanvas) fromCanvas.style.opacity = '0';
+  if (toCanvas) toCanvas.style.opacity = '0';
+  chapter.append(copy);
+
+  for (const [i, node] of Array.from(fromWords.children).entries()) {
+    animations.push(node.animate([
+      { opacity: 1, transform: 'none', filter: 'blur(0px)' },
+      { opacity: 0, transform: 'translateY(11px)', filter: 'blur(3px)' },
+    ], { duration: 320, delay: i * 24, easing: 'ease-in', fill: 'both' }));
+  }
+  if (mode === 'mistakes') {
+    const replies = fromEl.querySelector('#s14-replies');
+    if (replies) {
+      const rows = Array.from(replies.children);
+      rows.slice().reverse().forEach((row, i) => {
+        animations.push(row.animate([
+          { opacity: 1, transform: 'none', filter: 'blur(0px)' },
+          { opacity: 0, transform: 'translateY(-10px)', filter: 'blur(6px)' },
+        ], { duration: 280, delay: i * 60, easing: 'ease-in', fill: 'both' }));
+      });
+    }
+  }
+
+  function clear() {
+    if (!activeFlag) return;
+    cancelAnimationFrame(frame);
+    frame = 0;
+    activeFlag = false;
+    animations.forEach(a => a.cancel());
+    copy.remove();
+    titleMorph?.wrap?.remove();
+    toEl.classList.remove('deep-rev-staged');
+    fromCanvas?.style.removeProperty('opacity');
+    toCanvas?.style.removeProperty('opacity');
+    root.classList.remove('deep-reverse-hold');
+    scheduleMotion();
+    onDone?.();
+  }
+
+  function land() {
+    landed = true;
+    scrollTo({ top: destination, behavior: 'instant' });
+    topPin = scrollY;
+    toEl.classList.remove('deep-rev-staged');
+    for (const [i, node] of Array.from(toWords.children).entries()) {
+      if (mode === 'whispering' && i === 1) continue;
+      animations.push(node.animate([
+        { opacity: 0, transform: 'translateY(-10px)', filter: 'blur(3px)' },
+        { opacity: 1, transform: 'none', filter: 'blur(0px)' },
+      ], { duration: 380, delay: 40 + i * 38, easing: arrivalEase, fill: 'both' }));
+    }
+  }
+
+  function draw(elapsed) {
+    if (Math.abs(scrollY - topPin) > 1 && Math.abs(scrollY - topPin) < height * .95) {
+      scrollTo({ top: topPin, behavior: 'instant' });
+    }
+    const carry = ease(40, arrivalEnd - 180, elapsed);
+    const arc = Math.sin(Math.PI * carry) * -18;
+    const cx = mix(fromView.x, toView.x, carry);
+    const cy = mix(fromView.y, toView.y, carry) + arc;
+    const cw = mix(fromView.w, toView.w, carry);
+    const ch = mix(fromView.h, toView.h, carry);
+    const snapAlpha = 1 - ease(cut + 140, arrivalEnd - 40, elapsed);
+
+    ctx.clearRect(0, 0, width, height);
+    if (snap && snapAlpha > 0) {
+      ctx.save();
+      ctx.globalAlpha = snapAlpha;
+      ctx.drawImage(snap, cx, cy, cw, ch);
+      ctx.restore();
+    }
+
+    if (mode === 'counting') {
+      const sweep = ease(60, cut + 160, elapsed);
+      const sx = mix(fromView.x + fromView.w, fromView.x, sweep);
+      const barAlpha = ease(20, 120, elapsed) * (1 - ease(cut + 120, cut + 280, elapsed));
+      if (barAlpha > 0) {
+        ctx.save();
+        ctx.globalAlpha = barAlpha;
+        ctx.strokeStyle = '#b8652a';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(sx, fromView.y - 4);
+        ctx.lineTo(sx, fromView.y + fromView.h + 4);
+        ctx.stroke();
+        ctx.restore();
+      }
+    } else if (mode === 'mistakes' || mode === 'flipping' || mode === 'tuning' || mode === 'metal' || mode === 'pauses') {
+      const waveFade = ease(120, 360, elapsed) * (1 - ease(cut + 180, arrivalEnd, elapsed));
+      if (waveFade > 0) {
+        ctx.save();
+        ctx.globalAlpha = waveFade * .72;
+        ctx.strokeStyle = '#b8652a';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        for (let i = 0; i <= 36; i++) {
+          const u = i / 36;
+          const px = cx + u * cw;
+          const py = cy + ch * .5 + Math.sin(u * Math.PI * 3 - elapsed * .005) * (1 - carry) * 14;
+          if (i) ctx.lineTo(px, py);
+          else ctx.moveTo(px, py);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    if (titleMorph?.wrap?.isConnected) {
+      const m = ease(40, arrivalEnd - 140, elapsed);
+      const tx = mix(titleMorph.from.x, titleMorph.to.x, m);
+      const ty = mix(titleMorph.from.y, titleMorph.to.y, m);
+      titleMorph.outLayer.style.transform = `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px)`;
+      titleMorph.outLayer.style.opacity = String(1 - ease(60, cut + 60, elapsed));
+      titleMorph.outLayer.style.filter = `blur(${(ease(60, cut + 60, elapsed) * 6).toFixed(2)}px)`;
+      const inO = ease(cut - 60, arrivalEnd - 140, elapsed);
+      titleMorph.inLayer.style.transform = `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px)`;
+      titleMorph.inLayer.style.opacity = String(inO);
+      titleMorph.inLayer.style.filter = `blur(${((1 - inO) * 6).toFixed(2)}px)`;
+    }
+
+    if (landed && toCanvas) {
+      toCanvas.style.opacity = String(ease(cut + 140, arrivalEnd, elapsed));
+    }
+  }
+
+  function step(now) {
+    if (!activeFlag) return;
+    const elapsed = now - started;
+    if (elapsed >= cut && !landed) land();
+    if (elapsed < arrivalEnd) draw(elapsed);
+    else if (copy.isConnected) {
+      copy.remove();
+      titleMorph?.wrap?.remove();
+      toCanvas?.style.removeProperty('opacity');
+    }
+    if (elapsed >= arrivalEnd + readHold) return clear();
+    frame = requestAnimationFrame(step);
+  }
+  frame = requestAnimationFrame(step);
+
+  return {
+    active: () => activeFlag,
+    cancel: clear,
+  };
+}
+
 function watchCloser(source, plate) {
   const part = source.closest('.deep-part');
   const chapter = plate.closest('.deep');
@@ -205,7 +443,7 @@ function watchCloser(source, plate) {
   const distanceDemo = plate.querySelector('.s6-distance-demo');
   const rows = Array.from(controls.querySelectorAll('.s6-control'));
   const chart = plate.querySelector('#s6-chart');
-  const drawDuration = 1380;
+  const drawDuration = 1150;
   const readHold = 1000;
   const motions = [];
   const traveledTitle = document.createElement('span');
@@ -213,7 +451,7 @@ function watchCloser(source, plate) {
   traveledTitle.textContent = source.textContent;
   traveledTitle.setAttribute('aria-hidden', 'true');
 
-  let inputListeners, partTop, plateTop, lockedAt, awaitingChart, returning;
+  let partTop, plateTop, lockedAt, awaitingChart, returning;
   let frame = 0;
   const locked = () => lockedAt !== undefined;
   const canPlay = () => !reducedMotion.matches && !document.hidden;
@@ -243,30 +481,12 @@ function watchCloser(source, plate) {
     return visible >= Math.min(height, box.height) * .85;
   }
 
-  function canBegin(event, direction) {
-    if (!event.cancelable || event.defaultPrevented || !canPlay() ||
-      root.classList.contains('deep-blink-hold') || root.classList.contains('deep-flipping-hold')) return false;
-    const atPart = atPartTitle(scrollY, innerHeight);
-    if (direction > 0) return atPart && (!locked() || returning);
-    return !returning && (atCloserTitle(scrollY, innerHeight) || (locked() && atPart));
-  }
-
-  function atPartTitle(top, height) {
-    return top >= partTop - 1 && top <= partTop + height * .18;
-  }
-
-  function atCloserTitle(top, height) {
-    return Math.abs(top - plateTop) <= height * .18;
-  }
-
-  function begin(event, direction) {
-    event.preventDefault();
-    const goingBack = direction < 0;
+  function playCloser(goingBack) {
+    sanitizeChapter();
     settle();
-    if (goingBack && !atCloserTitle(scrollY, innerHeight)) {
-      part.scrollIntoView({ block: 'start', behavior: 'instant' });
-      return;
-    }
+    partTop = bounds(part, scrollY).y;
+    plateTop = bounds(plate, scrollY).y;
+    scrollTo({ top: goingBack ? plateTop : partTop, behavior: 'instant' });
     const from = source.getBoundingClientRect(), to = title.getBoundingClientRect();
     const lineHeight = parseFloat(getComputedStyle(source).lineHeight);
     const fromTop = from.top + (from.height - lineHeight) / 2 + (goingBack ? scrollY - partTop : 0);
@@ -340,23 +560,14 @@ function watchCloser(source, plate) {
     frame = requestAnimationFrame(tick);
   }
 
-  function interrupt(direction) {
-    if (direction !== -1 || !returning) settle();
-  }
-
   watchScrollMotion((top, height, needsMeasure) => {
     if (needsMeasure || partTop === undefined) {
       partTop = bounds(part, top).y;
       plateTop = bounds(plate, top).y;
     }
 
-    if (!canPlay() || (locked() && Math.abs(top - lockedAt) > 2) || (awaitingChart && !locked() && top < plateTop - 2)) settle();
-    if (canPlay() && (locked() || atPartTitle(top, height) || atCloserTitle(top, height))) {
-      inputListeners ??= capturePageGesture(canBegin, begin, interrupt);
-    } else {
-      inputListeners?.abort();
-      inputListeners = undefined;
-    }
+    if (!canPlay() || (locked() && Math.abs(top - lockedAt) > height * .95) || (awaitingChart && !locked() && top < plateTop - 2)) settle();
+    else if (locked() && Math.abs(top - lockedAt) > 1) scrollTo({ top: lockedAt, behavior: 'instant' });
 
     if (!awaitingChart || locked() || !drawingPosition(height)) return;
     awaitingChart = false;
@@ -375,7 +586,12 @@ function watchCloser(source, plate) {
   document.addEventListener('visibilitychange', () => { if (document.hidden) settle(); });
   reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) settle(); });
 
-  return settle;
+  return {
+    forward: () => canPlay() && playCloser(false),
+    reverse: () => canPlay() && playCloser(true),
+    cancel: settle,
+    active: () => locked() || !!frame,
+  };
 }
 
 function watchFlipping(previous, plate, settlePrevious) {
@@ -404,14 +620,15 @@ function watchFlipping(previous, plate, settlePrevious) {
   Object.assign(track, { type: 'range', min: '0', max: '1', step: 'any', className: 's7-track-copy', inert: true });
   track.setAttribute('aria-hidden', 'true');
 
-  let layout, inputListeners, previousTop, targetTop, lockedAt, waves;
-  let armed = false, frame = 0;
-  const active = () => lockedAt !== undefined;
+  let layout, previousTop, targetTop, lockedAt, waves, revCtrl;
+  let frame = 0;
+  const active = () => lockedAt !== undefined || !!revCtrl?.active();
   const canPlay = () => !reducedMotion.matches && !document.hidden;
 
   function settle() {
+    revCtrl?.cancel();
     plate.classList.remove('s7-awaiting', 's7-entering');
-    if (!active()) return;
+    if (lockedAt === undefined) return;
     cancelAnimationFrame(frame);
     for (const motion of motions) motion.cancel();
     motions.length = 0;
@@ -431,34 +648,12 @@ function watchFlipping(previous, plate, settlePrevious) {
   }
 
   function skip() {
-    armed = false;
     settle();
-  }
-
-  function interrupt(direction, event) {
-    if (!active()) return;
-    skip();
-    if (direction === -1 && event?.cancelable) {
-      event.preventDefault();
-      previous.scrollIntoView({ block: 'start', behavior: 'instant' });
-    }
   }
 
   function viewportBox(node, top = scrollY) {
     const box = bounds(node, scrollY);
     return { ...box, y: box.y - top };
-  }
-
-  function ready(top, height) {
-    return top >= Math.max(previousTop, targetTop - height) - 2 && top < targetTop - 1;
-  }
-
-  function canBegin(event, direction) {
-    if (direction < 0 || !event.cancelable || event.defaultPrevented || !canPlay() || !armed || active() ||
-      root.classList.contains('deep-closer-hold')) return false;
-    if (ready(scrollY, innerHeight)) return true;
-    const wheelUnit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
-    return event.type === 'wheel' && scrollY + event.deltaY * wheelUnit >= targetTop;
   }
 
   function collectWords() {
@@ -571,11 +766,6 @@ function watchFlipping(previous, plate, settlePrevious) {
   }
 
   function begin(event) {
-    if (!ready(scrollY, innerHeight)) {
-      event.preventDefault();
-      scrollTo({ top: Math.max(previousTop, targetTop - innerHeight), behavior: 'instant' });
-      return;
-    }
     if (!sourceChart.handoffPlots || !ctx) return;
     event.preventDefault();
     settlePrevious();
@@ -647,24 +837,35 @@ function watchFlipping(previous, plate, settlePrevious) {
       targetTop = bounds(plate, top).y;
       previousTop = bounds(previous, top).y;
     }
-    if (!canPlay() || (active() && Math.abs(top - lockedAt) > 2)) skip();
-    if (!active()) {
-      if (!canPlay() || top >= targetTop - 1 || plate.contains(document.activeElement)) armed = false;
-      else if (top >= previousTop - height * .2 && top <= targetTop - height * .65) armed = true;
-      plate.classList.toggle('s7-awaiting', armed && top < targetTop - 1);
-    }
-    if (canPlay() && (active() || (armed && top >= previousTop - 2 && top < targetTop - 1))) {
-      inputListeners ??= capturePageGesture(canBegin, begin, interrupt);
-    } else {
-      inputListeners?.abort();
-      inputListeners = undefined;
-    }
+    if (!canPlay() || (lockedAt !== undefined && Math.abs(top - lockedAt) > height * .95)) skip();
+    else if (lockedAt !== undefined && Math.abs(top - lockedAt) > 1) scrollTo({ top: lockedAt, behavior: 'instant' });
   });
 
   for (const event of ['pointerdown', 'focusin', 'input']) speed.addEventListener(event, skip);
   for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, skip);
   document.addEventListener('visibilitychange', () => { if (document.hidden) skip(); });
   reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) skip(); });
+
+  return {
+    forward() {
+      if (!canPlay() || active()) return;
+      previousTop = bounds(previous, scrollY).y;
+      targetTop = bounds(plate, scrollY).y;
+      const cue = Math.max(previousTop, targetTop - innerHeight);
+      if (Math.abs(scrollY - cue) > 2) scrollTo({ top: cue, behavior: 'instant' });
+      if (!sourceChart.handoffPlots || !ctx) {
+        plate.scrollIntoView({ block: 'start', behavior: 'instant' });
+        return;
+      }
+      begin({ preventDefault() {}, cancelable: false });
+    },
+    reverse() {
+      if (!canPlay() || active()) return;
+      revCtrl = runReverseCanvasMorph(plate, previous, { mode: 'flipping' });
+    },
+    cancel: skip,
+    active,
+  };
 }
 
 function watchTuning(previous, plate) {
@@ -682,21 +883,9 @@ function watchTuning(previous, plate) {
   const ctx = plot.getContext('2d');
   const turns = [];
   const gatherAt = 380, gatherEnd = 960, pluck = 1900, end = 2950, readHold = 1000;
-  let layout, armed, elapsed, waves, inputListeners, previousTop, targetTop, lockedAt, frame;
+  let layout, elapsed, waves, previousTop, targetTop, lockedAt, frame, revCtrl;
   const canPlay = () => !reducedMotion.matches && !document.hidden;
-  const active = () => lockedAt !== undefined;
-
-  function ready(top, height) {
-    return top >= Math.max(previousTop, targetTop - height) - height * .075 && top < targetTop - 1;
-  }
-
-  function canBegin(event, direction) {
-    if (direction < 0 || !event.cancelable || event.defaultPrevented || !canPlay() || !armed || active() ||
-      root.classList.contains('deep-flipping-hold')) return false;
-    if (ready(scrollY, innerHeight)) return true;
-    const wheelUnit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
-    return event.type === 'wheel' && scrollY + event.deltaY * wheelUnit >= targetTop;
-  }
+  const active = () => lockedAt !== undefined || !!revCtrl?.active();
 
   function startWords() {
     function turn(node, frames, start, end) {
@@ -738,8 +927,9 @@ function watchTuning(previous, plate) {
   }
 
   function settle() {
+    revCtrl?.cancel();
     plate.classList.remove('s8-awaiting');
-    if (!active()) return;
+    if (lockedAt === undefined) return;
     cancelAnimationFrame(frame);
     for (const { animation } of turns) animation.cancel();
     turns.length = 0;
@@ -750,17 +940,7 @@ function watchTuning(previous, plate) {
   }
 
   function skip() {
-    armed = false;
     settle();
-  }
-
-  function interrupt(direction, event) {
-    if (!active()) return;
-    skip();
-    if (direction === -1 && event?.cancelable) {
-      event.preventDefault();
-      previous.scrollIntoView({ block: 'start', behavior: 'instant' });
-    }
   }
 
   function paintPlot() {
@@ -846,10 +1026,6 @@ function watchTuning(previous, plate) {
     if (!ctx) return;
     event.preventDefault();
     const height = innerHeight, top = scrollY;
-    if (!ready(top, height)) {
-      scrollTo({ top: Math.max(previousTop, targetTop - height), behavior: 'instant' });
-      return;
-    }
     const from = bounds(sourceChart, top), to = bounds(targetChart, top);
     layout = { from, to, width: innerWidth, height, stacked: Math.abs(from.x - to.x) < 1 };
     const overflow = Math.max(0, Math.min(to.y + to.h + 12 - targetTop - height, plate.offsetHeight - height));
@@ -890,18 +1066,8 @@ function watchTuning(previous, plate) {
       previousTop = bounds(previous, top).y;
       targetTop = bounds(plate, top).y;
     }
-    if (!canPlay() || (active() && Math.abs(top - lockedAt) > 2)) skip();
-    if (!active()) {
-      if (!canPlay() || top >= targetTop - 1 || plate.contains(document.activeElement)) armed = false;
-      else if (top >= previousTop - height * .2 && top <= targetTop - height * .65) armed = true;
-      plate.classList.toggle('s8-awaiting', armed && top < targetTop - 1);
-    }
-    if (canPlay() && (active() || (armed && top >= previousTop - height * .075 && top < targetTop - 1))) {
-      inputListeners ??= capturePageGesture(canBegin, begin, interrupt);
-    } else {
-      inputListeners?.abort();
-      inputListeners = undefined;
-    }
+    if (!canPlay() || (lockedAt !== undefined && Math.abs(top - lockedAt) > height * .95)) skip();
+    else if (lockedAt !== undefined && Math.abs(top - lockedAt) > 1) scrollTo({ top: lockedAt, behavior: 'instant' });
   });
 
   for (const scene of [previous, plate]) {
@@ -911,6 +1077,23 @@ function watchTuning(previous, plate) {
   for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, skip);
   document.addEventListener('visibilitychange', () => { if (document.hidden) skip(); });
   reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) skip(); });
+
+  return {
+    forward() {
+      if (!canPlay() || active()) return;
+      previousTop = bounds(previous, scrollY).y;
+      targetTop = bounds(plate, scrollY).y;
+      const cue = Math.max(previousTop, targetTop - innerHeight);
+      if (Math.abs(scrollY - cue) > 2) scrollTo({ top: cue, behavior: 'instant' });
+      begin({ preventDefault() {} });
+    },
+    reverse() {
+      if (!canPlay() || active()) return;
+      revCtrl = runReverseCanvasMorph(plate, previous, { mode: 'tuning' });
+    },
+    cancel: skip,
+    active,
+  };
 }
 
 function watchMetal(previous, plate) {
@@ -928,14 +1111,14 @@ function watchMetal(previous, plate) {
   wipe.setAttribute('aria-hidden', 'true');
   const ctx = plot.getContext('2d');
   const end = 2560, readHold = 1000;
-  let layout, frame, previousTop, targetTop, approach, lockedAt, listeners;
-  let armed = false;
+  let layout, frame, previousTop, targetTop, approach, lockedAt, revCtrl;
   const canPlay = () => !reducedMotion.matches && !document.hidden;
-  const active = () => lockedAt !== undefined;
+  const active = () => lockedAt !== undefined || !!revCtrl?.active();
 
   function settle() {
+    revCtrl?.cancel();
     plate.classList.remove('s9-awaiting', 's9-entering');
-    if (!active()) return;
+    if (lockedAt === undefined) return;
     cancelAnimationFrame(frame);
     plot.remove();
     wipe.remove();
@@ -950,30 +1133,7 @@ function watchMetal(previous, plate) {
   }
 
   function skip() {
-    armed = false;
     settle();
-  }
-
-  function interrupt(direction, event) {
-    if (!active()) return;
-    const origin = layout.origin;
-    skip();
-    if (direction === -1 && event?.cancelable) {
-      event.preventDefault();
-      scrollTo({ top: origin, behavior: 'instant' });
-    }
-  }
-
-  function ready(top, height) {
-    return top >= approach - height * .065 && top < targetTop - 1;
-  }
-
-  function canBegin(event, direction) {
-    if (direction < 0 || !event.cancelable || event.defaultPrevented || !canPlay() || !armed || active() ||
-      root.classList.contains('deep-tuning-hold')) return false;
-    if (ready(scrollY, innerHeight)) return true;
-    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
-    return event.type === 'wheel' && scrollY + event.deltaY * unit >= targetTop;
   }
 
   function sample(points, index) {
@@ -1088,13 +1248,12 @@ function watchMetal(previous, plate) {
   }
 
   function begin(event) {
-    if (!ctx || !source.resonanceCurve) return;
-    event.preventDefault();
-    const origin = scrollY, height = innerHeight;
-    if (!ready(origin, height)) {
-      scrollTo({ top: approach, behavior: 'instant' });
+    if (!ctx || !source.resonanceCurve) {
+      plate.scrollIntoView({ block: 'start', behavior: 'instant' });
       return;
     }
+    event.preventDefault();
+    const origin = scrollY, height = innerHeight;
     const from = bounds(source, origin), to = bounds(target, origin);
     const chartOverhang = to.y + to.h + 8 - targetTop - height;
     const extra = Math.max(0, Math.min(chartOverhang, plate.offsetHeight - height));
@@ -1143,18 +1302,8 @@ function watchMetal(previous, plate) {
     targetTop = bounds(plate, top).y;
     const { y, h } = bounds(source, top);
     approach = Math.min(targetTop - 2, Math.max(previousTop, y + h + 12 - height));
-    if (!canPlay() || (active() && Math.abs(top - lockedAt) > 2)) skip();
-    if (!active()) {
-      if (!canPlay() || top >= targetTop - 1 || plate.contains(document.activeElement)) armed = false;
-      else if (top >= previousTop - height * .2 && top <= targetTop - height * .55) armed = true;
-      plate.classList.toggle('s9-awaiting', armed && top < targetTop - 1);
-    }
-    if (canPlay() && (active() || (armed && top >= previousTop - height * .075 && top < targetTop - 1))) {
-      listeners ??= capturePageGesture(canBegin, begin, interrupt);
-    } else {
-      listeners?.abort();
-      listeners = undefined;
-    }
+    if (!canPlay() || (lockedAt !== undefined && Math.abs(top - lockedAt) > height * .95)) skip();
+    else if (lockedAt !== undefined && Math.abs(top - lockedAt) > 1) scrollTo({ top: lockedAt, behavior: 'instant' });
   });
 
   for (const node of [previous.querySelector('.plate-controls'), figure]) {
@@ -1163,6 +1312,24 @@ function watchMetal(previous, plate) {
   for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, skip);
   document.addEventListener('visibilitychange', () => { if (document.hidden) skip(); });
   reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) skip(); });
+
+  return {
+    forward() {
+      if (!canPlay() || active()) return;
+      previousTop = bounds(previous, scrollY).y;
+      targetTop = bounds(plate, scrollY).y;
+      const { y, h } = bounds(source, scrollY);
+      approach = Math.min(targetTop - 2, Math.max(previousTop, y + h + 12 - innerHeight));
+      if (Math.abs(scrollY - approach) > 2) scrollTo({ top: approach, behavior: 'instant' });
+      begin({ preventDefault() {} });
+    },
+    reverse() {
+      if (!canPlay() || active()) return;
+      revCtrl = runReverseCanvasMorph(plate, previous, { mode: 'metal' });
+    },
+    cancel: skip,
+    active,
+  };
 }
 
 function watchPauses(previous, plate) {
@@ -1183,10 +1350,9 @@ function watchPauses(previous, plate) {
   echo.setAttribute('aria-hidden', 'true');
   echo.textContent = previousTitle.textContent;
   const end = 2800, readHold = 1000;
-  let layout, previousTop, targetTop, approach, lockedAt, listeners, frame;
-  let armed = false;
+  let layout, previousTop, targetTop, approach, lockedAt, frame, revCtrl;
   const canPlay = () => !reducedMotion.matches && !document.hidden;
-  const active = () => lockedAt !== undefined;
+  const active = () => lockedAt !== undefined || !!revCtrl?.active();
 
   function clearMotion() {
     piece.remove();
@@ -1204,36 +1370,14 @@ function watchPauses(previous, plate) {
   }
 
   function skip() {
-    armed = false;
+    revCtrl?.cancel();
     plate.classList.remove('s10-awaiting');
-    if (!active()) return;
+    if (lockedAt === undefined) return;
     cancelAnimationFrame(frame);
     clearMotion();
     lockedAt = undefined;
     root.classList.remove('deep-pauses-hold');
     scheduleMotion();
-  }
-
-  function interrupt(direction, event) {
-    if (!active()) return;
-    const origin = layout.origin;
-    skip();
-    if (direction === -1 && event?.cancelable) {
-      event.preventDefault();
-      scrollTo({ top: origin, behavior: 'instant' });
-    }
-  }
-
-  function ready(top, height) {
-    return top >= approach - height * .065 && top < targetTop - 1;
-  }
-
-  function canBegin(event, direction) {
-    if (direction < 0 || !event.cancelable || event.defaultPrevented || !canPlay() || !armed || active() ||
-      root.classList.contains('deep-metal-hold')) return false;
-    if (ready(scrollY, innerHeight)) return true;
-    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
-    return event.type === 'wheel' && scrollY + event.deltaY * unit >= targetTop;
   }
 
   function wipeMask(width, progress, entering) {
@@ -1288,13 +1432,12 @@ function watchPauses(previous, plate) {
   }
 
   function begin(event) {
-    if (!plot.setPauseHandoff) return;
-    event.preventDefault();
-    const origin = scrollY, height = innerHeight;
-    if (!ready(origin, height)) {
-      scrollTo({ top: approach, behavior: 'instant' });
+    if (!plot.setPauseHandoff) {
+      plate.scrollIntoView({ block: 'start', behavior: 'instant' });
       return;
     }
+    event.preventDefault();
+    const origin = scrollY, height = innerHeight;
     const old = bounds(surface, origin), to = bounds(track, origin), chart = bounds(plot, origin);
     const extra = Math.max(0, Math.min(chart.y + chart.h + 8 - targetTop - height, plate.offsetHeight - height));
     layout = { origin, from: { ...old, y: old.y - origin }, to, oldWidth: oldWords.clientWidth, newWidth: words.clientWidth,
@@ -1338,19 +1481,9 @@ function watchPauses(previous, plate) {
     targetTop = bounds(plate, top).y;
     const visible = bounds(figure, top);
     approach = Math.min(targetTop - 2, Math.max(previousTop, visible.y + visible.h + 8 - height));
-    if (!canPlay() || (active() && Math.abs(top - lockedAt) > 2)) skip();
-    if (!active()) {
-      plate.classList.remove('s10-entering');
-      if (!canPlay() || top >= targetTop - 1 || plate.contains(document.activeElement)) armed = false;
-      else if (top >= previousTop - height * .2 && top <= targetTop - height * .55) armed = true;
-      plate.classList.toggle('s10-awaiting', armed && top < targetTop - 1);
-    }
-    if (canPlay() && (active() || (armed && top >= previousTop - height * .075 && top < targetTop - 1))) {
-      listeners ??= capturePageGesture(canBegin, begin, interrupt);
-    } else {
-      listeners?.abort();
-      listeners = undefined;
-    }
+    if (!canPlay() || (lockedAt !== undefined && Math.abs(top - lockedAt) > height * .95)) skip();
+    else if (lockedAt !== undefined && Math.abs(top - lockedAt) > 1) scrollTo({ top: lockedAt, behavior: 'instant' });
+    if (lockedAt === undefined) plate.classList.remove('s10-entering');
   });
 
   for (const control of [metal, metalAction, partLink, cap]) {
@@ -1359,6 +1492,24 @@ function watchPauses(previous, plate) {
   for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, skip);
   document.addEventListener('visibilitychange', () => { if (document.hidden) skip(); });
   reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) skip(); });
+
+  return {
+    forward() {
+      if (!canPlay() || active()) return;
+      previousTop = bounds(previous, scrollY).y;
+      targetTop = bounds(plate, scrollY).y;
+      const visible = bounds(figure, scrollY);
+      approach = Math.min(targetTop - 2, Math.max(previousTop, visible.y + visible.h + 8 - innerHeight));
+      if (Math.abs(scrollY - approach) > 2) scrollTo({ top: approach, behavior: 'instant' });
+      begin({ preventDefault() {} });
+    },
+    reverse() {
+      if (!canPlay() || active()) return;
+      revCtrl = runReverseCanvasMorph(plate, previous, { mode: 'pauses' });
+    },
+    cancel: skip,
+    active,
+  };
 }
 
 function watchPartTwo(source, part) {
@@ -1374,7 +1525,7 @@ function watchPartTwo(source, part) {
   reveal.append(heading);
 
   const sweepStart = 210, sweepEnd = 1540, readHold = 1000;
-  let transition, listeners, frame;
+  let transition, frame, revCover, revFrame, revActive = false;
   const canPlay = () => !reducedMotion.matches && !document.hidden &&
     CSS.supports('mask-image', 'radial-gradient(black, transparent)');
 
@@ -1390,7 +1541,19 @@ function watchPartTwo(source, part) {
     if (transition.followLink) part.focus({ preventScroll: true });
   }
 
+  function cancelReverse() {
+    if (!revActive) return;
+    revActive = false;
+    cancelAnimationFrame(revFrame);
+    revCover?.remove();
+    revCover = null;
+    word.style.removeProperty('transform');
+    root.classList.remove('deep-reverse-hold');
+    scheduleMotion();
+  }
+
   function release(followLink = false) {
+    cancelReverse();
     if (!transition) return;
     if (followLink && transition.followLink && !transition.arrived) land();
     cancelAnimationFrame(frame);
@@ -1399,6 +1562,57 @@ function watchPartTwo(source, part) {
     word.style.removeProperty('transform');
     root.classList.remove('deep-part-two-hold');
     scheduleMotion();
+  }
+
+  function playReverse() {
+    if (!canPlay() || revActive || transition) return;
+    sanitizeChapter();
+    part.scrollIntoView({ block: 'start', behavior: 'instant' });
+    const { cue } = approach(scrollY, innerHeight);
+    scrollTo({ top: cue, behavior: 'instant' });
+    const lockedTop = scrollY;
+    const { x, y, w, h } = bounds(word, lockedTop);
+    const centerX = x + w / 2, centerY = y + h * .69 - lockedTop;
+    const reach = Math.hypot(Math.max(centerX, innerWidth - centerX), Math.max(centerY, innerHeight - centerY)) + 20;
+
+    revCover = document.createElement('div');
+    revCover.className = 'part-two-reveal part-two-reverse-cover';
+    revCover.setAttribute('aria-hidden', 'true');
+    const clone = part.cloneNode(true);
+    clone.removeAttribute('id');
+    clone.removeAttribute('tabindex');
+    for (const c of clone.querySelectorAll('[id]')) c.removeAttribute('id');
+    revCover.append(clone);
+    revCover.style.setProperty('--ripple-center', `${centerX}px ${centerY}px`);
+    revCover.style.setProperty('--ripple-radius', `${reach}px`);
+    revCover.style.setProperty('--ripple-crest', '0');
+
+    revActive = true;
+    root.classList.add('deep-reverse-hold');
+    chapter.append(revCover);
+
+    const started = performance.now(), dur = 980, hold = 340;
+    function tick(now) {
+      if (!revActive) return;
+      if (Math.abs(scrollY - lockedTop) > 1 && Math.abs(scrollY - lockedTop) < innerHeight * .95) {
+        scrollTo({ top: lockedTop, behavior: 'instant' });
+      }
+      const elapsed = now - started;
+      if (elapsed < dur) {
+        const shrink = stage(0, dur, elapsed);
+        const radius = reach * (1 - shrink) ** 1.8;
+        revCover.style.setProperty('--ripple-radius', `${radius}px`);
+        revCover.style.setProperty('--ripple-crest', ease(40, 220, elapsed) * (1 - ease(dur - 180, dur, elapsed)));
+        const press = ease(dur - 220, dur - 80, elapsed) * (1 - ease(dur - 80, dur, elapsed));
+        word.style.transform = `translateY(${press * .09}em) scale(${1 - press * .04}, ${1 - press * .16})`;
+      } else {
+        revCover.remove();
+        word.style.removeProperty('transform');
+      }
+      if (elapsed >= dur + hold) return cancelReverse();
+      revFrame = requestAnimationFrame(tick);
+    }
+    revFrame = requestAnimationFrame(tick);
   }
 
   function play(followLink) {
@@ -1439,58 +1653,39 @@ function watchPartTwo(source, part) {
     return { cue, end };
   }
 
-  function canBegin(event, direction) {
-    if (direction < 0 || event.defaultPrevented || !event.cancelable || !canPlay()) return false;
-    if (transition) return true;
-    if (root.classList.contains('deep-pauses-hold')) return false;
-    const { cue, end } = approach(scrollY, innerHeight);
-    if (scrollY >= end - 1) return false;
-    if (scrollY >= cue - 2) return true;
-    // Stage a compact scene before the browser starts an inertial swipe.
-    if (event.type === 'touchmove' || event.key === 'PageDown' || event.key === ' ') return true;
-    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
-    return event.type === 'wheel' && scrollY + event.deltaY * unit > cue;
-  }
-
-  function begin(event) {
-    event.preventDefault();
-    if (transition) return;
-    const { cue } = approach(scrollY, innerHeight);
-    if (scrollY < cue - 2) {
-      scrollTo({ top: cue, behavior: 'instant' });
-      return;
-    }
-    if (word.getBoundingClientRect().top < 0) scrollTo({ top: cue, behavior: 'instant' });
-    play(false);
-  }
-
-  function interrupt(direction, event) {
-    if (transition && !transition.arrived && direction === -1 && event.cancelable) event.preventDefault();
-    release();
-  }
-
   source.addEventListener('click', event => {
     if (!canPlay() || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    if (!transition && ALL_HOLD_CLASSES.some(name => root.classList.contains(name))) return;
     event.preventDefault();
     if (transition) transition.followLink = true;
-    else play(true);
+    else {
+      sanitizeChapter();
+      play(true);
+    }
   });
   plate.addEventListener('focusin', event => { if (event.target !== source) release(); });
 
   watchScrollMotion((top, height) => {
-    const { cue, end } = approach(top, height);
-    if (transition && Math.abs(top - transition.top) > 2) release();
-    if (canPlay() && (transition || (top >= cue - height * .25 && top < end - 1))) {
-      listeners ??= capturePageGesture(canBegin, begin, interrupt);
-    } else {
-      listeners?.abort();
-      listeners = undefined;
-    }
+    if (transition && Math.abs(top - transition.top) > height * .95) release();
+    else if (transition && Math.abs(top - transition.top) > 1) scrollTo({ top: transition.top, behavior: 'instant' });
   });
   for (const event of ['hashchange', 'popstate', 'pagehide']) addEventListener(event, () => release());
   addEventListener('resize', () => release(true));
   document.addEventListener('visibilitychange', () => { if (document.hidden) release(true); });
   reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) release(true); });
+
+  return {
+    forward() {
+      if (!canPlay() || transition || revActive) return;
+      sanitizeChapter();
+      const { cue } = approach(scrollY, innerHeight);
+      if (Math.abs(scrollY - cue) > 2) scrollTo({ top: cue, behavior: 'instant' });
+      play(false);
+    },
+    reverse: playReverse,
+    cancel: () => release(false),
+    active: () => !!transition || revActive,
+  };
 }
 
 function watchSoaking(part, scene) {
@@ -1506,17 +1701,28 @@ function watchSoaking(part, scene) {
 
   const cut = 490, entranceEnd = 2080, readHold = 1000, sweepTime = 4000;
   const scanCycle = sweepTime + 85;
-  let intro, listeners, frame = 0, visible = false, scanPaused = false, userPaused = false;
+  let intro, rev, frame = 0, visible = false, scanPaused = false, userPaused = false;
   let axes = 1, reveal = 1;
   let blend = Number(toggle.checked), destination = blend, blendFrom, blendStart, flip;
   let capture = 0, previousCapture = 0, scanElapsed = 0, scanFrame;
   const motionAllowed = () => !reducedMotion.matches && !document.hidden;
-  const canScan = () => visible && !scanPaused && !userPaused && (!intro || intro.reading);
+  const canScan = () => visible && !scanPaused && !userPaused && (!intro || intro.reading) && !rev;
   const sweepPosition = () => stage(0, sweepTime, scanElapsed);
   const updatePlot = () => plot.setAnswerMotion?.(axes, reveal, blend, previousCapture, capture,
     previousCapture === capture ? 1 : sweepPosition());
 
+  function finishReverse() {
+    if (!rev) return;
+    rev.anims.forEach(a => a.cancel());
+    rev = undefined;
+    filament.remove();
+    part.classList.remove('deep-rev-staged');
+    root.classList.remove('deep-reverse-hold');
+    scheduleMotion();
+  }
+
   function finishIntro() {
+    finishReverse();
     if (!intro) return;
     intro.outgoing.cancel();
     intro.incoming.forEach(animation => animation.cancel());
@@ -1528,6 +1734,60 @@ function watchSoaking(part, scene) {
     updatePlot();
     scheduleMotion();
     requestFrame();
+  }
+
+  function startReverse() {
+    if (!motionAllowed() || intro || rev) return;
+    sanitizeChapter();
+    scene.scrollIntoView({ block: 'start', behavior: 'instant' });
+    const rect = plot.getBoundingClientRect(), margin = rect.width < 330 ? 38 : 54;
+    const from = { x: rect.left + margin, y: rect.top + 26 + (rect.height - 66) * .08 / 1.08,
+      w: Math.max(80, rect.width - margin - (rect.width < 330 ? 14 : 18)) };
+    const partDest = bounds(part, scrollY).y;
+    const tr = bounds(partTitle, scrollY);
+    const to = { x: tr.x, y: tr.y - partDest + tr.h * .5, w: tr.w };
+    const anims = Array.from(words.children, (node, i) => node.animate([
+      { opacity: 1, transform: 'none' },
+      { opacity: 0, transform: 'translateY(10px)' },
+    ], { duration: 280, delay: i * 35, easing: 'ease-in', fill: 'both' }));
+    anims.push(instrument.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 360, fill: 'both' }));
+    rev = { start: performance.now(), from, to, landed: false, dest: partDest, anims };
+    root.classList.add('deep-reverse-hold');
+    part.classList.add('deep-rev-staged');
+    filament.style.opacity = '0';
+    chapter.append(filament);
+    requestFrame();
+  }
+
+  function stepReverse(now) {
+    const elapsed = now - rev.start;
+    if (elapsed >= 420 && !rev.landed) {
+      rev.landed = true;
+      scrollTo({ top: rev.dest, behavior: 'instant' });
+      rev.top = scrollY;
+      part.classList.remove('deep-rev-staged');
+      const mid = rev.to.y - bounds(part, scrollY).y + scrollY;
+      const above = Math.max(0, part.firstElementChild.getBoundingClientRect().top - 14);
+      const slide = part.getBoundingClientRect();
+      rev.anims.push(part.animate([
+        { clipPath: `inset(${mid}px 0 ${Math.max(0, slide.height - mid)}px 0)`, filter: 'blur(1.5px)' },
+        { clipPath: `inset(${above}px 0 0px 0)`, filter: 'blur(0px)' },
+      ], { duration: 480, easing: arrivalEase, fill: 'both' }));
+    }
+    if (rev.landed && Math.abs(scrollY - rev.top) > 1 && Math.abs(scrollY - rev.top) < innerHeight * .95) {
+      scrollTo({ top: rev.top, behavior: 'instant' });
+    }
+    const t = ease(220, 620, elapsed);
+    const width = mix(rev.from.w, rev.to.w, t);
+    const x = mix(rev.from.x, rev.to.x, t);
+    const y = mix(rev.from.y, rev.to.y, t);
+    if (filament.isConnected) {
+      filament.style.inlineSize = `${width}px`;
+      filament.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+      filament.style.opacity = ease(80, 260, elapsed) * (1 - ease(760, 980, elapsed));
+      if (elapsed >= 980) filament.remove();
+    }
+    if (elapsed >= 1320) finishReverse();
   }
 
   function land() {
@@ -1572,7 +1832,7 @@ function watchSoaking(part, scene) {
   }
 
   function requestFrame() {
-    if (!frame && motionAllowed() && (intro || canScan() || (visible && blend !== destination))) {
+    if (!frame && motionAllowed() && (intro || rev || canScan() || (visible && blend !== destination))) {
       frame = requestAnimationFrame(animate);
     }
   }
@@ -1609,6 +1869,7 @@ function watchSoaking(part, scene) {
     frame = 0;
     if (!motionAllowed()) return;
     if (intro) animateIntro(now);
+    if (rev) stepReverse(now);
     if (blend !== destination) blend = mix(blendFrom, destination, ease(0, 320, now - blendStart));
     if (canScan()) drawScan(now);
     else hideScan();
@@ -1636,16 +1897,14 @@ function watchSoaking(part, scene) {
     refreshLoop();
   };
 
-  function canBegin(event, direction) {
-    if (direction < 0 || event.defaultPrevented || !event.cancelable || !motionAllowed()) return false;
-    if (intro) return true;
-    return !root.classList.contains('deep-part-two-hold') && plot.setAnswerMotion &&
-      scrollY >= bounds(part, scrollY).y - 2 && scrollY < bounds(scene, scrollY).y - 1;
-  }
-
-  function begin(event) {
-    event.preventDefault();
-    if (intro) return;
+  function startForward() {
+    if (!motionAllowed() || intro || rev) return;
+    sanitizeChapter();
+    part.scrollIntoView({ block: 'start', behavior: 'instant' });
+    if (!plot.setAnswerMotion) {
+      scene.scrollIntoView({ block: 'start', behavior: 'instant' });
+      return;
+    }
     const rect = partTitle.getBoundingClientRect(), slide = part.getBoundingClientRect();
     const from = { x: rect.left, y: Math.max(12, rect.top + rect.height / 2), w: rect.width };
     const center = from.y - slide.top;
@@ -1667,20 +1926,9 @@ function watchSoaking(part, scene) {
     requestFrame();
   }
 
-  function interrupt(direction, event) {
-    if (intro && !intro.to && direction === -1 && event.cancelable) event.preventDefault();
-    finishIntro();
-  }
-
   watchScrollMotion(top => {
-    if (intro && Math.abs(top - intro.top) > 2) finishIntro();
-    const start = bounds(part, top).y, end = bounds(scene, top).y;
-    if (motionAllowed() && (intro || (top >= start - 2 && top < end - 1))) {
-      listeners ??= capturePageGesture(canBegin, begin, interrupt);
-    } else {
-      listeners?.abort();
-      listeners = undefined;
-    }
+    if (intro && Math.abs(top - intro.top) > innerHeight * .95) finishIntro();
+    else if (intro && Math.abs(top - intro.top) > 1) scrollTo({ top: intro.top, behavior: 'instant' });
   });
 
   function showPlaybackAction() {
@@ -1731,6 +1979,13 @@ function watchSoaking(part, scene) {
     showPlaybackAction();
     refreshLoop();
   });
+
+  return {
+    forward: startForward,
+    reverse: startReverse,
+    cancel: finishIntro,
+    active: () => !!intro || !!rev,
+  };
 }
 
 function watchWhispering(previous, scene) {
@@ -1749,7 +2004,7 @@ function watchWhispering(previous, scene) {
   vortex.append(wave);
   const ctx = wave.getContext('2d');
   const cut = 880, arrivalEnd = 2260, readHold = 1000;
-  let run, frame, listeners, armed = false, lastTop = scrollY;
+  let run, frame, revCtrl;
   let flickerBlend = Number(flickerToggle?.checked ?? true), flickerTarget = flickerBlend;
   let flickerFrom = flickerBlend, flickerStart = 0, flickerFrame = 0, readoutFlip;
   const canPlay = () => ctx && !reducedMotion.matches && !document.hidden &&
@@ -1872,14 +2127,12 @@ function watchWhispering(previous, scene) {
     run = undefined;
     root.classList.remove('deep-whispering-hold');
     sourceChart.pauseAnswerScan?.(false);
-    lastTop = scrollY;
     scheduleMotion();
   }
 
   function land() {
     scrollTo({ top: run.destination, behavior: 'instant' });
     run.top = scrollY;
-    lastTop = run.top;
     run.landed = true;
     scene.classList.remove('s12-staged');
     for (const [i, node] of Array.from(after.children).entries()) {
@@ -1908,18 +2161,6 @@ function watchWhispering(previous, scene) {
     return { start, cue, end };
   }
 
-  function canBegin(event, direction) {
-    if (direction < 0 || event.defaultPrevented || !canPlay()) return false;
-    if (run) return true;
-    if (!event.cancelable && event.type !== 'wheel') return false;
-    if (!sourceChart.answerTrace || root.classList.contains('deep-soaking-hold')) return false;
-    const { cue, end } = approach(scrollY, innerHeight);
-    if (scrollY >= end - 1) return false;
-    if (scrollY >= cue - 2 || event.type === 'touchmove' || event.key === 'PageDown' || event.key === ' ') return true;
-    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
-    return event.type === 'wheel' && scrollY + event.deltaY * unit > cue;
-  }
-
   function startRun(height) {
     if (run || !canPlay() || !sourceChart.answerTrace) return;
     const width = innerWidth;
@@ -1928,7 +2169,6 @@ function watchWhispering(previous, scene) {
       scrollTo({ top: cue, behavior: 'instant' });
     }
     const top = scrollY;
-    armed = false;
     const plot = bounds(chart, top), oldPlot = bounds(sourceChart, top);
     const extra = Math.max(0, Math.min(plot.y + plot.h + 6 - end - height, bounds(title, top).y - end - 12));
     const destination = end + extra;
@@ -1953,7 +2193,6 @@ function watchWhispering(previous, scene) {
     run = { top, width, height, start: performance.now(), letters, hub, destination, plot, signal, signalPoints, trace,
       radius: Math.min(stacked ? 112 : 226, width * .28), animations: [] };
 
-    lastTop = top;
     root.classList.add('deep-whispering-hold');
     scene.classList.add('s12-staged');
     chart.style.maskImage = 'linear-gradient(transparent, transparent)';
@@ -1967,29 +2206,6 @@ function watchWhispering(previous, scene) {
     }
     turnHeading(0);
     frame = requestAnimationFrame(animate);
-  }
-
-  function begin(event) {
-    if (event.cancelable) event.preventDefault();
-    if (run) {
-      if (Math.abs(scrollY - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
-      return;
-    }
-    const height = innerHeight, { cue } = approach(scrollY, height);
-    if (scrollY < cue - 2) {
-      scrollTo({ top: cue, behavior: 'instant' });
-      return;
-    }
-    startRun(height);
-  }
-
-  function interrupt(direction, event) {
-    if (run && direction === -1 && event?.type === 'wheel' && Math.abs(event.deltaY) < 24) {
-      if (event.cancelable) event.preventDefault();
-      return;
-    }
-    if (run && !run.landed && direction === -1 && event?.cancelable) event.preventDefault();
-    finish();
   }
 
   function syncFlickerRate() {
@@ -2037,30 +2253,9 @@ function watchWhispering(previous, scene) {
   });
 
   watchScrollMotion((top, height) => {
-    const { start, cue, end } = approach(top, height);
     if (run) {
-      if (!canPlay() || Math.abs(top - run.top) > height * .45) finish();
+      if (!canPlay() || Math.abs(top - run.top) > height * .95) finish();
       else if (Math.abs(top - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
-    } else {
-      if (top >= end - 1 || scene.contains(document.activeElement)) {
-        armed = false;
-      } else if (top >= start - height * .2 && top <= cue + 4) {
-        armed = true;
-      } else if (Math.abs(top - lastTop) > height * .45) {
-        armed = false;
-      }
-      if (armed && canPlay() && sourceChart.answerTrace && !root.classList.contains('deep-soaking-hold') &&
-        top > cue + 2 && top < end - 1 && top > lastTop) {
-        startRun(height);
-      }
-    }
-    lastTop = scrollY;
-    const activeBounds = approach(lastTop, height);
-    if (canPlay() && (run || (lastTop >= activeBounds.cue - height * .25 && lastTop < activeBounds.end - 1))) {
-      listeners ??= capturePageGesture(canBegin, begin, interrupt);
-    } else {
-      listeners?.abort();
-      listeners = undefined;
     }
   });
 
@@ -2068,8 +2263,26 @@ function watchWhispering(previous, scene) {
     for (const event of ['focusin', 'pointerdown', 'input']) controls.addEventListener(event, finish);
   }
   for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, finish);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) { finish(); settleFlicker(); } });
-  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) { finish(); settleFlicker(); } });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { revCtrl?.cancel(); finish(); settleFlicker(); } });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) { revCtrl?.cancel(); finish(); settleFlicker(); } });
+
+  return {
+    forward() {
+      if (!canPlay() || run || revCtrl?.active()) return;
+      sanitizeChapter();
+      if (!sourceChart.answerTrace) {
+        scene.scrollIntoView({ block: 'start', behavior: 'instant' });
+        return;
+      }
+      startRun(innerHeight);
+    },
+    reverse() {
+      if (!canPlay() || run || revCtrl?.active()) return;
+      revCtrl = runReverseCanvasMorph(scene, previous, { mode: 'whispering' });
+    },
+    cancel: () => { revCtrl?.cancel(); finish(); },
+    active: () => !!run || !!revCtrl?.active(),
+  };
 }
 
 function watchCounting(previous, scene) {
@@ -2086,7 +2299,7 @@ function watchCounting(previous, scene) {
   copy.setAttribute('aria-hidden', 'true');
   const ctx = copy.getContext('2d');
   const cut = 640, carryEnd = 900, sweepStart = 840, sweepEnd = 2420, arrivalEnd = 2520, readHold = 1000;
-  let run, frame, listeners, armed = false, lastTop = scrollY, readoutFlip;
+  let run, frame, revCtrl, readoutFlip;
   let codeBlend = scene.querySelector('input[name="s13-code"]:checked')?.value === 'manchester' ? 1 : 0;
   let codeTarget = codeBlend, codeFrom = codeBlend, codeStart = 0, codeFrame = 0;
   let prevDriftSign = Math.sign(driftInput?.valueAsNumber ?? 7), wordFlip, zeroPulse;
@@ -2108,14 +2321,12 @@ function watchCounting(previous, scene) {
     clearEffects();
     run = undefined;
     root.classList.remove('deep-counting-hold');
-    lastTop = scrollY;
     scheduleMotion();
   }
 
   function land() {
     scrollTo({ top: run.destination, behavior: 'instant' });
     run.top = scrollY;
-    lastTop = run.top;
     run.landed = true;
     scene.classList.remove('s13-staged');
     for (const [i, node] of Array.from(after.children).entries()) {
@@ -2202,18 +2413,6 @@ function watchCounting(previous, scene) {
     return { start, cue, end };
   }
 
-  function canBegin(event, direction) {
-    if (direction < 0 || event.defaultPrevented || !canPlay()) return false;
-    if (run) return true;
-    if (!event.cancelable && event.type !== 'wheel') return false;
-    if (!source.spectrumTrace || !chart.timingTrace || root.classList.contains('deep-whispering-hold')) return false;
-    const { cue, end } = approach(scrollY, innerHeight);
-    if (scrollY >= end - 1) return false;
-    if (scrollY >= cue - 2 || event.type === 'touchmove' || event.key === 'PageDown' || event.key === ' ') return true;
-    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
-    return event.type === 'wheel' && scrollY + event.deltaY * unit > cue;
-  }
-
   function startRun(height) {
     const spectrum = source.spectrumTrace, timing = chart.timingTrace;
     if (run || !canPlay() || !spectrum || !timing) return;
@@ -2221,7 +2420,6 @@ function watchCounting(previous, scene) {
     const { cue, end } = approach(scrollY, height);
     if (scrollY > cue + 1) scrollTo({ top: cue, behavior: 'instant' });
     const top = scrollY;
-    armed = false;
 
     const from = bounds(source, top), to = bounds(chart, top);
     const extra = Math.max(0, Math.min(to.y + to.h + 6 - end - height, scene.offsetHeight - height));
@@ -2241,7 +2439,6 @@ function watchCounting(previous, scene) {
     run = { top, width, height, stacked, start: performance.now(), destination, fromBox, toBox, toChartTop,
       spectrum, timing, animations: [] };
 
-    lastTop = top;
     root.classList.add('deep-counting-hold');
     scene.classList.add('s13-staged');
     source.style.setProperty('--s13-spectrum-opacity', 0);
@@ -2253,29 +2450,6 @@ function watchCounting(previous, scene) {
     }
     drawHandoff(0);
     frame = requestAnimationFrame(animate);
-  }
-
-  function begin(event) {
-    if (event.cancelable) event.preventDefault();
-    if (run) {
-      if (Math.abs(scrollY - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
-      return;
-    }
-    const height = innerHeight, { cue } = approach(scrollY, height);
-    if (scrollY < cue - 2) {
-      scrollTo({ top: cue, behavior: 'instant' });
-      return;
-    }
-    startRun(height);
-  }
-
-  function interrupt(direction, event) {
-    if (run && direction === -1 && event?.type === 'wheel' && Math.abs(event.deltaY) < 24) {
-      if (event.cancelable) event.preventDefault();
-      return;
-    }
-    if (run && !run.landed && direction === -1 && event?.cancelable) event.preventDefault();
-    finish();
   }
 
   function flipReadout() {
@@ -2364,31 +2538,9 @@ function watchCounting(previous, scene) {
   exactBtn?.addEventListener('click', flipReadout);
 
   watchScrollMotion((top, height) => {
-    const { start, cue, end } = approach(top, height);
     if (run) {
-      if (!canPlay() || Math.abs(top - run.top) > height * .45) finish();
+      if (!canPlay() || Math.abs(top - run.top) > height * .95) finish();
       else if (Math.abs(top - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
-    } else {
-      if (top >= end - 1 || scene.contains(document.activeElement)) {
-        armed = false;
-      } else if (top >= start - height * .2 && top <= cue + 4) {
-        armed = true;
-      } else if (Math.abs(top - lastTop) > height * .45) {
-        armed = false;
-      }
-      if (armed && canPlay() && source.spectrumTrace && chart.timingTrace &&
-        !root.classList.contains('deep-whispering-hold') &&
-        top > cue + 2 && top < end - 1 && top > lastTop) {
-        startRun(height);
-      }
-    }
-    lastTop = scrollY;
-    const activeBounds = approach(lastTop, height);
-    if (canPlay() && (run || (lastTop >= activeBounds.cue - height * .25 && lastTop < activeBounds.end - 1))) {
-      listeners ??= capturePageGesture(canBegin, begin, interrupt);
-    } else {
-      listeners?.abort();
-      listeners = undefined;
     }
   });
 
@@ -2397,8 +2549,26 @@ function watchCounting(previous, scene) {
     for (const event of ['focusin', 'pointerdown', 'input']) controls.addEventListener(event, finish);
   }
   for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, finish);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) { finish(); settleControls(); } });
-  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) { finish(); settleControls(); } });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { revCtrl?.cancel(); finish(); settleControls(); } });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) { revCtrl?.cancel(); finish(); settleControls(); } });
+
+  return {
+    forward() {
+      if (!canPlay() || run || revCtrl?.active()) return;
+      sanitizeChapter();
+      if (!source.spectrumTrace || !chart.timingTrace) {
+        scene.scrollIntoView({ block: 'start', behavior: 'instant' });
+        return;
+      }
+      startRun(innerHeight);
+    },
+    reverse() {
+      if (!canPlay() || run || revCtrl?.active()) return;
+      revCtrl = runReverseCanvasMorph(scene, previous, { mode: 'counting' });
+    },
+    cancel: () => { revCtrl?.cancel(); finish(); },
+    active: () => !!run || !!revCtrl?.active(),
+  };
 }
 
 function watchMistakes(previous, scene) {
@@ -2413,7 +2583,7 @@ function watchMistakes(previous, scene) {
   copy.setAttribute('aria-hidden', 'true');
   const ctx = copy.getContext('2d');
   const cut = 580, morphEnd = 1080, arrivalEnd = 1780, readHold = 1000;
-  let run, frame, listeners, armed = false, lastTop = scrollY;
+  let run, frame, revCtrl;
   const canPlay = () => ctx && !reducedMotion.matches && !document.hidden &&
     CSS.supports('clip-path', 'inset(0)');
 
@@ -2432,14 +2602,12 @@ function watchMistakes(previous, scene) {
     clearEffects();
     run = undefined;
     root.classList.remove('deep-mistakes-hold');
-    lastTop = scrollY;
     scheduleMotion();
   }
 
   function land() {
     scrollTo({ top: run.destination, behavior: 'instant' });
     run.top = scrollY;
-    lastTop = run.top;
     run.landed = true;
     scene.classList.remove('s14-staged');
     for (const [i, node] of Array.from(after.children).entries()) {
@@ -2540,18 +2708,6 @@ function watchMistakes(previous, scene) {
     return { start, cue, end };
   }
 
-  function canBegin(event, direction) {
-    if (direction < 0 || event.defaultPrevented || !canPlay()) return false;
-    if (run) return true;
-    if (!event.cancelable && event.type !== 'wheel') return false;
-    if (!source.timingTrace || !chart.errorTrace || root.classList.contains('deep-counting-hold')) return false;
-    const { cue, end } = approach(scrollY, innerHeight);
-    if (scrollY >= end - 1) return false;
-    if (scrollY >= cue - 2 || event.type === 'touchmove' || event.key === 'PageDown' || event.key === ' ') return true;
-    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
-    return event.type === 'wheel' && scrollY + event.deltaY * unit > cue;
-  }
-
   function startRun(height) {
     const timing = source.timingTrace, signal = chart.errorTrace;
     if (run || !canPlay() || !timing || !signal) return;
@@ -2559,7 +2715,6 @@ function watchMistakes(previous, scene) {
     const { cue, end } = approach(scrollY, height);
     if (scrollY > cue + 1) scrollTo({ top: cue, behavior: 'instant' });
     const top = scrollY;
-    armed = false;
 
     const from = bounds(source, top), to = bounds(chart, top);
     const extra = Math.max(0, Math.min(to.y + to.h + 190 - end - height, scene.offsetHeight - height));
@@ -2580,7 +2735,6 @@ function watchMistakes(previous, scene) {
     run = { top, width, height, stacked, start: performance.now(), destination, fromBox, toBox, toChartTop,
       timing, signal, animations: [] };
 
-    lastTop = top;
     root.classList.add('deep-mistakes-hold');
     scene.classList.add('s14-staged');
     source.style.setProperty('--s14-timing-opacity', 0);
@@ -2594,55 +2748,10 @@ function watchMistakes(previous, scene) {
     frame = requestAnimationFrame(animate);
   }
 
-  function begin(event) {
-    if (event.cancelable) event.preventDefault();
-    if (run) {
-      if (Math.abs(scrollY - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
-      return;
-    }
-    const height = innerHeight, { cue } = approach(scrollY, height);
-    if (scrollY < cue - 2) {
-      scrollTo({ top: cue, behavior: 'instant' });
-      return;
-    }
-    startRun(height);
-  }
-
-  function interrupt(direction, event) {
-    if (run && direction === -1 && event?.type === 'wheel' && Math.abs(event.deltaY) < 24) {
-      if (event.cancelable) event.preventDefault();
-      return;
-    }
-    if (run && !run.landed && direction === -1 && event?.cancelable) event.preventDefault();
-    finish();
-  }
-
   watchScrollMotion((top, height) => {
-    const { start, cue, end } = approach(top, height);
     if (run) {
-      if (!canPlay() || Math.abs(top - run.top) > height * .45) finish();
+      if (!canPlay() || Math.abs(top - run.top) > height * .95) finish();
       else if (Math.abs(top - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
-    } else {
-      if (top >= end - 1 || scene.contains(document.activeElement)) {
-        armed = false;
-      } else if (top >= start - height * .2 && top <= cue + 4) {
-        armed = true;
-      } else if (Math.abs(top - lastTop) > height * .45) {
-        armed = false;
-      }
-      if (armed && canPlay() && source.timingTrace && chart.errorTrace &&
-        !root.classList.contains('deep-counting-hold') &&
-        top > cue + 2 && top < end - 1 && top > lastTop) {
-        startRun(height);
-      }
-    }
-    lastTop = scrollY;
-    const activeBounds = approach(lastTop, height);
-    if (canPlay() && (run || (lastTop >= activeBounds.cue - height * .25 && lastTop < activeBounds.end - 1))) {
-      listeners ??= capturePageGesture(canBegin, begin, interrupt);
-    } else {
-      listeners?.abort();
-      listeners = undefined;
     }
   });
 
@@ -2651,8 +2760,26 @@ function watchMistakes(previous, scene) {
     for (const event of ['focusin', 'pointerdown', 'input']) area.addEventListener(event, finish);
   }
   for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, finish);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) finish(); });
-  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) finish(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { revCtrl?.cancel(); finish(); } });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) { revCtrl?.cancel(); finish(); } });
+
+  return {
+    forward() {
+      if (!canPlay() || run || revCtrl?.active()) return;
+      sanitizeChapter();
+      if (!source.timingTrace || !chart.errorTrace) {
+        scene.scrollIntoView({ block: 'start', behavior: 'instant' });
+        return;
+      }
+      startRun(innerHeight);
+    },
+    reverse() {
+      if (!canPlay() || run || revCtrl?.active()) return;
+      revCtrl = runReverseCanvasMorph(scene, previous, { mode: 'mistakes' });
+    },
+    cancel: () => { revCtrl?.cancel(); finish(); },
+    active: () => !!run || !!revCtrl?.active(),
+  };
 }
 
 function watchConversation(previous, scene) {
@@ -2668,7 +2795,7 @@ function watchConversation(previous, scene) {
   copy.setAttribute('aria-hidden', 'true');
   const ctx = copy.getContext('2d');
   const cut = 640, arrivalEnd = 1660, readHold = 1000;
-  let run, frame, listeners, armed = false, lastTop = scrollY;
+  let run, rev, frame;
   const canPlay = () => ctx && !reducedMotion.matches && !document.hidden;
 
   function clearEffects() {
@@ -2686,7 +2813,6 @@ function watchConversation(previous, scene) {
     clearEffects();
     run = undefined;
     root.classList.remove('deep-conversation-hold');
-    lastTop = scrollY;
     scheduleMotion();
   }
 
@@ -2733,7 +2859,6 @@ function watchConversation(previous, scene) {
   function land() {
     scrollTo({ top: run.destination, behavior: 'instant' });
     run.top = scrollY;
-    lastTop = run.top;
     run.landed = true;
     scene.classList.remove('s15-staged');
     for (const [i, node] of Array.from(after.children).entries()) {
@@ -2821,25 +2946,12 @@ function watchConversation(previous, scene) {
     return { start, cue, end };
   }
 
-  function canBegin(event, direction) {
-    if (direction < 0 || event.defaultPrevented || !canPlay()) return false;
-    if (run) return true;
-    if (!event.cancelable && event.type !== 'wheel') return false;
-    if (root.classList.contains('deep-mistakes-hold')) return false;
-    const { cue, end } = approach(scrollY, innerHeight);
-    if (scrollY >= end - 1) return false;
-    if (scrollY >= cue - 2 || event.type === 'touchmove' || event.key === 'PageDown' || event.key === ' ') return true;
-    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
-    return event.type === 'wheel' && scrollY + event.deltaY * unit > cue;
-  }
-
   function startRun(height) {
     if (run || !canPlay()) return;
     const width = innerWidth;
     const { cue, end } = approach(scrollY, height);
     if (scrollY > cue + 1) scrollTo({ top: cue, behavior: 'instant' });
     const top = scrollY;
-    armed = false;
 
     const destination = end;
     const to = bounds(chart, top), gBounds = bounds(gate, top);
@@ -2854,7 +2966,6 @@ function watchConversation(previous, scene) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     run = { top, width, height, start: performance.now(), destination, bits, gateBox, animations: [] };
-    lastTop = top;
     root.classList.add('deep-conversation-hold');
     scene.classList.add('s15-staged');
     chart.style.setProperty('--s15-river-opacity', 0);
@@ -2867,64 +2978,150 @@ function watchConversation(previous, scene) {
     frame = requestAnimationFrame(animate);
   }
 
-  function begin(event) {
-    if (event.cancelable) event.preventDefault();
-    if (run) {
-      if (Math.abs(scrollY - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
-      return;
-    }
-    const height = innerHeight, { cue } = approach(scrollY, height);
-    if (scrollY < cue - 2) {
-      scrollTo({ top: cue, behavior: 'instant' });
-      return;
-    }
-    startRun(height);
+  function finishReverse() {
+    if (!rev) return;
+    cancelAnimationFrame(rev.frame);
+    rev.anims.forEach(a => a.cancel());
+    copy.remove();
+    previous.classList.remove('deep-rev-staged');
+    previous.style.removeProperty('--s15-source-opacity');
+    chart.style.removeProperty('--s15-river-opacity');
+    root.classList.remove('deep-reverse-hold');
+    rev = undefined;
+    scheduleMotion();
   }
 
-  function interrupt(direction, event) {
-    if (run && direction === -1 && event?.type === 'wheel' && Math.abs(event.deltaY) < 24) {
-      if (event.cancelable) event.preventDefault();
-      return;
+  function startReverse() {
+    if (run || rev || !canPlay()) return;
+    sanitizeChapter();
+    const s15Top = bounds(scene, scrollY).y;
+    if (Math.abs(scrollY - s15Top) > 2) scrollTo({ top: s15Top, behavior: 'instant' });
+    const top = scrollY, width = innerWidth, height = innerHeight;
+    const destination = bounds(previous, top).y;
+    const gBounds = bounds(gate, top), gateBox = { x: gBounds.x, y: gBounds.y - top, w: Math.max(80, gBounds.w) };
+    const fromRect = bounds(chart, top), fromBox = { x: fromRect.x, y: fromRect.y - top, w: Math.max(120, fromRect.w), h: Math.max(48, fromRect.h) };
+    const stacked = matchMedia('(max-width: 860px)').matches;
+
+    const rawTargets = Array.from(source.querySelectorAll('.s14-bit'));
+    const maxB = 48;
+    const chosen = rawTargets.length > maxB ? Array.from({ length: maxB }, (_, i) => rawTargets[Math.floor(i * rawTargets.length / maxB)]) : rawTargets;
+    const bits = chosen.map((el, i) => {
+      const b = bounds(el, top), lane = i % 2, u = (i + .5) / Math.max(1, chosen.length);
+      return {
+        ch: (el.textContent || '0').trim().slice(0, 1) || '0',
+        wrong: el.hasAttribute('data-wrong'),
+        sx: fromBox.x + 14 + u * Math.max(40, fromBox.w - 28),
+        sy: fromBox.y + fromBox.h * (lane === 0 ? .36 : .64),
+        tx: b.x + b.w * .5,
+        ty: b.y - destination + b.h * .5,
+        dep: 140 + (i / Math.max(1, chosen.length)) * 240,
+        dur: 760 + (i % 4) * 45,
+        arc: stacked ? 14 : (lane === 0 ? -22 : -10),
+        lane,
+      };
+    });
+
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    copy.width = Math.round(width * dpr);
+    copy.height = Math.round(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    rev = { top, width, height, destination, gateBox, fromBox, bits, start: performance.now(), landed: false, frame: 0, anims: [] };
+    root.classList.add('deep-reverse-hold');
+    previous.classList.add('deep-rev-staged');
+    chapter.append(copy);
+
+    for (const node of Array.from(after.children)) {
+      const focused = node === title || node === gate;
+      rev.anims.push(node.animate([
+        { opacity: 1, filter: 'blur(0px)', transform: 'none' },
+        { opacity: 0, filter: `blur(${focused ? 5 : 2}px)`, transform: 'translateY(8px)' },
+      ], { duration: 360, delay: focused ? 20 : 60, easing: 'ease-in', fill: 'both' }));
     }
-    if (run && !run.landed && direction === -1 && event?.cancelable) event.preventDefault();
-    finish();
+    if (chat) rev.anims.push(chat.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 320, fill: 'both' }));
+
+    function stepRev(now) {
+      if (!rev) return;
+      const elapsed = now - rev.start;
+      if (elapsed >= 520 && !rev.landed) {
+        rev.landed = true;
+        scrollTo({ top: rev.destination, behavior: 'instant' });
+        rev.top = scrollY;
+        previous.classList.remove('deep-rev-staged');
+        for (const [i, node] of Array.from(before.children).entries()) {
+          rev.anims.push(node.animate([
+            { opacity: 0, transform: 'translateY(-10px)' },
+            { opacity: 1, transform: 'none' },
+          ], { duration: 380, delay: 40 + i * 36, easing: arrivalEase, fill: 'both' }));
+        }
+      }
+      if (Math.abs(scrollY - rev.top) > 1 && Math.abs(scrollY - rev.top) < innerHeight * .95) {
+        scrollTo({ top: rev.top, behavior: 'instant' });
+      }
+      if (!rev.landed) chart.style.setProperty('--s15-river-opacity', 1 - ease(80, 380, elapsed));
+      else previous.style.setProperty('--s15-source-opacity', ease(580, 1020, elapsed));
+
+      ctx.clearRect(0, 0, rev.width, rev.height);
+      const lineFade = 1 - ease(420, 560, elapsed);
+      const lineSweep = 1 - ease(40, 420, elapsed);
+      if (lineFade > 0 && lineSweep > 0) {
+        ctx.save();
+        ctx.globalAlpha = lineFade * .85;
+        ctx.strokeStyle = '#b8652a';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(rev.gateBox.x, rev.gateBox.y - 6);
+        ctx.lineTo(rev.gateBox.x + rev.gateBox.w * lineSweep, rev.gateBox.y - 6);
+        ctx.stroke();
+        ctx.restore();
+      }
+      const bitsAlpha = ease(60, 220, elapsed) * (1 - ease(1020, 1280, elapsed));
+      if (bitsAlpha > 0) {
+        ctx.save();
+        ctx.font = '600 12px "JetBrains Mono", ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        for (const b of rev.bits) {
+          const t = ease(b.dep, b.dep + b.dur, elapsed);
+          const px = mix(b.sx, b.tx, t);
+          const py = mix(b.sy, b.ty, t) + Math.sin(Math.PI * t) * b.arc;
+          ctx.fillStyle = b.wrong && t > .6 ? '#b3261e' : (b.lane === 0 ? '#57534c' : '#b8652a');
+          ctx.globalAlpha = bitsAlpha;
+          ctx.fillText(b.ch, px, py);
+        }
+        ctx.restore();
+      }
+      if (elapsed >= 1280 + 360) return finishReverse();
+      rev.frame = requestAnimationFrame(stepRev);
+    }
+    rev.frame = requestAnimationFrame(stepRev);
   }
 
   watchScrollMotion((top, height) => {
-    const { start, cue, end } = approach(top, height);
     if (run) {
       if (!canPlay() || Math.abs(top - run.top) > height * .95) finish();
       else if (Math.abs(top - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
-    } else {
-      if (top >= end - 1 || scene.contains(document.activeElement)) {
-        armed = false;
-      } else if (top >= start - height * .2 && top <= cue + 4) {
-        armed = true;
-      } else if (Math.abs(top - lastTop) > height * .95) {
-        armed = false;
-      }
-      if (armed && canPlay() && !root.classList.contains('deep-mistakes-hold') &&
-        top > cue + 2 && top < end - 1 && top > lastTop) {
-        startRun(height);
-      }
-    }
-    lastTop = scrollY;
-    const activeBounds = approach(lastTop, height);
-    if (canPlay() && (run || (lastTop >= activeBounds.cue - height * .25 && lastTop < activeBounds.end - 1))) {
-      listeners ??= capturePageGesture(canBegin, begin, interrupt);
-    } else {
-      listeners?.abort();
-      listeners = undefined;
     }
   });
 
   for (const area of [previous.querySelector('.plate-controls'), previous.querySelector('.s14-instrument'), scene.querySelector('.plate-controls'), scene.querySelector('.plate-river')]) {
     if (!area) continue;
-    for (const event of ['focusin', 'pointerdown', 'input']) area.addEventListener(event, finish);
+    for (const event of ['focusin', 'pointerdown', 'input']) area.addEventListener(event, () => { finishReverse(); finish(); });
   }
-  for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, finish);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) finish(); });
-  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) finish(); });
+  for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, () => { finishReverse(); finish(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { finishReverse(); finish(); } });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) { finishReverse(); finish(); } });
+
+  return {
+    forward() {
+      if (!canPlay() || run || rev) return;
+      sanitizeChapter();
+      startRun(innerHeight);
+    },
+    reverse: startReverse,
+    cancel: () => { finishReverse(); finish(); },
+    active: () => !!run || !!rev,
+  };
 }
 
 function watchTwoCards(previous, scene) {
@@ -2940,7 +3137,7 @@ function watchTwoCards(previous, scene) {
   copy.setAttribute('aria-hidden', 'true');
   const ctx = copy.getContext('2d');
   const cut = 620, arrivalEnd = 1680, readHold = 1000;
-  let run, frame, listeners, armed = false, lastTop = scrollY;
+  let run, rev, frame;
   const canPlay = () => ctx && !reducedMotion.matches && !document.hidden;
 
   function clearEffects() {
@@ -2960,7 +3157,6 @@ function watchTwoCards(previous, scene) {
     clearEffects();
     run = undefined;
     root.classList.remove('deep-twocards-hold');
-    lastTop = scrollY;
     scheduleMotion();
   }
 
@@ -3020,7 +3216,6 @@ function watchTwoCards(previous, scene) {
   function land() {
     scrollTo({ top: run.destination, behavior: 'instant' });
     run.top = scrollY;
-    lastTop = run.top;
     run.landed = true;
     scene.classList.remove('s16-staged');
     targetTitle.style.opacity = '0';
@@ -3115,25 +3310,12 @@ function watchTwoCards(previous, scene) {
     return { start, cue, end };
   }
 
-  function canBegin(event, direction) {
-    if (direction < 0 || event.defaultPrevented || !canPlay()) return false;
-    if (run) return true;
-    if (!event.cancelable && event.type !== 'wheel') return false;
-    if (root.classList.contains('deep-conversation-hold')) return false;
-    const { cue, end } = approach(scrollY, innerHeight);
-    if (scrollY >= end - 1) return false;
-    if (scrollY >= cue - 2 || event.type === 'touchmove' || event.key === 'PageDown' || event.key === ' ') return true;
-    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
-    return event.type === 'wheel' && scrollY + event.deltaY * unit > cue;
-  }
-
   function startRun(height) {
     if (run || !canPlay()) return;
     const width = innerWidth;
     const { cue, end } = approach(scrollY, height);
     if (scrollY > cue + 1) scrollTo({ top: cue, behavior: 'instant' });
     const top = scrollY;
-    armed = false;
 
     const destination = end;
     const from = bounds(sourceChart, top), to = bounds(chart, top);
@@ -3152,7 +3334,6 @@ function watchTwoCards(previous, scene) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     run = { top, width, height, start: performance.now(), destination, strand, toBox, fromTitleBox, toTitleBox, morph, titleMorph: morph.wrap, animations: [] };
-    lastTop = top;
     root.classList.add('deep-twocards-hold');
     scene.classList.add('s16-staged');
     chart.style.setProperty('--s16-chart-opacity', 0);
@@ -3165,64 +3346,168 @@ function watchTwoCards(previous, scene) {
     frame = requestAnimationFrame(animate);
   }
 
-  function begin(event) {
-    if (event.cancelable) event.preventDefault();
-    if (run) {
-      if (Math.abs(scrollY - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
-      return;
-    }
-    const height = innerHeight, { cue } = approach(scrollY, height);
-    if (scrollY < cue - 2) {
-      scrollTo({ top: cue, behavior: 'instant' });
-      return;
-    }
-    startRun(height);
+  function finishReverse() {
+    if (!rev) return;
+    cancelAnimationFrame(rev.frame);
+    rev.anims.forEach(a => a.cancel());
+    rev.morph?.wrap?.remove();
+    copy.remove();
+    sourceTitle.style.removeProperty('opacity');
+    previous.classList.remove('deep-rev-staged');
+    previous.style.removeProperty('--s16-source-opacity');
+    chart.style.removeProperty('--s16-chart-opacity');
+    root.classList.remove('deep-reverse-hold');
+    rev = undefined;
+    scheduleMotion();
   }
 
-  function interrupt(direction, event) {
-    if (run && direction === -1 && event?.type === 'wheel' && Math.abs(event.deltaY) < 24) {
-      if (event.cancelable) event.preventDefault();
-      return;
+  function startReverse() {
+    if (run || rev || !canPlay()) return;
+    sanitizeChapter();
+    const s16Top = bounds(scene, scrollY).y;
+    if (Math.abs(scrollY - s16Top) > 2) scrollTo({ top: s16Top, behavior: 'instant' });
+    const top = scrollY, width = innerWidth, height = innerHeight;
+    const destination = bounds(previous, top).y;
+    const from = bounds(chart, top), to = bounds(sourceChart, top);
+    const fromBox = { x: from.x, y: from.y - top, w: Math.max(200, from.w), h: Math.max(120, from.h) };
+    const toBox = { x: to.x, y: to.y - destination, w: Math.max(160, to.w), h: Math.max(80, to.h) };
+    const stBounds = bounds(targetTitle, top), ttBounds = bounds(sourceTitle, top);
+    const fromTitleBox = { x: stBounds.x, y: stBounds.y - top, w: stBounds.w, h: stBounds.h };
+    const toTitleBox = { x: ttBounds.x, y: ttBounds.y - destination, w: ttBounds.w, h: ttBounds.h };
+    const stacked = matchMedia('(max-width: 860px)').matches;
+
+    const trace = chart.clashTrace;
+    const x0 = trace?.x0 ?? 96, cw = trace?.cw ?? Math.min(16, (fromBox.w - 116) / 32), y0 = trace?.y0 ?? 26, rowStep = trace?.rowStep ?? 30;
+    const row0 = trace?.rows?.[0]?.bits || [0,0,0,1,0,0,0,0, 1,1,0,1,0,1,1,0, 0,0,1,1,0,1,0,0, 1,0,1,0,0,0,1,0];
+    const row1 = trace?.rows?.[1]?.bits || [0,0,0,1,0,0,0,0, 0,1,0,1,0,1,1,0, 1,0,1,1,0,1,0,0, 0,0,1,0,0,0,1,0];
+    const bits = [];
+    [[row0, 0], [row1, 1]].forEach(([arr, r]) => {
+      const sy = fromBox.y + (trace?.rows?.[r]?.y ?? (y0 + r * rowStep));
+      arr.slice(0, 32).forEach((b, k) => {
+        const laneOff = r === 0 ? .36 : .64;
+        const riverPhase = ((k + r * .5) / 32);
+        bits.push({
+          row: r, ch: String(b),
+          sx: fromBox.x + x0 + k * cw, sy,
+          tx: toBox.x + 28 + riverPhase * Math.max(80, toBox.w - 56),
+          ty: toBox.y + toBox.h * laneOff + ((k % 3) - 1) * 8,
+          dep: 60 + k * 7 + r * 36, dur: 760 + (k % 4) * 35,
+          arc: stacked ? -14 : (r === 0 ? -30 : 16),
+        });
+      });
+    });
+
+    const wrap = document.createElement('div');
+    wrap.className = 's16-title-morph';
+    wrap.setAttribute('aria-hidden', 'true');
+    const outEl = document.createElement('div');
+    outEl.className = 's16-title-layer';
+    outEl.textContent = targetTitle.textContent;
+    outEl.style.width = `${Math.max(180, fromTitleBox.w)}px`;
+    const inEl = document.createElement('div');
+    inEl.className = 's16-title-layer';
+    inEl.textContent = sourceTitle.textContent;
+    inEl.style.width = `${Math.max(180, toTitleBox.w)}px`;
+    wrap.append(outEl, inEl);
+    chapter.append(wrap);
+
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    copy.width = Math.round(width * dpr);
+    copy.height = Math.round(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    rev = { top, width, height, destination, fromTitleBox, toTitleBox, morph: { wrap, outEl, inEl }, bits, start: performance.now(), landed: false, frame: 0, anims: [] };
+    root.classList.add('deep-reverse-hold');
+    previous.classList.add('deep-rev-staged');
+    chapter.append(copy);
+
+    for (const [i, node] of Array.from(after.children).entries()) {
+      rev.anims.push(node.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(8px)' }],
+        { duration: 320, delay: i * 24, fill: 'both' }));
     }
-    if (run && !run.landed && direction === -1 && event?.cancelable) event.preventDefault();
-    finish();
+    if (desk) rev.anims.push(desk.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 340, fill: 'both' }));
+
+    function stepRev(now) {
+      if (!rev) return;
+      const elapsed = now - rev.start;
+      if (elapsed >= 520 && !rev.landed) {
+        rev.landed = true;
+        scrollTo({ top: rev.destination, behavior: 'instant' });
+        rev.top = scrollY;
+        previous.classList.remove('deep-rev-staged');
+        sourceTitle.style.opacity = '0';
+        for (const [i, node] of Array.from(before.children).entries()) {
+          if (node === sourceTitle) continue;
+          rev.anims.push(node.animate([{ opacity: 0, transform: 'translateY(-8px)' }, { opacity: 1, transform: 'none' }],
+            { duration: 380, delay: 80 + i * 36, easing: arrivalEase, fill: 'both' }));
+        }
+      }
+      if (Math.abs(scrollY - rev.top) > 1 && Math.abs(scrollY - rev.top) < innerHeight * .95) {
+        scrollTo({ top: rev.top, behavior: 'instant' });
+      }
+      if (!rev.landed) chart.style.setProperty('--s16-chart-opacity', 1 - ease(60, 320, elapsed));
+      else previous.style.setProperty('--s16-source-opacity', ease(640, 1080, elapsed));
+
+      const m = ease(60, 920, elapsed);
+      const tx = mix(rev.fromTitleBox.x, rev.toTitleBox.x, m), ty = mix(rev.fromTitleBox.y, rev.toTitleBox.y, m);
+      rev.morph.outEl.style.transform = `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px)`;
+      rev.morph.outEl.style.opacity = String(1 - ease(80, 540, elapsed));
+      rev.morph.outEl.style.filter = `blur(${(ease(80, 540, elapsed) * 6).toFixed(2)}px)`;
+      const inO = ease(320, 900, elapsed);
+      rev.morph.inEl.style.transform = `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px)`;
+      rev.morph.inEl.style.opacity = String(inO);
+      rev.morph.inEl.style.filter = `blur(${((1 - inO) * 6).toFixed(2)}px)`;
+      if (elapsed >= 920 && rev.morph.wrap.isConnected) {
+        sourceTitle.style.removeProperty('opacity');
+        rev.morph.wrap.remove();
+      }
+
+      ctx.clearRect(0, 0, rev.width, rev.height);
+      const ba = 1 - ease(980, 1260, elapsed);
+      if (ba > 0) {
+        ctx.save();
+        ctx.font = '600 12px "JetBrains Mono", ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        for (const b of rev.bits) {
+          const t = ease(b.dep, b.dep + b.dur, elapsed);
+          ctx.fillStyle = b.row === 0 ? '#0d0d0c' : '#b8652a';
+          ctx.globalAlpha = ba * mix(1, .82, t);
+          ctx.fillText(b.ch, mix(b.sx, b.tx, t), mix(b.sy, b.ty, t) + Math.sin(Math.PI * t) * b.arc);
+        }
+        ctx.restore();
+      }
+      if (elapsed >= 1260 + 360) return finishReverse();
+      rev.frame = requestAnimationFrame(stepRev);
+    }
+    rev.frame = requestAnimationFrame(stepRev);
   }
 
   watchScrollMotion((top, height) => {
-    const { start, cue, end } = approach(top, height);
     if (run) {
       if (!canPlay() || Math.abs(top - run.top) > height * .95) finish();
       else if (Math.abs(top - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
-    } else {
-      if (top >= end - 1 || scene.contains(document.activeElement)) {
-        armed = false;
-      } else if (top >= start - height * .2 && top <= cue + 4) {
-        armed = true;
-      } else if (Math.abs(top - lastTop) > height * .95) {
-        armed = false;
-      }
-      if (armed && canPlay() && !root.classList.contains('deep-conversation-hold') &&
-        top > cue + 2 && top < end - 1 && top > lastTop) {
-        startRun(height);
-      }
-    }
-    lastTop = scrollY;
-    const activeBounds = approach(lastTop, height);
-    if (canPlay() && (run || (lastTop >= activeBounds.cue - height * .25 && lastTop < activeBounds.end - 1))) {
-      listeners ??= capturePageGesture(canBegin, begin, interrupt);
-    } else {
-      listeners?.abort();
-      listeners = undefined;
     }
   });
 
   for (const area of [previous.querySelector('.plate-controls'), previous.querySelector('.plate-river'), scene.querySelector('.plate-controls'), scene.querySelector('.s16-instrument')]) {
     if (!area) continue;
-    for (const event of ['focusin', 'pointerdown', 'input']) area.addEventListener(event, finish);
+    for (const event of ['focusin', 'pointerdown', 'input']) area.addEventListener(event, () => { finishReverse(); finish(); });
   }
-  for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, finish);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) finish(); });
-  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) finish(); });
+  for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, () => { finishReverse(); finish(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { finishReverse(); finish(); } });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) { finishReverse(); finish(); } });
+
+  return {
+    forward() {
+      if (!canPlay() || run || rev) return;
+      sanitizeChapter();
+      startRun(innerHeight);
+    },
+    reverse: startReverse,
+    cancel: () => { finishReverse(); finish(); },
+    active: () => !!run || !!rev,
+  };
 }
 
 function watchCarKey(previous, scene) {
@@ -3238,7 +3523,7 @@ function watchCarKey(previous, scene) {
   copy.setAttribute('aria-hidden', 'true');
   const ctx = copy.getContext('2d');
   const cut = 620, burstStart = 860, arrivalEnd = 1660, readHold = 1000;
-  let run, frame, listeners, armed = false, lastTop = scrollY;
+  let run, rev, frame;
   const canPlay = () => ctx && !reducedMotion.matches && !document.hidden;
 
   function clearEffects() {
@@ -3256,7 +3541,6 @@ function watchCarKey(previous, scene) {
     clearEffects();
     run = undefined;
     root.classList.remove('deep-carkey-hold');
-    lastTop = scrollY;
     scheduleMotion();
   }
 
@@ -3277,7 +3561,6 @@ function watchCarKey(previous, scene) {
   function land() {
     scrollTo({ top: run.destination, behavior: 'instant' });
     run.top = scrollY;
-    lastTop = run.top;
     run.landed = true;
   }
 
@@ -3372,25 +3655,12 @@ function watchCarKey(previous, scene) {
     return { start, cue, end };
   }
 
-  function canBegin(event, direction) {
-    if (direction < 0 || event.defaultPrevented || !canPlay()) return false;
-    if (run) return true;
-    if (!event.cancelable && event.type !== 'wheel') return false;
-    if (root.classList.contains('deep-twocards-hold')) return false;
-    const { cue, end } = approach(scrollY, innerHeight);
-    if (scrollY >= end - 1) return false;
-    if (scrollY >= cue - 2 || event.type === 'touchmove' || event.key === 'PageDown' || event.key === ' ') return true;
-    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
-    return event.type === 'wheel' && scrollY + event.deltaY * unit > cue;
-  }
-
   function startRun(height) {
     if (run || !canPlay()) return;
     const width = innerWidth;
     const { cue, end } = approach(scrollY, height);
     if (scrollY > cue + 1) scrollTo({ top: cue, behavior: 'instant' });
     const top = scrollY;
-    armed = false;
 
     const rawRect = walletBtn?.getBoundingClientRect();
     const wRect = rawRect && rawRect.width > 40 ? rawRect : { left: width * .74 - 70, top: height * .58 - 78, width: 140, height: 156 };
@@ -3415,7 +3685,6 @@ function watchCarKey(previous, scene) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     run = { top, width, height, start: performance.now(), destination: end, portal, wx, wy, cx, cy, wisps, animations: [] };
-    lastTop = top;
     root.classList.add('deep-carkey-hold');
     scene.classList.add('s17-staged');
     if (walletBtn) walletBtn.style.visibility = 'hidden';
@@ -3440,64 +3709,152 @@ function watchCarKey(previous, scene) {
     frame = requestAnimationFrame(animate);
   }
 
-  function begin(event) {
-    if (event.cancelable) event.preventDefault();
-    if (run) {
-      if (Math.abs(scrollY - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
-      return;
-    }
-    const height = innerHeight, { cue } = approach(scrollY, height);
-    if (scrollY < cue - 2) {
-      scrollTo({ top: cue, behavior: 'instant' });
-      return;
-    }
-    startRun(height);
+  function finishReverse() {
+    if (!rev) return;
+    cancelAnimationFrame(rev.frame);
+    rev.anims.forEach(a => a.cancel());
+    rev.portal?.remove();
+    copy.remove();
+    walletBtn?.style.removeProperty('visibility');
+    previous.classList.remove('deep-rev-staged');
+    root.classList.remove('deep-reverse-hold');
+    rev = undefined;
+    scheduleMotion();
   }
 
-  function interrupt(direction, event) {
-    if (run && direction === -1 && event?.type === 'wheel' && Math.abs(event.deltaY) < 24) {
-      if (event.cancelable) event.preventDefault();
-      return;
+  function startReverse() {
+    if (run || rev || !canPlay()) return;
+    sanitizeChapter();
+    const s17Top = bounds(scene, scrollY).y;
+    if (Math.abs(scrollY - s17Top) > 2) scrollTo({ top: s17Top, behavior: 'instant' });
+    const top = scrollY, width = innerWidth, height = innerHeight;
+    const destination = bounds(previous, top).y;
+    const wb = walletBtn ? bounds(walletBtn, top) : { x: width * .74 - 70, y: destination + height * .58 - 78, w: 140, h: 156 };
+    const wTarget = { left: wb.x, top: wb.y - destination, width: Math.max(80, wb.w), height: Math.max(80, wb.h) };
+    const wx = wTarget.left + wTarget.width * .5, wy = wTarget.top + wTarget.height * .45;
+    const cx = width * .5, cy = height * .48;
+
+    const portal = document.createElement('div');
+    portal.className = 's16-wallet s17-portal-wallet';
+    portal.setAttribute('aria-hidden', 'true');
+    if (walletBtn) portal.innerHTML = walletBtn.innerHTML;
+    portal.dataset.open = 'true';
+    portal.style.left = `${(cx - wTarget.width * .5).toFixed(1)}px`;
+    portal.style.top = `${(cy - wTarget.height * .5).toFixed(1)}px`;
+    portal.style.width = `${wTarget.width.toFixed(1)}px`;
+    portal.style.height = `${wTarget.height.toFixed(1)}px`;
+    portal.style.transform = 'scale(.05)';
+    portal.style.opacity = '0';
+    chapter.append(portal);
+
+    const wisps = Array.from({ length: 18 }, (_, i) => ({
+      x: mix(width * .12, width * .82, ((i * 37) % 19) / 18),
+      y: mix(height * .16, height * .82, ((i * 53) % 17) / 16),
+      ch: i % 2 === 0 ? '0' : '1', copper: i % 3 === 0, dep: (i % 4) * 28, arc: i % 2 === 0 ? -20 : 16,
+    }));
+
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    copy.width = Math.round(width * dpr);
+    copy.height = Math.round(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    rev = { top, width, height, destination, portal, wx, wy, cx, cy, wisps, start: performance.now(), landed: false, frame: 0, anims: [] };
+    root.classList.add('deep-reverse-hold');
+    previous.classList.add('deep-rev-staged');
+    chapter.append(copy);
+
+    for (const [i, node] of [...Array.from(after.children), targetChart].filter(Boolean).entries()) {
+      const r = node.getBoundingClientRect();
+      const dx = cx - (r.left + r.width * .5), dy = cy - (r.top + r.height * .5);
+      rev.anims.push(node.animate([
+        { transform: 'none', opacity: 1, filter: 'blur(0px)' },
+        { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(.08) rotate(${dx >= 0 ? 9 : -9}deg)`, opacity: 0, filter: 'blur(4px)' },
+      ], { duration: 420, delay: i * 20, easing: 'cubic-bezier(.55, 0, .85, .35)', fill: 'both' }));
     }
-    if (run && !run.landed && direction === -1 && event?.cancelable) event.preventDefault();
-    finish();
+
+    function stepRev(now) {
+      if (!rev) return;
+      const elapsed = now - rev.start;
+      if (elapsed >= 660 && !rev.landed) {
+        rev.landed = true;
+        scrollTo({ top: rev.destination, behavior: 'instant' });
+        rev.top = scrollY;
+        previous.classList.remove('deep-rev-staged');
+        if (walletBtn) walletBtn.style.visibility = 'hidden';
+        const releaseTargets = [...Array.from(before.children), sourceChart, fieldZone, walletZone?.querySelector('.s16-zone-head')].filter(Boolean);
+        releaseTargets.forEach((node, i) => {
+          const r = node.getBoundingClientRect();
+          const fx = rev.wx - (r.left + r.width * .5), fy = rev.wy - (r.top + r.height * .5);
+          rev.anims.push(node.animate([
+            { transform: `translate(${fx.toFixed(1)}px, ${fy.toFixed(1)}px) scale(.12) rotate(${fx >= 0 ? -7 : 7}deg)`, opacity: 0, filter: 'blur(4px)' },
+            { transform: 'none', opacity: 1, filter: 'blur(0px)' },
+          ], { duration: 480, delay: i * 28, easing: arrivalEase, fill: 'both' }));
+        });
+      }
+      if (Math.abs(scrollY - rev.top) > 1 && Math.abs(scrollY - rev.top) < innerHeight * .95) {
+        scrollTo({ top: rev.top, behavior: 'instant' });
+      }
+      if (rev.portal?.isConnected) {
+        const pop = ease(0, 180, elapsed), glide = ease(480, 820, elapsed);
+        const tx = mix(0, rev.wx - rev.cx, glide), ty = mix(0, rev.wy - rev.cy, glide);
+        let rot = 0, sc = pop < 1 ? mix(.05, 1.1, pop) : mix(1.1, 1, glide);
+        if (elapsed >= 380 && elapsed < 660) {
+          delete rev.portal.dataset.open;
+          const s = (elapsed - 380) / 280;
+          rot = Math.sin(s * Math.PI * 4) * (1 - s * .35) * 8;
+        } else if (elapsed >= 660) {
+          rev.portal.dataset.open = 'true';
+          if (elapsed >= 1120) walletBtn?.style.removeProperty('visibility');
+        }
+        rev.portal.style.opacity = elapsed < 180 ? String(pop) : elapsed >= 1120 ? String(1 - ease(1120, 1340, elapsed)) : '1';
+        rev.portal.style.transform = `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px) rotate(${rot.toFixed(1)}deg) scale(${sc.toFixed(3)})`;
+      }
+      ctx.clearRect(0, 0, rev.width, rev.height);
+      if (elapsed < 500) {
+        const wa = 1 - ease(320, 500, elapsed);
+        ctx.save();
+        ctx.font = '600 12px "JetBrains Mono", ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        for (const w of rev.wisps) {
+          const t = ease(w.dep, w.dep + 340, elapsed);
+          ctx.globalAlpha = wa * .75;
+          ctx.fillStyle = w.copper ? '#b8652a' : '#0d0d0c';
+          ctx.fillText(w.ch, mix(w.x, rev.cx, t), mix(w.y, rev.cy, t) + Math.sin(Math.PI * t) * w.arc);
+        }
+        ctx.restore();
+      }
+      if (elapsed >= 1340 + 360) return finishReverse();
+      rev.frame = requestAnimationFrame(stepRev);
+    }
+    rev.frame = requestAnimationFrame(stepRev);
   }
 
   watchScrollMotion((top, height) => {
-    const { start, cue, end } = approach(top, height);
     if (run) {
       if (!canPlay() || Math.abs(top - run.top) > height * .95) finish();
       else if (Math.abs(top - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
-    } else {
-      if (top >= end - 1 || scene.contains(document.activeElement)) {
-        armed = false;
-      } else if (top >= start - height * .2 && top <= cue + 4) {
-        armed = true;
-      } else if (Math.abs(top - lastTop) > height * .95) {
-        armed = false;
-      }
-      if (armed && canPlay() && !root.classList.contains('deep-twocards-hold') &&
-        top > cue + 2 && top < end - 1 && top > lastTop) {
-        startRun(height);
-      }
-    }
-    lastTop = scrollY;
-    const activeBounds = approach(lastTop, height);
-    if (canPlay() && (run || (lastTop >= activeBounds.cue - height * .25 && lastTop < activeBounds.end - 1))) {
-      listeners ??= capturePageGesture(canBegin, begin, interrupt);
-    } else {
-      listeners?.abort();
-      listeners = undefined;
     }
   });
 
   for (const area of [previous.querySelector('.plate-controls'), previous.querySelector('.s16-instrument'), scene.querySelector('.plate-controls')]) {
     if (!area) continue;
-    for (const event of ['focusin', 'pointerdown', 'input']) area.addEventListener(event, finish);
+    for (const event of ['focusin', 'pointerdown', 'input']) area.addEventListener(event, () => { finishReverse(); finish(); });
   }
-  for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, finish);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) finish(); });
-  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) finish(); });
+  for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, () => { finishReverse(); finish(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { finishReverse(); finish(); } });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) { finishReverse(); finish(); } });
+
+  return {
+    forward() {
+      if (!canPlay() || run || rev) return;
+      sanitizeChapter();
+      startRun(innerHeight);
+    },
+    reverse: startReverse,
+    cancel: () => { finishReverse(); finish(); },
+    active: () => !!run || !!rev,
+  };
 }
 
 function watchFinale(previous, end) {
@@ -3511,21 +3868,30 @@ function watchFinale(previous, end) {
   const normal = { color: 'var(--ink)', backgroundColor: 'transparent' };
   const inverted = { color: 'var(--paper)', backgroundColor: 'var(--ink)' };
   const blinkEnd = 860, closeEnd = 995, openEnd = 1280, readHold = 1000;
-  let run, frame, listeners, armed = false, lastTop = scrollY;
+  let run, rev, frame, finaleBlinkedOnce = false;
   const canPlay = () => !reducedMotion.matches && !document.hidden;
 
-  function syncAfterblink(inView) {
-    if (!endBlink) return;
-    endBlink.classList.toggle('is-afterblink', inView && !reducedMotion.matches);
+  function playFinaleBlinkOnce() {
+    if (finaleBlinkedOnce || reducedMotion.matches || document.hidden) return;
+    finaleBlinkedOnce = true;
+    endBlink.dataset.blinked = 'once';
+    endBlink.animate([
+      normal,
+      { color: 'var(--paper)', backgroundColor: 'rgba(13, 13, 12, .84)', offset: .26 },
+      { ...normal, offset: .64 },
+      normal,
+    ], { duration: 560, delay: 160, easing: 'ease-out' });
   }
 
   if (typeof IntersectionObserver === 'function') {
     const observer = new IntersectionObserver(entries => {
-      for (const entry of entries) syncAfterblink(entry.isIntersecting);
+      for (const entry of entries) {
+        if (entry.isIntersecting && !run && !rev) playFinaleBlinkOnce();
+      }
     }, { threshold: .15 });
     observer.observe(end);
   } else {
-    syncAfterblink(true);
+    playFinaleBlinkOnce();
   }
 
   function clearEffects() {
@@ -3540,31 +3906,21 @@ function watchFinale(previous, end) {
     clearEffects();
     run = undefined;
     root.classList.remove('deep-finale-hold');
-    lastTop = scrollY;
     scheduleMotion();
   }
 
   function land() {
     scrollTo({ top: run.destination, behavior: 'instant' });
     run.top = scrollY;
-    lastTop = run.top;
     run.landed = true;
     end.classList.remove('deep-end-staged');
-    syncAfterblink(true);
     for (const [i, node] of Array.from(end.children).entries()) {
       run.animations.push(node.animate([
         { opacity: 0, transform: 'translateY(8px)' },
         { opacity: 1, transform: 'none' },
       ], { duration: 400, delay: 110 + i * 65, easing: arrivalEase, fill: 'both' }));
     }
-    const echo = endBlink.animate([
-      normal,
-      { color: 'var(--paper)', backgroundColor: 'rgba(13, 13, 12, .76)', offset: .18 },
-      { ...normal, offset: .36 },
-      { color: 'var(--paper)', backgroundColor: 'rgba(13, 13, 12, .4)', offset: .56 },
-      normal,
-    ], { duration: 780, delay: 220, easing: 'ease-out' });
-    run.animations.push(echo);
+    playFinaleBlinkOnce();
   }
 
   function animate(now) {
@@ -3594,29 +3950,15 @@ function watchFinale(previous, end) {
     return { start, cue, end: endTop };
   }
 
-  function canBegin(event, direction) {
-    if (direction < 0 || event.defaultPrevented || !canPlay()) return false;
-    if (run) return true;
-    if (!event.cancelable && event.type !== 'wheel') return false;
-    if (root.classList.contains('deep-carkey-hold')) return false;
-    const { cue, end: endTop } = approach(scrollY, innerHeight);
-    if (scrollY >= endTop - 1) return false;
-    if (scrollY >= cue - 2 || event.type === 'touchmove' || event.key === 'PageDown' || event.key === ' ') return true;
-    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
-    return event.type === 'wheel' && scrollY + event.deltaY * unit > cue;
-  }
-
   function startRun(height) {
     if (run || !canPlay()) return;
     const { cue, end: endTop } = approach(scrollY, height);
     if (scrollY > cue + 1) scrollTo({ top: cue, behavior: 'instant' });
     const top = scrollY;
-    armed = false;
     const maxScroll = Math.max(0, root.scrollHeight - height);
     const destination = Math.min(endTop, maxScroll);
 
     run = { top, start: performance.now(), destination, animations: [] };
-    lastTop = top;
     root.classList.add('deep-finale-hold');
     end.classList.add('deep-end-staged');
     run.animations.push(whyWord.animate([
@@ -3628,105 +3970,305 @@ function watchFinale(previous, end) {
     frame = requestAnimationFrame(animate);
   }
 
-  function begin(event) {
-    if (event.cancelable) event.preventDefault();
-    if (run) {
-      if (Math.abs(scrollY - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
-      return;
-    }
-    const height = innerHeight, { cue } = approach(scrollY, height);
-    if (scrollY < cue - 2) {
-      scrollTo({ top: cue, behavior: 'instant' });
-      return;
-    }
-    startRun(height);
+  function finishReverse() {
+    if (!rev) return;
+    cancelAnimationFrame(rev.frame);
+    rev.anims.forEach(a => a.cancel());
+    cover.remove();
+    root.classList.remove('deep-reverse-hold');
+    rev = undefined;
+    scheduleMotion();
   }
 
-  function interrupt(direction, event) {
-    if (run && direction === -1 && event?.type === 'wheel' && Math.abs(event.deltaY) < 24) {
-      if (event.cancelable) event.preventDefault();
-      return;
+  function startReverse() {
+    if (run || rev || !canPlay()) return;
+    sanitizeChapter();
+    const s17Top = bounds(previous, scrollY).y;
+    rev = { top: scrollY, dest: s17Top, start: performance.now(), landed: false, coverClosing: false, frame: 0, anims: [], closeAnim: null };
+    root.classList.add('deep-reverse-hold');
+
+    function stepRev(now) {
+      if (!rev) return;
+      const elapsed = now - rev.start;
+      if (elapsed >= 180 && !rev.coverClosing) {
+        rev.coverClosing = true;
+        chapter.append(cover);
+        rev.closeAnim = cover.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 130, easing: 'ease-in', fill: 'forwards' });
+        rev.anims.push(rev.closeAnim);
+      }
+      if (elapsed >= 310 && !rev.landed) {
+        rev.landed = true;
+        scrollTo({ top: rev.dest, behavior: 'instant' });
+        rev.top = scrollY;
+        rev.closeAnim?.cancel();
+        rev.anims.push(cover.animate([
+          { opacity: 1 }, { opacity: 1, offset: .14, easing: 'ease-out' }, { opacity: 0 },
+        ], { duration: 250, fill: 'both' }));
+        rev.anims.push(whyWord.animate([
+          normal, { ...inverted, offset: .24 }, { ...normal, offset: .52 }, normal,
+        ], { duration: 420, delay: 140 }));
+      }
+      if (Math.abs(scrollY - rev.top) > 1 && Math.abs(scrollY - rev.top) < innerHeight * .95) {
+        scrollTo({ top: rev.top, behavior: 'instant' });
+      }
+      if (elapsed >= 600 && cover.isConnected) cover.remove();
+      if (elapsed >= 920) return finishReverse();
+      rev.frame = requestAnimationFrame(stepRev);
     }
-    if (run && !run.landed && direction === -1 && event?.cancelable) event.preventDefault();
-    finish();
+    rev.frame = requestAnimationFrame(stepRev);
   }
 
   watchScrollMotion((top, height) => {
-    const { start, cue, end: endTop } = approach(top, height);
-    const maxDest = Math.min(endTop, Math.max(0, root.scrollHeight - height));
     if (run) {
       if (!canPlay() || Math.abs(top - run.top) > height * .95) finish();
       else if (Math.abs(top - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
-    } else {
-      if (top >= maxDest - 1 || end.contains(document.activeElement)) {
-        armed = false;
-      } else if (top >= start - height * .2 && top <= cue + 4) {
-        armed = true;
-      } else if (Math.abs(top - lastTop) > height * .95) {
-        armed = false;
-      }
-      if (armed && canPlay() && !root.classList.contains('deep-carkey-hold') &&
-        top > cue + 2 && top < maxDest - 1 && top > lastTop) {
-        startRun(height);
-      }
-    }
-    lastTop = scrollY;
-    const activeBounds = approach(lastTop, height);
-    if (canPlay() && (run || (lastTop >= activeBounds.cue - height * .25 && lastTop < Math.min(activeBounds.end, Math.max(0, root.scrollHeight - height)) - 1))) {
-      listeners ??= capturePageGesture(canBegin, begin, interrupt);
-    } else {
-      listeners?.abort();
-      listeners = undefined;
     }
   });
 
   for (const area of [previous.querySelector('.plate-controls'), end]) {
     if (!area) continue;
-    for (const event of ['focusin', 'pointerdown', 'input']) area.addEventListener(event, finish);
+    for (const event of ['focusin', 'pointerdown', 'input']) area.addEventListener(event, () => { finishReverse(); finish(); });
   }
-  for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, finish);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) finish(); });
-  reducedMotion.addEventListener('change', () => {
-    if (reducedMotion.matches) {
-      finish();
-      syncAfterblink(false);
+  for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, () => { finishReverse(); finish(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { finishReverse(); finish(); } });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) { finishReverse(); finish(); } });
+
+  return {
+    forward() {
+      if (!canPlay() || run || rev) return;
+      sanitizeChapter();
+      startRun(innerHeight);
+    },
+    reverse: startReverse,
+    cancel: () => { finishReverse(); finish(); },
+    active: () => !!run || !!rev,
+  };
+}
+
+function createChapterDeck(stops, transitions) {
+  if (stops.length < 2 || stops.some(stop => !stop)) return;
+  const WHEEL_THRESHOLD = 75, TOUCH_THRESHOLD = 48;
+  let accum = 0, accumDir = 0, accumTimer = 0;
+  let active, cooldownUntil = 0, touchStart;
+
+  const canPage = () => !reducedMotion.matches && !document.hidden;
+
+  function canChildScroll(target, dir) {
+    let el = target instanceof Element ? target : target?.parentElement;
+    while (el && el !== document.body && el !== document.documentElement) {
+      const cs = getComputedStyle(el);
+      if ((cs.overflowY === 'auto' || cs.overflowY === 'scroll') && el.scrollHeight > el.clientHeight + 2) {
+        if ((dir < 0 && el.scrollTop > 1) || (dir > 0 && el.scrollTop + el.clientHeight < el.scrollHeight - 1)) {
+          return true;
+        }
+      }
+      el = el.parentElement;
+    }
+    return false;
+  }
+
+  function isInteractiveTarget(target) {
+    return !!target?.closest?.('.s6-card, .s9-metal, .s13-drift-track, .s14-cell, .s15-card-btn, .s16-pad-card, .s16-wallet, input[type="range"], [role="slider"]');
+  }
+
+  function currentStopIndex() {
+    const h = innerHeight;
+    let best = 0, bestDist = Infinity;
+    for (let i = 0; i < stops.length; i++) {
+      const r = stops[i].getBoundingClientRect();
+      if (r.top <= h * .45 && r.bottom >= h * .25) return i;
+      const d = Math.abs(r.top);
+      if (d < bestDist) { bestDist = d; best = i; }
+    }
+    return best;
+  }
+
+  function running() {
+    if (active && !active.transition.active()) {
+      active = undefined;
+      cooldownUntil = performance.now() + 180;
+    }
+    // The Part Two link can start its own handoff.
+    if (active) return active;
+    const transition = transitions.find(candidate => candidate?.active());
+    return transition && { transition, dir: 1 };
+  }
+
+  function cancelActive() {
+    const current = running();
+    if (!current) return;
+    current.transition.cancel();
+    active = undefined;
+    accum = 0;
+    accumDir = 0;
+    cooldownUntil = performance.now() + 180;
+  }
+
+  function trigger(dir) {
+    if (!canPage() || running()) return false;
+    const now = performance.now();
+    if (now < cooldownUntil) return true;
+    const idx = currentStopIndex();
+    const transition = transitions[dir > 0 ? idx : idx - 1];
+    if (!transition) return false;
+    if (dir > 0) transition.forward();
+    else transition.reverse();
+    if (transition.active()) {
+      active = { transition, dir };
+    } else {
+      cooldownUntil = now + 180;
+    }
+    return true;
+  }
+
+  function distanceToEdge(dir) {
+    const idx = currentStopIndex();
+    if (!transitions[dir > 0 ? idx : idx - 1]) return Infinity;
+    const { top, bottom } = stops[idx].getBoundingClientRect();
+    return Math.max(0, dir > 0 ? bottom - innerHeight - 96 : -top - 96);
+  }
+
+  addEventListener('wheel', event => {
+    if (event.ctrlKey || Math.abs(event.deltaY) <= Math.abs(event.deltaX) || !canPage()) return;
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
+    const dy = event.deltaY * unit;
+    const dir = Math.sign(dy);
+    if (!dir) return;
+
+    const current = running();
+    if (current) {
+      if (event.cancelable) event.preventDefault();
+      if (dir !== current.dir && Math.abs(dy) >= 24) cancelActive();
+      return;
+    }
+    if (canChildScroll(event.target, dir) || isInteractiveTarget(event.target)) return;
+    const distance = distanceToEdge(dir);
+    if (!event.cancelable || Math.abs(dy) <= distance) return;
+    event.preventDefault();
+    if (distance) scrollTo({ top: scrollY + dir * Math.ceil(distance), behavior: 'instant' });
+
+    const now = performance.now();
+    if (now < cooldownUntil) return;
+    if (dir !== accumDir) { accum = 0; accumDir = dir; }
+    accum += dy - dir * distance;
+    clearTimeout(accumTimer);
+    accumTimer = setTimeout(() => { accum = 0; accumDir = 0; }, 180);
+    if (Math.abs(accum) >= WHEEL_THRESHOLD) {
+      accum = 0;
+      accumDir = 0;
+      trigger(dir);
+    }
+  }, { passive: false });
+
+  addEventListener('keydown', event => {
+    if (!canPage() || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+    const { key } = event;
+    if (['Home', 'End', 'Escape'].includes(key)) { cancelActive(); return; }
+    if (event.target.closest?.('a, button, input, textarea, select, [role="slider"], [contenteditable]')) return;
+    const dir = (['ArrowUp', 'PageUp'].includes(key) || (key === ' ' && event.shiftKey)) ? -1
+      : ['ArrowDown', 'PageDown', ' '].includes(key) ? 1 : 0;
+    if (!dir) return;
+    const current = running();
+    if (current) {
+      event.preventDefault();
+      if (dir !== current.dir) cancelActive();
+      return;
+    }
+    const distance = distanceToEdge(dir);
+    const step = key === 'ArrowUp' || key === 'ArrowDown' ? 40 : innerHeight * .875;
+    if (distance < step) {
+      event.preventDefault();
+      if (distance) scrollTo({ top: scrollY + dir * Math.ceil(distance), behavior: 'instant' });
+      if (!distance || step - distance >= WHEEL_THRESHOLD) trigger(dir);
     }
   });
+
+  addEventListener('touchstart', ({ touches, target }) => {
+    const finger = touches[0];
+    touchStart = touches.length === 1 && !isInteractiveTarget(target) ? { y: finger.clientY, x: finger.clientX, target } : null;
+  }, { passive: true });
+
+  addEventListener('touchmove', event => {
+    if (!touchStart || event.touches.length !== 1 || !canPage()) return;
+    const { clientX: x, clientY: y } = event.touches[0];
+    const delta = touchStart.y - y;
+    if (Math.abs(delta) <= Math.abs(x - touchStart.x)) return;
+    const dir = Math.sign(delta);
+    const current = running();
+    if (current) {
+      if (event.cancelable) event.preventDefault();
+      if (dir !== current.dir && Math.abs(delta) >= 24) {
+        touchStart = null;
+        cancelActive();
+      }
+      return;
+    }
+    if (canChildScroll(touchStart.target, dir) || distanceToEdge(dir) !== 0 || !event.cancelable) return;
+    if (event.cancelable) event.preventDefault();
+    if (Math.abs(delta) >= TOUCH_THRESHOLD) {
+      touchStart = { x, y, target: touchStart.target };
+      trigger(dir);
+    }
+  }, { passive: false });
+
+  watchScrollMotion(running);
+  for (const ev of ['resize', 'hashchange', 'pagehide']) addEventListener(ev, cancelActive);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) cancelActive(); });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) cancelActive(); });
 }
+
+const chapterStops = [
+  document.querySelector('.deep-head'),
+  document.getElementById('part-one'),
+  document.getElementById('s6'),
+  document.getElementById('s7'),
+  document.getElementById('s8'),
+  document.getElementById('s9'),
+  document.getElementById('s10'),
+  document.getElementById('part-two'),
+  document.getElementById('s11'),
+  document.getElementById('s12'),
+  document.getElementById('s13'),
+  document.getElementById('s14'),
+  document.getElementById('s15'),
+  document.getElementById('s16'),
+  document.getElementById('s17'),
+  document.getElementById('deep-end'),
+];
 
 const blink = document.getElementById('deep-blink-word');
 const partOne = document.getElementById('part-one');
-if (blink?.animate && partOne) watchPartOne(blink, partOne);
 const power = document.getElementById('part-one-power');
 const closer = document.getElementById('s6');
 const flipping = document.getElementById('s7');
-if (closer && typeof closer.animate === 'function') {
-  let settleCloser;
-  if (flipping) watchFlipping(closer, flipping, () => settleCloser?.());
-  if (power) settleCloser = watchCloser(power, closer);
-}
 const tuning = document.getElementById('s8');
-if (flipping && tuning && typeof tuning.animate === 'function') watchTuning(flipping, tuning);
 const metal = document.getElementById('s9');
-if (tuning && metal) watchMetal(tuning, metal);
 const pauses = document.getElementById('s10');
-if (metal && pauses) watchPauses(metal, pauses);
 const pausesLink = document.getElementById('s10-pauses');
 const partTwo = document.getElementById('part-two');
-if (pausesLink && partTwo) watchPartTwo(pausesLink, partTwo);
 const soaking = document.getElementById('s11');
-if (partTwo && soaking) watchSoaking(partTwo, soaking);
 const whispering = document.getElementById('s12');
-if (soaking && whispering) watchWhispering(soaking, whispering);
 const counting = document.getElementById('s13');
-if (whispering && counting) watchCounting(whispering, counting);
 const mistakes = document.getElementById('s14');
-if (counting && mistakes) watchMistakes(counting, mistakes);
 const conversationScene = document.getElementById('s15');
-if (mistakes && conversationScene) watchConversation(mistakes, conversationScene);
 const twoCards = document.getElementById('s16');
-if (conversationScene && twoCards) watchTwoCards(conversationScene, twoCards);
 const carKey = document.getElementById('s17');
-if (twoCards && carKey) watchCarKey(twoCards, carKey);
 const finale = document.getElementById('deep-end');
-if (carKey && finale) watchFinale(carKey, finale);
+
+const t0 = blink?.animate && partOne ? watchPartOne(blink, partOne) : null;
+const t1 = closer && power && typeof closer.animate === 'function' ? watchCloser(power, closer) : null;
+const t2 = closer && flipping && typeof closer.animate === 'function' ? watchFlipping(closer, flipping, () => t1?.cancel?.()) : null;
+const t3 = flipping && tuning && typeof tuning.animate === 'function' ? watchTuning(flipping, tuning) : null;
+const t4 = tuning && metal ? watchMetal(tuning, metal) : null;
+const t5 = metal && pauses ? watchPauses(metal, pauses) : null;
+const t6 = pausesLink && partTwo ? watchPartTwo(pausesLink, partTwo) : null;
+const t7 = partTwo && soaking ? watchSoaking(partTwo, soaking) : null;
+const t8 = soaking && whispering ? watchWhispering(soaking, whispering) : null;
+const t9 = whispering && counting ? watchCounting(whispering, counting) : null;
+const t10 = counting && mistakes ? watchMistakes(counting, mistakes) : null;
+const t11 = mistakes && conversationScene ? watchConversation(mistakes, conversationScene) : null;
+const t12 = conversationScene && twoCards ? watchTwoCards(conversationScene, twoCards) : null;
+const t13 = twoCards && carKey ? watchCarKey(twoCards, carKey) : null;
+const t14 = carKey && finale ? watchFinale(carKey, finale) : null;
+
+createChapterDeck(chapterStops, [t0, t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14]);
