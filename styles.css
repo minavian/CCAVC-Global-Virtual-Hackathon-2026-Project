@@ -1082,6 +1082,12 @@ html[data-intro] .stage-light { opacity: 0; }
   transform-origin: center;
   scale: min(1, calc(var(--draw, 0) * 1.7));
 }
+/* A copy turned down (the lab's Prove it): a red cross in the check's place. */
+.intro .cine-check .cine-cross { display: none; }
+.intro .cine-check.is-deny { filter: drop-shadow(0 0 18px rgba(239, 68, 68, .55)); }
+.intro .cine-check.is-deny circle { fill: #ef4444; }
+.intro .cine-check.is-deny path { display: none; }
+.intro .cine-check.is-deny .cine-cross { display: block; }
 .intro .cine-check path {
   fill: none;
   stroke: #fff;

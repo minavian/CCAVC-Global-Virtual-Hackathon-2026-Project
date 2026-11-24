@@ -1014,8 +1014,11 @@ function intro(experience) {
     // The check mark, drawn over the reader, and the explanation at the end.
     const top = available ? scene.anchor('readerTop') : { x: layout.reader.x, y: layout.reader.y - layout.reader.height * .3 };
     film.check.style.transform = `translate(${top.x}px, ${top.y - layout.reader.width * .16}px) translate(-50%, -100%)`;
-    film.check.style.opacity = Math.min(1, b.check * 3) * (1 - b.explain);
-    film.check.style.setProperty('--draw', b.check);
+    // A check mark for a card read (or found genuine), a red cross for a copy turned down.
+    const deny = (b.deny || 0) > b.check, mark = Math.max(b.check, b.deny || 0);
+    if (film.check.classList.contains('is-deny') !== deny) film.check.classList.toggle('is-deny', deny);
+    film.check.style.opacity = Math.min(1, mark * 3) * (1 - b.explain);
+    film.check.style.setProperty('--draw', mark);
     // The explanation comes in once the readout has gone, so they never show together.
     const explain = b.explain * (1 - smoother(.3, .45, b.panel));
     show(film.explain, explain, 16);
