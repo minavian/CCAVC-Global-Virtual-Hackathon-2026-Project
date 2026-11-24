@@ -2,27 +2,41 @@ const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
 function watchPartOne(word, part) {
   const chapter = part.closest('.deep');
+  const root = document.documentElement;
   const cover = document.createElement('span');
   cover.className = 'deep-blink-cover';
   cover.setAttribute('aria-hidden', 'true');
   const motionAllowed = () => !reducedMotion.matches && !document.hidden;
   const normal = { color: 'var(--ink)', backgroundColor: 'transparent' };
   const inverted = { color: 'var(--paper)', backgroundColor: 'var(--ink)' };
-  let animation, cue, partTop, armed, farthest, arrived, lastTop = scrollY;
+  const sceneHold = 1000;
+  let animation, holdTimer, cue, partTop, armed, farthest, arrived, touchY, lastTop = scrollY;
+
+  function releaseHold() {
+    clearTimeout(holdTimer);
+    holdTimer = undefined;
+    root.classList.remove('deep-blink-hold');
+  }
+
+  function interrupt() {
+    animation?.cancel();
+    if (animation || holdTimer !== undefined) releaseHold();
+  }
 
   async function blink() {
     try {
+      root.classList.add('deep-blink-hold');
       animation = word.animate([
-        normal, { ...inverted, offset: .09 }, { ...inverted, offset: .23 },
-        { ...normal, offset: .32 }, { ...normal, offset: .47 },
-        { ...inverted, offset: .56 }, { ...inverted, offset: .72 },
-        { ...normal, offset: .81 }, normal,
-      ], { duration: 330 });
+        normal, { ...normal, offset: .10 }, { ...inverted, offset: .14 },
+        { ...inverted, offset: .27 }, { ...normal, offset: .32 },
+        { ...normal, offset: .48 }, { ...inverted, offset: .53 },
+        { ...inverted, offset: .66 }, { ...normal, offset: .72 }, normal,
+      ], { duration: sceneHold });
       await animation.finished;
       if (!motionAllowed()) return;
 
       chapter.append(cover);
-      const close = cover.animate({ opacity: [0, 1] }, { duration: 75, easing: 'ease-in', fill: 'forwards' });
+      const close = cover.animate({ opacity: [0, 1] }, { duration: 135, easing: 'ease-in', fill: 'forwards' });
       animation = close;
       await close.finished;
       if (!motionAllowed() || scrollY >= partTop) return;
@@ -32,15 +46,17 @@ function watchPartOne(word, part) {
       part.scrollIntoView({ block: 'start', behavior: 'instant' });
       animation = cover.animate([
         { opacity: 1 }, { opacity: 1, offset: .16, easing: 'ease-out' }, { opacity: 0 },
-      ], { duration: 165, fill: 'both' });
+      ], { duration: 265, fill: 'both' });
       close.cancel();
       await animation.finished;
+      holdTimer = setTimeout(releaseHold, sceneHold);
     } catch (error) {
       if (error.name !== 'AbortError') throw error;
     } finally {
       animation?.cancel();
       cover.remove();
       animation = null;
+      if (holdTimer === undefined) releaseHold();
     }
   }
 
@@ -52,12 +68,17 @@ function watchPartOne(word, part) {
     }
     const jumped = top - lastTop > height * .5;
     lastTop = top;
-    if (!motionAllowed()) return animation?.cancel();
+    if (!motionAllowed()) return interrupt();
     if (top < cue - 12) armed = true;
 
     if (animation) {
-      if (!arrived && (top < farthest - 24 || top >= partTop)) animation.cancel();
+      const leftScene = arrived ? Math.abs(top - partTop) > 24 : top < farthest - 24 || top >= partTop;
+      if (leftScene) interrupt();
       farthest = Math.max(farthest, top);
+      return;
+    }
+    if (holdTimer !== undefined) {
+      if (Math.abs(top - partTop) > 24) releaseHold();
       return;
     }
     if (!armed || top < cue) return;
@@ -69,7 +90,24 @@ function watchPartOne(word, part) {
     arrived = false;
     void blink();
   });
-  addEventListener('hashchange', () => animation?.cancel());
+  addEventListener('hashchange', interrupt);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) interrupt(); });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) interrupt(); });
+  addEventListener('wheel', event => {
+    if (event.deltaY < 0 && !event.ctrlKey) interrupt();
+  }, { passive: true });
+  addEventListener('keydown', event => {
+    if (['ArrowUp', 'PageUp', 'Home', 'Escape'].includes(event.key) || (event.key === ' ' && event.shiftKey)) interrupt();
+  });
+  addEventListener('touchstart', ({ touches }) => {
+    touchY = touches.length === 1 ? touches[0].clientY : undefined;
+  }, { passive: true });
+  addEventListener('touchmove', ({ touches }) => {
+    if (touchY === undefined || touches.length !== 1) return;
+    const y = touches[0].clientY;
+    if (y > touchY + 16) interrupt();
+    touchY = Math.min(y, touchY);
+  }, { passive: true });
 }
 
 const scrollMotions = [];

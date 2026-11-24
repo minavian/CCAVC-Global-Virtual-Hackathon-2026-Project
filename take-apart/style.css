@@ -101,6 +101,7 @@ body::after {
   text-wrap: balance;
 }
 #part-one-power { white-space: nowrap; }
+html.deep-blink-hold { overflow-y: hidden; }
 .deep-blink-cover {
   position: fixed;
   inset: 0;
