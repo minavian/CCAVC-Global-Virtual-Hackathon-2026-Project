@@ -1734,23 +1734,25 @@ function watchSoaking(part, scene) {
 }
 
 function watchWhispering(previous, scene) {
-  const chapter = scene.closest('.deep');
+  const root = document.documentElement, chapter = scene.closest('.deep');
   const source = previous.querySelector('#s11-title'), title = scene.querySelector('#s12-title');
+  const before = previous.querySelector('.plate-words'), after = scene.querySelector('.plate-words');
   const sourceChart = previous.querySelector('#s11-chart'), chart = scene.querySelector('#s12-chart');
-  const vortex = document.createElement('div');
+  const instrument = sourceChart.closest('.s11-instrument');
+  const vortex = document.createElement('div'), wave = document.createElement('canvas');
   vortex.className = 's12-vortex';
   vortex.setAttribute('aria-hidden', 'true');
-  const wave = document.createElement('canvas');
   wave.className = 's12-wave-copy';
+  vortex.append(wave);
   const ctx = wave.getContext('2d');
-
-  const bands = Array.from({ length: 5 }, () => {
+  const bands = Array.from({ length: 7 }, () => {
     const band = document.createElement('div');
     band.className = 's12-vortex-band';
-    const faces = Array.from({ length: 2 }, () => {
+    const faces = [source, title].map(heading => {
       const face = document.createElement('div'), text = document.createElement('span');
       face.className = 's12-vortex-face';
       text.className = 's12-vortex-type';
+      text.textContent = heading.textContent;
       face.append(text);
       band.append(face);
       return face;
@@ -1758,132 +1760,205 @@ function watchWhispering(previous, scene) {
     vortex.append(band);
     return { band, faces };
   });
-  let layout, copiedTrace;
-  let armed = false, lastTop = scrollY;
+  const cut = 880, arrivalEnd = 2170, readHold = 1000;
+  let run, frame, listeners;
+  const canPlay = () => ctx && !reducedMotion.matches && !document.hidden &&
+    CSS.supports('mask-image', 'linear-gradient(transparent, black)');
 
-  function headingBounds(heading, top) {
+  function headingBox(heading, top) {
     const rect = bounds(heading, top), range = document.createRange();
     range.selectNodeContents(heading);
-    return { ...rect, stripWidth: Math.min(rect.w, range.getBoundingClientRect().width + 3) };
+    const width = Math.min(rect.w, range.getBoundingClientRect().width + 4);
+    return { ...rect, x: rect.x + width / 2, y: rect.y + rect.h / 2, width };
   }
 
-  function measure(top, height) {
-    const stacked = matchMedia('(max-width: 860px)').matches;
-    const to = headingBounds(title, top), from = stacked ? to : headingBounds(source, top);
-    const start = stacked ? to.y - height * .81 : from.y + from.h / 2 - height * .21;
-    const end = stacked ? to.y - height * .51 : Math.max(start + height * .38, to.y + to.h / 2 - height * .68);
-    const captions = [stacked ? title.textContent : source.textContent, title.textContent];
-    vortex.classList.toggle('s12-vortex--stacked', stacked);
-    bands.forEach(({ faces }, i) => {
-      faces.forEach((face, side) => {
-        const rect = side === 0 ? from : to, h = rect.h / bands.length;
-        face.firstChild.textContent = captions[side];
-        Object.assign(face.style, { width: `${rect.stripWidth}px`, height: `${h}px` });
-        Object.assign(face.firstChild.style, { width: `${rect.w}px`, top: `${-i * h}px` });
-      });
+  function placeBands(from, to) {
+    bands.forEach(({ faces }, i) => faces.forEach((face, side) => {
+      const rect = side ? to : from, height = rect.h / bands.length;
+      Object.assign(face.style, { width: `${rect.width}px`, height: `${height}px` });
+      Object.assign(face.firstChild.style, { width: `${rect.w}px`, top: `${-i * height}px` });
+    }));
+  }
+
+  function turnHeading(elapsed) {
+    const { from, to, hub, radius } = run;
+    const gather = ease(75, cut, elapsed), release = ease(960, 1770, elapsed);
+    const cx = mix(mix(from.x, hub.x, gather), to.x, release);
+    const cy = mix(mix(from.y, hub.y, gather), to.y, release);
+    bands.forEach(({ band }, i) => {
+      const offset = (i + .5) / bands.length - .5, lag = i * 57;
+      const turn = ease(230 + lag, 1290 + lag, elapsed);
+      const coil = Math.sin(Math.PI * turn), angle = turn * Math.PI * 1.3 + offset * 2.45;
+      const x = cx + Math.sin(angle) * radius * offset * coil;
+      const y = cy + mix(from.h, to.h, release) * offset * (1 + .88 * coil);
+      const z = radius * .62 * Math.cos(angle) * coil;
+      band.style.setProperty('--s12-fold', coil);
+      band.style.transform = `translate3d(${x}px,${y}px,${z}px) rotateZ(${offset * 42 * coil}deg) rotateY(${turn * 180}deg)`;
     });
-    return { from, to, start, end, stacked, width: innerWidth, fromChart: bounds(sourceChart, top), toChart: bounds(chart, top) };
   }
 
-  function settle() {
+  function drawSignal(elapsed) {
+    const { signal, trace, plot, width, height } = run;
+    const spectrum = chart.spectrumTrace;
+    const carrierX = spectrum ? spectrum.X(spectrum.carrier[0]) : (plot.w + 10) / 2;
+    const carrierY = spectrum ? spectrum.Y(spectrum.carrier[1]) : 26 + (plot.h - 70) * 6 / 116;
+    const travel = ease(310, 1550, elapsed), pinch = ease(235, 1310, elapsed);
+    const peak = ease(925, 1520, elapsed);
+    const x = mix(signal.x, plot.x + carrierX, travel);
+    const y = mix(signal.y, plot.y + carrierY, travel) + height * .038 * Math.sin(travel * Math.PI);
+    const span = mix(trace.box.w, 11, pinch);
+    ctx.clearRect(0, 0, width, height);
+    ctx.globalAlpha = (1 - ease(1530, 1960, elapsed)) * ease(75, 330, elapsed);
+    ctx.strokeStyle = trace.color;
+    ctx.lineWidth = mix(1.2, 1.65, peak);
+    ctx.beginPath();
+    trace.points.forEach(([sample, current], i) => {
+      const offset = (trace.X(sample) - trace.box.x) / trace.box.w - .5;
+      const dx = x + offset * span;
+      const dy = y + mix((trace.Y(current) - trace.Y(1)) * (1 - pinch * .66),
+        49 * Math.pow(Math.abs(offset * 2), .37), peak);
+      if (i === 0) ctx.moveTo(dx, dy);
+      else ctx.lineTo(dx, dy);
+    });
+    ctx.stroke();
+
+    if (!run.landed) return;
+    const open = ease(1340, 2110, elapsed);
+    const left = carrierX * (1 - open), right = mix(carrierX, plot.w, open);
+    const feather = Math.min(12, (right - left) / 2) * (1 - open);
+    chart.style.maskImage = `linear-gradient(90deg, transparent ${left}px, #000 ${left + feather}px, #000 ${right - feather}px, transparent ${right}px)`;
+  }
+
+  function clearEffects() {
     if (!vortex.isConnected) return;
     vortex.remove();
     source.classList.remove('s12-title-in-flight');
     title.classList.remove('s12-title-in-flight');
-    chart.style.removeProperty('opacity');
+    scene.classList.remove('s12-staged');
+    chart.style.removeProperty('mask-image');
+    run.animations.forEach(animation => animation.cancel());
+  }
+
+  function finish() {
+    if (!run) return;
+    cancelAnimationFrame(frame);
+    clearEffects();
+    run = undefined;
+    root.classList.remove('deep-whispering-hold');
     sourceChart.pauseAnswerScan?.(false);
-  }
-
-  function turnHeading(top, height, progress) {
-    const { from, to, stacked, width } = layout;
-    const radius = Math.min(stacked ? 72 : 180, width * .23);
-    const hubY = stacked ? to.y - top + to.h / 2 - 18 : height * .45;
-    const gather = ease(0, .35, progress), open = ease(.53, .94, progress);
-    // Move the stack together so the stagger changes the turn without scattering the bands.
-    const centerX = mix(mix(from.x + from.stripWidth / 2, width / 2, gather), to.x + to.stripWidth / 2, open);
-    const centerY = mix(mix(from.y + from.h / 2 - top, hubY, ease(.17, .44, progress)),
-      to.y + to.h / 2 - top, ease(.45, .73, progress));
-    bands.forEach(({ band }, i) => {
-      const offset = (i + .5) / bands.length - .5, delay = i * .055;
-      const turn = ease(delay, .78 + delay, progress), angle = Math.PI * turn;
-      const fold = Math.sin(angle), orbit = angle + offset * 1.8;
-      const x = centerX + radius * offset * Math.sin(orbit) * fold;
-      const y = centerY + mix(from.h, to.h, open) * offset * (1 + .68 * fold);
-      const depth = radius * .64 * Math.cos(orbit) * fold;
-      const roll = (offset * 44 - 6) * fold;
-      band.style.setProperty('--s12-fold', fold);
-      band.style.transform = `translate3d(${x}px, ${y}px, ${depth}px) rotateZ(${roll}deg) rotateY(${turn * 180}deg)`;
-    });
-  }
-
-  function carryWave(top, height, progress) {
-    const trace = sourceChart.answerTrace, spectrum = chart.spectrumTrace;
-    if (layout.stacked || !trace || !spectrum) return;
-    const { box, X, Y } = trace;
-    if (trace !== copiedTrace) {
-      const dpr = Math.min(devicePixelRatio || 1, 2);
-      wave.width = Math.round(box.w * dpr);
-      wave.height = Math.round(box.h * dpr);
-      Object.assign(wave.style, { width: `${box.w}px`, height: `${box.h}px` });
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.lineWidth = 1.2;
-      ctx.strokeStyle = trace.color;
-      ctx.beginPath();
-      trace.points.forEach(([sample, current], i) => {
-        const x = X(sample) - box.x, y = Y(current) - box.y;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      });
-      ctx.stroke();
-      copiedTrace = trace;
-    }
-
-    const { fromChart, toChart } = layout;
-    const [frequency, strength] = spectrum.carrier;
-    const travel = ease(.04, .72, progress), pivot = Y(1) - box.y;
-    const x = mix(fromChart.x + box.x + box.w / 2, toChart.x + spectrum.X(frequency), travel);
-    const y = mix(fromChart.y + Y(1), toChart.y + spectrum.Y(strength), travel) - top;
-    const arc = Math.sin(Math.PI * travel) * Math.min(52, height * .064);
-    wave.style.transform = `translate(${x}px, ${y + arc}px) scale(${mix(1, .065, travel)}, ${mix(1, .19, travel)}) translate(${-box.w / 2}px, ${-pivot}px)`;
-    wave.style.opacity = .86 * ease(0, .13, progress) * (1 - ease(.53, .82, progress));
-    chart.style.opacity = ease(.38, .96, progress);
-    if (!wave.isConnected) vortex.prepend(wave);
-  }
-
-  watchScrollMotion((top, height, needsMeasure) => {
-    if (reducedMotion.matches || document.hidden) return settle();
-    if (needsMeasure || !layout) layout = measure(top, height);
-    if (needsMeasure || Math.abs(top - lastTop) > height * .42) armed = false;
-    lastTop = top;
-    if (top <= layout.start) armed = true;
-    if (!armed || top <= layout.start || top >= layout.end) return settle();
-
-    if (!vortex.isConnected) {
-      // The mobile stack leaves the old title in place and turns the new title in its own row.
-      if (!layout.stacked) {
-        source.classList.add('s12-title-in-flight');
-        sourceChart.pauseAnswerScan?.(true);
-      }
-      title.classList.add('s12-title-in-flight');
-      chapter.append(vortex);
-    }
-    const progress = stage(layout.start, layout.end, top);
-    turnHeading(top, height, progress);
-    carryWave(top, height, progress);
-  });
-
-  const copy = [previous, scene].map(plate => plate.querySelector('.plate-words'));
-  const contentSize = new ResizeObserver(() => {
-    layout = undefined;
     scheduleMotion();
-  });
-  for (const element of [chapter, ...copy]) contentSize.observe(element);
-  for (const controls of [previous, scene].flatMap(plate => [...plate.querySelectorAll('.plate-controls')])) {
-    for (const event of ['focusin', 'pointerdown', 'input']) controls.addEventListener(event, () => {
-      if (vortex.isConnected) armed = false;
-      settle();
-    });
   }
+
+  function land() {
+    scrollTo({ top: run.destination, behavior: 'instant' });
+    run.top = scrollY;
+    run.landed = true;
+    scene.classList.remove('s12-staged');
+    for (const [i, node] of Array.from(after.children).entries()) {
+      if (node === title) continue;
+      run.animations.push(node.animate([
+        { opacity: 0, transform: 'translateY(7px)' },
+        { opacity: 1, transform: 'none' },
+      ], { duration: 410, delay: 465 + i * 42, easing: arrivalEase, fill: 'both' }));
+    }
+  }
+
+  function animate(now) {
+    const elapsed = now - run.start;
+    if (elapsed >= cut && !run.landed) land();
+    if (elapsed < arrivalEnd) {
+      turnHeading(elapsed);
+      drawSignal(elapsed);
+    } else if (vortex.isConnected) clearEffects();
+    if (elapsed >= arrivalEnd + readHold) return finish();
+    frame = requestAnimationFrame(animate);
+  }
+
+  function approach(top, height) {
+    const start = bounds(previous, top).y, end = bounds(scene, top).y;
+    const cue = Math.max(start, Math.min(end - height, bounds(source, top).y - 8));
+    return { cue, end };
+  }
+
+  function canBegin(event, direction) {
+    if (direction < 0 || event.defaultPrevented || !event.cancelable || !canPlay()) return false;
+    if (run) return true;
+    if (!sourceChart.answerTrace || root.classList.contains('deep-soaking-hold')) return false;
+    const { cue, end } = approach(scrollY, innerHeight);
+    if (scrollY >= end - 1) return false;
+    if (scrollY >= cue - 2 || event.type === 'touchmove' || event.key === 'PageDown' || event.key === ' ') return true;
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
+    return event.type === 'wheel' && scrollY + event.deltaY * unit > cue;
+  }
+
+  function begin(event) {
+    event.preventDefault();
+    if (run) return;
+    const width = innerWidth, height = innerHeight;
+    const { cue, end } = approach(scrollY, height);
+    if (scrollY < cue - 2) {
+      scrollTo({ top: cue, behavior: 'instant' });
+      return;
+    }
+    if (source.getBoundingClientRect().top < 0) scrollTo({ top: cue, behavior: 'instant' });
+    const top = scrollY, from = headingBox(source, top), to = headingBox(title, top);
+    const plot = bounds(chart, top), oldPlot = bounds(sourceChart, top);
+    const extra = Math.max(0, Math.min(plot.y + plot.h + 6 - end - height, to.y - to.h / 2 - end - 12));
+    const destination = end + extra;
+    const stacked = matchMedia('(max-width: 860px)').matches;
+    from.y -= top;
+    to.y -= destination;
+    plot.y -= destination;
+    placeBands(from, to);
+
+    sourceChart.pauseAnswerScan?.(true);
+    const trace = sourceChart.answerTrace;
+    const dpr = Math.min(devicePixelRatio || 1, 1.5);
+    wave.width = Math.round(width * dpr);
+    wave.height = Math.round(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const signal = { x: oldPlot.x + trace.box.x + trace.box.w / 2, y: oldPlot.y - top + trace.Y(1) };
+    const hub = { x: width * (stacked ? .52 : .51), y: height * (stacked ? .30 : .47) };
+    run = { top, width, height, start: performance.now(), from, to, hub, destination, plot, signal, trace,
+      radius: Math.min(stacked ? 85 : 220, width * .22), animations: [] };
+
+    root.classList.add('deep-whispering-hold');
+    scene.classList.add('s12-staged');
+    chart.style.maskImage = 'linear-gradient(transparent, transparent)';
+    source.classList.add('s12-title-in-flight');
+    title.classList.add('s12-title-in-flight');
+    chapter.append(vortex);
+    for (const node of [...before.children, instrument]) {
+      if (node === source) continue;
+      run.animations.push(node.animate([{ opacity: 1 }, { opacity: 0 }],
+        { duration: node === instrument ? 355 : 540, delay: node === instrument ? 135 : 65, fill: 'both' }));
+    }
+    turnHeading(0);
+    frame = requestAnimationFrame(animate);
+  }
+
+  function interrupt(direction, event) {
+    if (run && !run.landed && direction === -1 && event.cancelable) event.preventDefault();
+    finish();
+  }
+
+  watchScrollMotion((top, height) => {
+    if (run && (!canPlay() || Math.abs(top - run.top) > 2)) finish();
+    const { cue, end } = approach(top, height);
+    if (canPlay() && (run || (top >= cue - height * .25 && top < end - 1))) {
+      listeners ??= capturePageGesture(canBegin, begin, interrupt);
+    } else {
+      listeners?.abort();
+      listeners = undefined;
+    }
+  });
+
+  for (const controls of [previous, scene].flatMap(plate => [...plate.querySelectorAll('.plate-controls')])) {
+    for (const event of ['focusin', 'pointerdown', 'input']) controls.addEventListener(event, finish);
+  }
+  for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, finish);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) finish(); });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) finish(); });
 }
 
 function watchCounting(previous, scene) {
