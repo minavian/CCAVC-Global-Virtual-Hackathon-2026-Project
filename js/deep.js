@@ -374,7 +374,7 @@
   }
 
   // ---------- 9. Why metal fights back ----------
-  function traceField(coils, seeds, limit) {
+  function traceField(coils, seeds, ceiling) {
     const field = (rho, z) => {
       let hr = 0, hz = 0;
       for (const [a, current, z0] of coils) { const [r1, z1] = physics.loopField(a, current, z0, rho, z); hr += r1; hz += z1; }
@@ -386,11 +386,16 @@
       for (let n = 0; n < 700; n++) {
         const [hr, hz] = field(rho, z), m = Math.hypot(hr, hz) || 1, st = .0014;
         const [hr2, hz2] = field(rho + hr / m * st / 2, z + hz / m * st / 2), m2 = Math.hypot(hr2, hz2) || 1;
-        const nz = z + hz2 / m2 * st;
+        const nr = rho + hr2 / m2 * st, nz = z + hz2 / m2 * st;
+        if (nz >= ceiling) {
+          const fraction = (ceiling - z) / (nz - z);
+          pts.push([rho + (nr - rho) * fraction, ceiling]);
+          break;
+        }
         if (z > 0 && nz <= 0 || z < 0 && nz >= 0) crossed++;
-        rho += hr2 / m2 * st; z = nz;
+        rho = nr; z = nz;
         pts.push([rho, z]);
-        if (crossed >= 2 || !limit(rho, z)) break;
+        if (crossed >= 2 || Math.abs(rho) >= .09 || z <= -.03) break;
       }
       return pts;
     });
@@ -401,31 +406,32 @@
     const strength = document.getElementById('s9-strength'), tuning = document.getElementById('s9-tuning');
     const park = Number(metal.getAttribute('aria-valuemax')), restY = 68, d = .02, a = physics.READERS.pad.radius;
     const card = physics.TAGS.card.radius;
-    let value = park, model, scale, coilY, metalY = restY, pointer = null, grabOffset, travel;
+    let gapMm = park, value = park, model, scale, coilY, metalY = restY, pointer = null, grabOffset, travel;
     const heightAt = mm => coilY - (d + mm / 1000) * scale;
 
-    function positionMetal(y = value === park ? restY : heightAt(value)) {
+    function positionMetal(y = gapMm === park ? restY : heightAt(gapMm)) {
       metalY = y;
       metal.style.setProperty('--s9-metal-y', `${y}px`);
     }
 
     function setGap(mm) {
-      if (mm === value) return;
-      value = mm;
-      const label = mm === park ? 'No metal' : `Metal ${mm} mm behind the card`;
-      metal.setAttribute('aria-valuenow', mm);
+      gapMm = mm;
+      scene.dirty = true;
+      const displayed = Math.round(mm);
+      if (displayed === value) return;
+      value = displayed;
+      const label = value === park ? 'No metal' : `Metal ${value} mm behind the card`;
+      metal.setAttribute('aria-valuenow', value);
       metal.setAttribute('aria-valuetext', label);
       distance.textContent = label;
-      action.textContent = mm === park ? 'Bring metal closer' : 'Move metal away';
-      figure.classList.toggle('has-metal', mm !== park);
-      scene.dirty = true;
+      action.textContent = value === park ? 'Bring metal closer' : 'Move metal away';
+      figure.classList.toggle('has-metal', value !== park);
     }
 
     function followPlate(y) {
-      const mm = y <= restY + .5 ? park : clamp(Math.round(((coilY - y) / scale - d) * 1000), 1, park - 1);
+      const mm = y <= restY + .5 ? park : clamp(((coilY - y) / scale - d) * 1000, 1, park - 1);
       setGap(mm);
       positionMetal(y);
-      scene.dirty = true;
     }
 
     function stopTravel() {
@@ -447,20 +453,19 @@
         } else {
           const t = progress * progress * (3 - 2 * progress);
           followPlate(travel.from + (end - travel.from) * t);
-          p.dirty = true;
         }
       }
-      if (model?.value !== value) {
-        const gap = value === park ? null : value / 1000;
+      if (model?.gapMm !== gapMm) {
+        const gap = gapMm === park ? null : gapMm / 1000;
         const coils = [[a, 1, 0]];
         if (gap !== null) coils.push([a, -1, 2 * (d + gap)]);
-        const paths = traceField(coils, [.3, .5, .68, .82, .93].map(f => [f * a, 0]),
-          (rho, z) => Math.abs(rho) < .09 && z > -.03 && z < .1 && (gap === null || z < d + gap));
+        const ceiling = gap === null ? .1 : Math.min(.1, d + gap);
+        const paths = traceField(coils, [.3, .5, .68, .82, .93].map(f => [f * a, 0]), ceiling);
         const lines = paths.map(points => {
           const through = points.some(([rho, z], i) => i > 0 && (points[i - 1][1] - d) * (z - d) <= 0 && Math.abs(rho) < card);
           return { points, color: through ? COPPER : FAINT };
         });
-        model = { value, lines };
+        model = { gapMm, lines };
         const s = physics.solve({ tag: 'card', reader: 'pad', distance: d, metal: gap });
         strength.textContent = `${s.field.toFixed(2)} A/m`;
         tuning.textContent = si(s.resonance, 'Hz', 4);
@@ -475,7 +480,7 @@
       ctx.save();
       if (value !== park) {
         // Hide any integration step that would draw a line through the conductive sheet.
-        const edge = pointer !== null || travel ? metalY : heightAt(value);
+        const edge = pointer !== null || travel ? metalY : heightAt(gapMm);
         ctx.beginPath();
         ctx.rect(0, edge - 2, p.w, p.h);
         ctx.clip();
@@ -510,7 +515,6 @@
       event.preventDefault();
       stopTravel();
       setGap(clamp(value + steps[event.key], 1, park));
-      scene.dirty = true;
     });
     metal.addEventListener('pointerdown', event => {
       if (!event.isPrimary || event.button !== 0 || !scale) return;

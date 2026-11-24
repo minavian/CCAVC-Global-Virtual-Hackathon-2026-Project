@@ -1167,9 +1167,10 @@ function watchMetal(previous, plate) {
 
 function watchPauses(previous, plate) {
   const chapter = plate.closest('.deep');
+  const root = document.documentElement;
   const metal = previous.querySelector('#s9-metal'), metalAction = previous.querySelector('#s9-metal-action');
   const surface = metal.querySelector('.s9-metal-surface');
-  const field = previous.querySelector('#s9-chart');
+  const figure = previous.querySelector('#s9-field');
   const oldWords = previous.querySelector('.plate-words'), words = plate.querySelector('.plate-words');
   const previousTitle = previous.querySelector('h3'), title = plate.querySelector('#s10-title');
   const partLink = title.querySelector('#s10-pauses');
@@ -1181,41 +1182,58 @@ function watchPauses(previous, plate) {
   echo.className = 's10-title-echo';
   echo.setAttribute('aria-hidden', 'true');
   echo.textContent = previousTitle.textContent;
-  let layout, lastTop, armed, active, from;
+  const end = 2800, readHold = 1000;
+  let layout, previousTop, targetTop, approach, lockedAt, listeners, frame;
+  let armed = false;
+  const canPlay = () => !reducedMotion.matches && !document.hidden;
+  const active = () => lockedAt !== undefined;
 
-  function measure(top, height) {
-    const oldTitle = bounds(previousTitle, top);
-    const newTitle = bounds(title, top);
-    const middle = (oldTitle.y + oldTitle.h + newTitle.y - height) / 2;
-    const textStart = middle - height * .085, textEnd = middle + height * .15;
-    const to = bounds(track, top), chart = bounds(plot, top);
-    const carryStart = Math.max(middle - height * .17, bounds(field, top).y - height * .22);
-    const carryEnd = Math.max(carryStart + height * .26, to.y + to.h / 2 - height * .70);
-    // Start once both flat traces fit on screen, even in the taller desktop plot.
-    const plotStart = chart.y + chart.h * .56 - height * .96, plotEnd = chart.y - height * .26;
-    return { middle, textStart, textEnd, to, carryStart, carryEnd, plotStart, plotEnd,
-      oldWidth: oldWords.clientWidth, newWidth: words.clientWidth, width: innerWidth,
-      stacked: matchMedia('(max-width: 860px)').matches,
-      start: Math.min(textStart, carryStart, plotStart), end: Math.max(textEnd, carryEnd, plotEnd) };
-  }
-
-  function clearPiece() {
-    if (!piece.isConnected) return;
+  function clearMotion() {
     piece.remove();
-    surface.style.removeProperty('opacity');
-    metalAction.style.removeProperty('opacity');
-  }
-
-  function settle() {
-    if (!active) return;
-    active = false;
-    clearPiece();
     echo.remove();
+    for (const node of [surface, plot]) node.style.removeProperty('opacity');
+    for (const node of [figure, oldWords]) {
+      node.style.removeProperty('transform');
+      node.style.removeProperty('opacity');
+    }
     slider.style.removeProperty('--s10-track-opacity');
     for (const copy of [oldWords, words]) {
       for (const name of ['wipe', 'blur', 'shift']) copy.style.removeProperty(`--s10-word-${name}`);
     }
     plot.setPauseHandoff?.(1, 1, 1);
+  }
+
+  function skip() {
+    armed = false;
+    plate.classList.remove('s10-awaiting');
+    if (!active()) return;
+    cancelAnimationFrame(frame);
+    clearMotion();
+    lockedAt = undefined;
+    root.classList.remove('deep-pauses-hold');
+    scheduleMotion();
+  }
+
+  function interrupt(direction, event) {
+    if (!active()) return;
+    const origin = layout.origin;
+    skip();
+    if (direction === -1 && event?.cancelable) {
+      event.preventDefault();
+      scrollTo({ top: origin, behavior: 'instant' });
+    }
+  }
+
+  function ready(top, height) {
+    return top >= approach - height * .065 && top < targetTop - 1;
+  }
+
+  function canBegin(event, direction) {
+    if (direction < 0 || !event.cancelable || event.defaultPrevented || !canPlay() || !armed || active() ||
+      root.classList.contains('deep-metal-hold')) return false;
+    if (ready(scrollY, innerHeight)) return true;
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
+    return event.type === 'wheel' && scrollY + event.deltaY * unit >= targetTop;
   }
 
   function wipeMask(width, progress, entering) {
@@ -1230,83 +1248,117 @@ function watchPauses(previous, plate) {
     copy.style.setProperty('--s10-word-shift', shift ? `0 ${shift}px` : 'none');
   }
 
-  function carry(top) {
-    const { to, carryStart, carryEnd, stacked, width } = layout;
-    const progress = stage(carryStart, carryEnd, top);
-    const arrival = ease(.92, 1, progress);
+  function carry(elapsed) {
+    if (!piece.isConnected) return;
+    const { from, to, stacked, width } = layout;
+    const progress = stage(170, 1430, elapsed);
+    const arrival = ease(.90, 1, progress);
     slider.style.setProperty('--s10-track-opacity', arrival);
-    if (progress === 0 || progress === 1) return clearPiece();
-
-    if (!piece.isConnected) {
-      from = bounds(surface, top);
-      piece.style.width = `${from.w}px`;
-      piece.style.height = `${from.h}px`;
-      chapter.append(piece);
-      surface.style.opacity = '0';
-    }
     const travel = ease(0, .97, progress);
-    // Turn edge-on at the mobile gutter so the plate can pass beside the words.
+    // On small screens the sheet turns edge-on to pass beside the text.
     const tuck = stacked ? ease(.08, .4, travel) * (1 - ease(.62, .96, travel)) : 0;
-    // On desktop, drop past the copy before crossing into the control's column.
-    const across = stacked ? travel : ease(.56, .97, progress);
-    const down = stacked ? travel : ease(0, .68, progress);
     const margin = width - to.x - to.w;
     const edgeWidth = Math.max(24, margin * .68);
-    const x = mix(mix(from.x + from.w / 2, to.x + to.w / 2, across), width - edgeWidth / 2 - 4, tuck);
-    const y = mix(from.y + from.h / 2 - carryStart, to.y + to.h / 2 - top, down);
+    const x = mix(mix(from.x + from.w / 2, to.x + to.w / 2, travel), width - margin / 2, tuck);
+    const y = mix(from.y + from.h / 2, to.y + to.h / 2 - scrollY, travel);
     const w = mix(mix(from.w, to.w, travel), edgeWidth, tuck);
     const h = mix(from.h, to.h, travel);
     const angle = -5 * Math.sin(Math.PI * travel);
     piece.style.transform = `translate(${x}px, ${y}px) rotate(${angle}deg) scale(${w / from.w}, ${h / from.h}) translate(-50%, -50%)`;
     piece.style.opacity = 1 - arrival;
-    metalAction.style.opacity = 1 - .45 * ease(0, .35, progress);
+    if (progress === 1) piece.remove();
   }
 
-  watchScrollMotion((top, height, needsMeasure) => {
-    if (reducedMotion.matches || document.hidden) return settle();
-    if (needsMeasure || !layout) {
-      settle();
-      layout = measure(top, height);
-      armed = top <= layout.start;
-      lastTop = top;
-    }
-    const jumped = Math.abs(top - lastTop) > height * .55;
-    const { start, end, middle, textStart, textEnd, oldWidth, newWidth, plotStart, plotEnd } = layout;
-    lastTop = top;
-    if (top <= start) {
-      armed = true;
-      return settle();
-    }
-    if (jumped || document.activeElement === cap || document.activeElement === partLink) armed = false;
-    if (!armed || top >= end || chapter.querySelector('.s9-plot-copy')) return settle();
-
-    active = true;
-    const overlap = ease(middle - height * .065, middle, top) * (1 - ease(middle, middle + height * .065, top));
-    const incoming = ease(middle - height * .075, textEnd, top);
-    wipe(oldWords, oldWidth, ease(textStart, middle + height * .08, top), false, 1.35 * overlap,
-      Math.min(42, height * .045) * ease(textStart, middle, top));
-    wipe(words, newWidth, incoming, true, 1.35 * overlap, -Math.min(72, height * .08) * (1 - ease(middle, textEnd, top)));
+  function paint(elapsed) {
+    const overlap = ease(390, 720, elapsed) * (1 - ease(720, 1190, elapsed));
+    const incoming = ease(290, 1380, elapsed);
+    wipe(oldWords, layout.oldWidth, ease(220, 1180, elapsed), false, 1.35 * overlap, 22 * ease(230, 1110, elapsed));
+    wipe(words, layout.newWidth, incoming, true, 1.35 * overlap, -28 * (1 - ease(550, 1380, elapsed)));
     if (overlap) {
       if (!echo.isConnected) title.append(echo);
-      echo.style.maskImage = wipeMask(newWidth, incoming, false);
+      echo.style.maskImage = wipeMask(layout.newWidth, incoming, false);
       echo.style.opacity = .22 * overlap;
     } else echo.remove();
-    carry(top);
-    const progress = stage(plotStart, plotEnd, top);
-    plot.setPauseHandoff?.(ease(0, .28, progress), ease(.28, .81, progress), ease(.81, 1, progress));
+    oldWords.style.opacity = 1 - ease(710, 1020, elapsed);
+    figure.style.opacity = 1 - ease(180, 820, elapsed);
+    carry(elapsed);
+    const sweep = ease(960, 1670, elapsed);
+    plot.style.opacity = sweep === 0 ? '0' : '1';
+    plot.setPauseHandoff?.(sweep, ease(1670, 2260, elapsed), ease(2300, end, elapsed));
+  }
+
+  function begin(event) {
+    if (!plot.setPauseHandoff) return;
+    event.preventDefault();
+    const origin = scrollY, height = innerHeight;
+    if (!ready(origin, height)) {
+      scrollTo({ top: approach, behavior: 'instant' });
+      return;
+    }
+    const old = bounds(surface, origin), to = bounds(track, origin), chart = bounds(plot, origin);
+    const extra = Math.max(0, Math.min(chart.y + chart.h + 8 - targetTop - height, plate.offsetHeight - height));
+    layout = { origin, from: { ...old, y: old.y - origin }, to, oldWidth: oldWords.clientWidth, newWidth: words.clientWidth,
+      width: innerWidth, stacked: Math.abs(bounds(figure, origin).x - bounds(words, origin).x) < 1 };
+    piece.style.width = `${old.w}px`;
+    piece.style.height = `${old.h}px`;
+    root.classList.add('deep-pauses-hold');
+    plate.classList.add('s10-entering');
+    scrollTo({ top: targetTop, behavior: 'instant' });
+    lockedAt = scrollY;
+    const pin = `translateY(${lockedAt - origin}px)`;
+    oldWords.style.transform = pin;
+    figure.style.transform = pin;
+    surface.style.opacity = 0;
+    chapter.append(piece);
+    paint(0);
+    plate.classList.remove('s10-awaiting');
+
+    const started = performance.now();
+    let finished = false;
+    function tick(now) {
+      const elapsed = now - started;
+      const destination = targetTop + extra * ease(1320, 1650, elapsed);
+      if (Math.abs(destination - scrollY) >= .5) {
+        scrollTo({ top: destination, behavior: 'instant' });
+        lockedAt = scrollY;
+      }
+      if (elapsed < end) paint(elapsed);
+      else if (!finished) {
+        clearMotion();
+        finished = true;
+      }
+      if (elapsed >= end + readHold) return skip();
+      frame = requestAnimationFrame(tick);
+    }
+    frame = requestAnimationFrame(tick);
+  }
+
+  watchScrollMotion((top, height) => {
+    previousTop = bounds(previous, top).y;
+    targetTop = bounds(plate, top).y;
+    const visible = bounds(figure, top);
+    approach = Math.min(targetTop - 2, Math.max(previousTop, visible.y + visible.h + 8 - height));
+    if (!canPlay() || (active() && Math.abs(top - lockedAt) > 2)) skip();
+    if (!active()) {
+      plate.classList.remove('s10-entering');
+      if (!canPlay() || top >= targetTop - 1 || plate.contains(document.activeElement)) armed = false;
+      else if (top >= previousTop - height * .2 && top <= targetTop - height * .55) armed = true;
+      plate.classList.toggle('s10-awaiting', armed && top < targetTop - 1);
+    }
+    if (canPlay() && (active() || (armed && top >= previousTop - height * .075 && top < targetTop - 1))) {
+      listeners ??= capturePageGesture(canBegin, begin, interrupt);
+    } else {
+      listeners?.abort();
+      listeners = undefined;
+    }
   });
 
   for (const control of [metal, metalAction, partLink, cap]) {
-    for (const event of ['focus', 'pointerdown', 'input']) control.addEventListener(event, () => {
-      if (active) armed = false;
-      settle();
-    });
+    for (const event of ['focus', 'pointerdown', 'input']) control.addEventListener(event, skip);
   }
-  const contentSize = new ResizeObserver(() => {
-    layout = null;
-    scheduleMotion();
-  });
-  for (const node of [oldWords, words, field, plot]) contentSize.observe(node);
+  for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, skip);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) skip(); });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) skip(); });
 }
 
 function watchPartTwo(source, part) {
