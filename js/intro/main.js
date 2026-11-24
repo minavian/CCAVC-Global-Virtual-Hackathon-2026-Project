@@ -45,7 +45,7 @@ function intro(experience) {
   const status = $('.status');
   const scrollGuide = $('.scroll-guide');
   const labels = [$('.antenna-label'), $('.chip-label')];
-  const panels = Object.fromEntries(['meaning', 'definition', 'cinema-title', 'question', 'instruction']
+  const panels = Object.fromEntries(['meaning', 'definition', 'question', 'instruction']
     .map(name => [name, $('.' + name)]));
   const reduce = matchMedia('(prefers-reduced-motion: reduce)');
   const hud = $('.hud');
@@ -273,8 +273,6 @@ function intro(experience) {
     panels.meaning.style.opacity = visual.meaning;
     panels.definition.style.opacity = visual.definition;
     panels.definition.style.translate = `0 ${(1 - visual.definition) * 12}px`;
-    panels['cinema-title'].style.opacity = visual.cinema;
-    panels['cinema-title'].style.scale = .94 + visual.cinema * .06;
     panels.question.style.opacity = visual.question;
     panels.question.style.translate = `0 ${(1 - visual.question) * 14}px`;
     stage.classList.toggle('show-callouts', visual.callouts > .001);

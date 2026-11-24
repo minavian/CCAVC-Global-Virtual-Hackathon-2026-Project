@@ -11,7 +11,7 @@
   const reduce = matchMedia('(prefers-reduced-motion: reduce)');
   // The card intro's reading holds, in screens of its scroll (js/intro/timeline.js
   // scrollFrames): the middle of each, and how long to stay (seconds).
-  const INTRO_HOLDS = [[.64, 2.4], [1.68, 2.6], [2.23, 1.6], [3.43, 3], [5.1, 3.2], [6.67, 2.6], [8.3, 3], [9.8, 0]];
+  const INTRO_HOLDS = [[.64, 2.4], [1.68, 2.6], [2.23, 1.6], [3.43, 3], [5.1, 3.2], [7.63, 3], [9.1, 0]];
   // After the landing's opening (js/landing.js announces its end), a little longer while the
   // taps' and the card intro's 3D load behind it (they wait for the opening to end).
   const LOADING = 2.6;

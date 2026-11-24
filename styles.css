@@ -376,8 +376,8 @@ html[data-intro] .stage-light { opacity: 0; }
   --brass: #80623d;
   --night: #111111;
   --light: #fafaf8;
-  /* Instrument Serif: a tall, narrow display serif with a real italic (for "work"). */
-  --display: "Instrument Serif", Georgia, serif;
+  /* A serif for the section's title when it shows on its own (no JavaScript). */
+  --display: Georgia, "Times New Roman", serif;
   position: relative;
   z-index: 5;
   background: var(--paper);
@@ -414,19 +414,12 @@ html[data-intro] .stage-light { opacity: 0; }
 
 .intro-stage :where(h1, h2, p) { margin: 0; }
 .intro .story-title { font: 400 clamp(4rem, 16vw, 9rem)/1 var(--display); }
-.intro :is(.definition, .question, .instruction, .cinema-title) { margin-block: 2rem; }
+.intro :is(.definition, .question, .instruction) { margin-block: 2rem; }
 .intro .definition-lead { max-width: 30ch; font-size: clamp(2rem, 6vw, 4rem); font-weight: 750; line-height: 1; }
 .intro-stage .aside { margin-top: .7em; font-size: clamp(1.1rem, 2.1vw, 1.65rem); font-weight: 520; }
 .intro .question { max-width: 30ch; font-size: clamp(1.5rem, 4vw, 2.75rem); font-weight: 720; line-height: 1.13; }
 .intro .instruction h2 { font-size: clamp(2.75rem, 7vw, 6rem); letter-spacing: -.04em; line-height: .95; font-weight: 770; }
 .intro-stage #drag-instruction { margin-top: .85rem; font-size: clamp(1rem, 2.25vw, 1.55rem); font-weight: 580; }
-.intro .cinema-title {
-  font-family: var(--display);
-  font-size: clamp(3rem, min(14.1vw, 25dvh), 14rem);
-  font-weight: 400;
-  letter-spacing: -.02em;
-  line-height: .96;
-}
 .intro .card-poster { position: relative; width: min(70vw, 24rem); }
 .intro .card-poster img { display: block; width: 100%; height: auto; }
 .intro .card-poster img + img { position: absolute; inset: 0; opacity: var(--xray, 0); }
@@ -498,7 +491,7 @@ html[data-intro] .stage-light { opacity: 0; }
   clip-path: inset(0 var(--conceal, 100%) 0 0);
 }
 
-.intro.enhanced :is(.meaning, .definition, .cinema-title, .question, .instruction) {
+.intro.enhanced :is(.meaning, .definition, .question, .instruction) {
   position: absolute;
   margin: 0;
   opacity: 0;
@@ -525,17 +518,6 @@ html[data-intro] .stage-light { opacity: 0; }
   font-weight: 760;
   line-height: .99;
   text-wrap: pretty;
-}
-
-.intro.enhanced .cinema-title {
-  z-index: 1;
-  width: calc(100% - 2 * var(--gutter));
-  left: 50%;
-  top: 26%;
-  translate: -50% -50%;
-  text-align: center;
-  white-space: nowrap;
-  color: var(--ink);
 }
 
 .intro.enhanced :is(.card-shadow, .card-poster, .reader, .drag-card) {
@@ -1174,15 +1156,6 @@ html[data-intro] .stage-light { opacity: 0; }
   .intro.enhanced .definition { width: calc(100% - 2 * var(--gutter)); }
   .intro.enhanced .definition-lead { max-width: 19ch; font-size: clamp(1.55rem, min(9.7vw, 7dvh), 4.8rem); }
   .intro .meaning { max-width: min(27ch, 75vw); }
-  .intro.enhanced .cinema-title {
-    top: 50%;
-    height: 50dvh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: space-between;
-    font-size: clamp(3.2rem, min(20vw, 15.5dvh), 8.5rem);
-  }
   .intro.enhanced .question {
     width: min(82vw, 25rem);
     bottom: 19%;
