@@ -179,6 +179,7 @@ export function buildEffects() {
   // The phone's rings start the size of its coil, and reach the card's coil in its shape.
   const PHONE_CARD = { ...AT_CARD, sx: .0402 / PHONE_HALF, sy: .0246 / PHONE_HALF };
   const phoneCard = { ...PHONE_CARD };
+  const PHONE_SPREAD = { x: 0, y: 0, sx: 1.22, sy: 1.22, spin: 0 }, phoneLanding = { ...PHONE_SPREAD };
   const landing = { ...AT_CARD }, cardShape = { ...AT_CARD };
   // How far the beads on each wire have run. It adds up frame by frame, so a change of
   // speed or of direction never makes them jump: they slow, stop and turn round.
@@ -270,9 +271,14 @@ export function buildEffects() {
     // Where the rings land: spread while the card is in the hand, on the card's coil once it
     // is down, blending between the two as it docks so nothing jumps.
     // The card's coil as the rings meet it: narrower when the card is turned away (the lab).
-    cardShape.sy = AT_CARD.sy * Math.max(.05, Math.cos(b.tilt || 0));
-    phoneCard.sy = PHONE_CARD.sy * Math.max(.05, Math.cos(b.tilt || 0));
-    const to = blendShape(SPREAD, cardShape, smoothstep(0, 1, b.dock), landing);
+    const facing = Math.abs(Math.cos(b.tilt || 0));
+    cardShape.sy = AT_CARD.sy * Math.max(.05, facing);
+    phoneCard.sy = PHONE_CARD.sy * Math.max(.05, facing);
+    // The rings take the card's coil's shape only as far as the card faces the reader: turned
+    // side-on, little of the field goes through its coil, so they keep spreading past it rather
+    // than closing onto it (they used to land on it even at 80°).
+    const to = blendShape(SPREAD, cardShape, smoothstep(0, 1, b.dock) * facing, landing);
+    const phoneTo = blendShape(PHONE_SPREAD, phoneCard, facing, phoneLanding);
     // Which reader (the lab): the pad's field fades out over the first half of the swap, the
     // phone's comes in over the second, so the two never show together.
     const phone = b.phone || 0, padShare = 1 - smoothstep(0, .5, phone), phoneShare = smoothstep(.5, 1, phone);
@@ -290,7 +296,7 @@ export function buildEffects() {
     const paper = 1 - (b.dark || 0), halo = b.dark || 0;
     const upLevel = b.field * (said?.dir > 0 ? .12 + .88 * amp : 1) * (1 - .5 * paper);
     stream(up, t, upLevel * padShare, padFrom, to, COIL_Z + .0004 + padShift.z, top, halo, upFade);
-    stream(phoneUp, t, upLevel * phoneShare, phoneFrom, phoneCard, COIL_Z + .0006 + phoneShift.z, top, halo, phoneUpFade);
+    stream(phoneUp, t, upLevel * phoneShare, phoneFrom, phoneTo, COIL_Z + .0006 + phoneShift.z, top, halo, phoneUpFade);
     // Down: the answer, from the card's coil to the reader's. It swells each time the card
     // closes its switch.
     // (Once the answer has landed, full strength: then only a still frame, with reduced
