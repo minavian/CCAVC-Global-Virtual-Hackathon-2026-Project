@@ -1008,6 +1008,14 @@ html[data-intro] .stage-light { opacity: 0; }
 .intro .try-control output { font: 650 .84rem "Inter Tight", system-ui, sans-serif; color: #ffc56b; font-variant-numeric: tabular-nums; }
 .intro .try-control input { grid-column: 1 / -1; width: 100%; margin: .1rem 0 0; accent-color: #ffb52e; height: 1.25rem; cursor: pointer; }
 /* Under each slider: where along it the chip would wake (amber), inset to the thumb's travel. */
+/* On the panel's entrance the amber lines sweep in from the left, one slider after the other. */
+.intro .try.is-shown .try-zone { animation: zone-in .7s cubic-bezier(.2, .7, .2, 1) both; }
+.intro .try.is-shown .try-control:nth-child(2) .try-zone { animation-delay: .06s; }
+.intro .try.is-shown .try-control:nth-child(3) .try-zone { animation-delay: .12s; }
+.intro .try.is-shown .try-control:nth-child(4) .try-zone { animation-delay: .18s; }
+.intro .try.is-shown .try-control:nth-child(5) .try-zone { animation-delay: .24s; }
+@keyframes zone-in { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+@media (prefers-reduced-motion: reduce) { .intro .try.is-shown .try-zone { animation: none; } }
 .intro .try-zone { grid-column: 1 / -1; display: block; height: 3px; margin: -.15rem .5rem 0; border-radius: 2px; background: rgba(255, 255, 255, .09); }
 .intro .try-legend { display: flex; align-items: center; gap: .45rem; margin: -.15rem 0 0; font-size: .7rem; color: rgba(244, 241, 234, .6); }
 .intro .try-legend i { width: 1.4rem; height: 3px; border-radius: 2px; background: rgba(255, 181, 46, .9); }

@@ -720,12 +720,16 @@ function intro(experience) {
     const need = (lab.m.needs * 1000).toFixed(1);
     const line = lab.m.limited ? `${v.watts.toFixed(1)} mW, its limiter holds 3.3 V` : `${v.watts.toFixed(1)} mW, needs ${need} mW`;
     if (watts.textContent !== line) watts.textContent = line;
-    // The chart's glide, at the same time.
+    // The chart's entrance, and its glide, at the same time.
+    if (lab.reveal) {
+      paintPlot();
+      if (performance.now() - lab.reveal > 1000) { lab.reveal = null; paintPlot(); }
+    }
     if (lab.morph) {
       paintPlot();
       if (performance.now() - lab.morph.start > 400) { lab.morph = null; paintPlot(); }
     }
-    return moving || Boolean(lab.morph);
+    return moving || Boolean(lab.morph) || Boolean(lab.reveal);
   }
 
   // The chart: the voltage at the chip across distance or across tuning, everything else as
@@ -792,25 +796,29 @@ function intro(experience) {
       g.lineWidth = 1.2;
       g.setLineDash([3, 3]);
       g.beginPath();
-      pts.forEach(([x, v], i) => (i ? g.lineTo(X(x), Y(v)) : g.moveTo(X(x), Y(v))));
+      pts.slice(0, Math.max(1, Math.ceil(pts.length * (lab.reveal ? smoother(0, 1, (performance.now() - lab.reveal) / 800) : 1))))
+        .forEach(([x, v], i) => (i ? g.lineTo(X(x), Y(v)) : g.moveTo(X(x), Y(v))));
       g.stroke();
       g.setLineDash([]);
       const [x0, v0] = pts[0];
       g.fillStyle = 'rgba(244,241,234,.6)';
       g.fillText(lab.other.reader === 'phone' ? 'phone' : 'card reader', X(x0) + 3, Math.min(H - bottom - 3, Y(Math.min(v0, yMax)) + 11));
     }
+    // On the panel's entrance the curves draw in from the left over 0.8 s, then the dot appears.
+    const drawn = lab.reveal ? smoother(0, 1, (performance.now() - lab.reveal) / 800) : 1;
+    const shownTo = Math.ceil(points.length * drawn);
     // The curve: warm where the chip wakes, dim where it does not.
     g.lineWidth = 2;
-    for (let i = 1; i < points.length; i++) {
+    for (let i = 1; i < shownTo; i++) {
       const [a, va] = points[i - 1], [b, vb] = points[i];
       // The answer in blue, its colour in the close-up; nothing where the chip sleeps.
       g.strokeStyle = answer ? (va > 0 && vb > 0 ? '#4a93ff' : 'rgba(74,147,255,.25)') : (va + vb) / 2 >= 2 ? '#ffb52e' : 'rgba(255,181,46,.35)';
       g.beginPath(); g.moveTo(X(a), Y(va)); g.lineTo(X(b), Y(vb)); g.stroke();
     }
-    // Where the setting is now.
-    const nowX = now.dot.x, nowV = now.dot.v;
+    // Where the setting is now (once the curve is in, growing to its size).
+    const nowX = now.dot.x, nowV = now.dot.v, dotSize = 4 * smoother(.85, 1, drawn);
     g.fillStyle = lab.m.awake ? '#ffffff' : '#ff8f7a';
-    g.beginPath(); g.arc(X(nowX), Y(nowV), 4, 0, Math.PI * 2); g.fill();
+    if (dotSize > .2) { g.beginPath(); g.arc(X(nowX), Y(nowV), dotSize, 0, Math.PI * 2); g.fill(); }
     // Above the scale (very close, or a strong reader): a small peak over the dot, and the value.
     if (nowV > yMax) {
       const x = X(nowX);
@@ -1010,7 +1018,15 @@ function intro(experience) {
     const labShown = inLab && b.panel > .5;
     if (labUi.panel.hidden === labShown) {
       labUi.panel.hidden = !labShown;
-      if (labShown) requestAnimationFrame(() => { labUi.panel.classList.add('is-shown'); paintPlot(); });
+      if (labShown) {
+        // Its entrance: the readings count up from nothing, the chart's curves draw in from the
+        // left and then its dot appears, and the amber lines under the sliders sweep in (styles.css).
+        if (!reduce.matches) {
+          lab.tweens = { field: 0, volts: 0, reach: 0, answer: lab.targets?.answer === null ? null : 0, watts: 0 };
+          lab.reveal = performance.now();
+        }
+        requestAnimationFrame(() => { labUi.panel.classList.add('is-shown'); paintPlot(); });
+      }
       else labUi.panel.classList.remove('is-shown');
     }
     stage.classList.toggle('is-lab', inLab);
