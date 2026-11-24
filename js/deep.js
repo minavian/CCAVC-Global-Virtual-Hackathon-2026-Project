@@ -366,8 +366,8 @@
     const action = button.querySelector('.s8-cap-action');
     button.addEventListener('click', () => {
       const removed = button.toggleAttribute('data-removed');
-      action.textContent = removed ? 'Put back' : 'Lift out';
-      button.setAttribute('aria-label', removed ? 'Put back the capacitor' : 'Lift out the capacitor');
+      action.textContent = removed ? 'Reinsert' : 'Remove';
+      button.setAttribute('aria-label', removed ? 'Reinsert the capacitor' : 'Remove the capacitor');
       tuningScene.dirty = true;
     });
     reduced.addEventListener('change', () => { tuningScene.dirty = true; });

@@ -332,15 +332,15 @@ input.s7-track-copy {
   position: relative;
   border: 1px solid #a7805e;
   border-radius: 4px;
-  background: linear-gradient(#b99b7f, #b99b7f) center / 100% 1px no-repeat, #ebe3d6;
+  background: #eee7dc;
 }
 .s8-cap-seat::before {
   content: "";
   position: absolute;
-  inset-inline: 5px;
-  block-size: 13px;
-  border-inline: 10px solid #bba890;
-  border-radius: 2px;
+  inline-size: calc(42px * var(--s8-cap-size, .86) - 4px);
+  block-size: 10px;
+  border-inline: 6px solid #ad8862;
+  border-radius: 1px;
 }
 .s8-capacitor {
   display: block;
@@ -360,9 +360,10 @@ input.s7-track-copy {
 @media (prefers-reduced-motion: no-preference) {
   .s8-cap-lift { transition: transform .28s cubic-bezier(.24, .8, .32, 1); }
   .s8-cap-lift .s8-capacitor { transition: transform .15s ease-out; }
+  .s8-cap-seat::before { transition: inline-size .15s ease-out; }
 }
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
-  .s8-cap-toggle:not([data-removed]):hover .s8-cap-lift { transform: translateY(-4px); }
+  .s8-cap-toggle:not([data-removed]):hover .s8-cap-lift { transform: translateY(-2px); }
 }
 
 .s8-tags input { accent-color: var(--ink); }
