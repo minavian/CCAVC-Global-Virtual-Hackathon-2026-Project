@@ -360,7 +360,7 @@ export async function createCardScene(canvas) {
   card.add(fx.onCard);
   const warm = fx.WARM, cool = fx.COOL;
   // The reader's light: cool white at rest, blue while it reads, green once it has checked.
-  const idle = new THREE.Color(0xd8e6ff), reading = new THREE.Color(0x3f8cff), green = new THREE.Color(0x22c55e);
+  const idle = new THREE.Color(0xd8e6ff), reading = new THREE.Color(0x3f8cff), green = new THREE.Color(0x22c55e), red = new THREE.Color(0xef4444);
   const mixColor = new THREE.Color(), ledMix = new THREE.Color();
 
   let width, height, glass = -1, fade = -1, copperFade = -1;
@@ -580,7 +580,8 @@ export async function createCardScene(canvas) {
     // round between the two.
     readerPhase += dt * (1 - 2 * takingIn) * (b.readerPace ?? 1);
     let led = [idle, 1.1];
-    if (b.check > .01) led = [ledMix.copy(idle).lerp(green, b.check), 1.1 + b.check * 1.6];
+    if (b.deny > .01) led = [ledMix.copy(idle).lerp(red, b.deny), 1.1 + b.deny * 1.6];
+    else if (b.check > .01) led = [ledMix.copy(idle).lerp(green, b.check), 1.1 + b.check * 1.6];
     else if (b.read > .05) led = [ledMix.copy(idle).lerp(reading, b.read), 1.1 + b.read * 1.2];
     const readerCurrent = Math.max(sending, said ? b.read : 0);
     const padShift = { x: padOut * .15, z: -padOut * .012 }, phoneShift = { x: -(1 - phoneIn) * .17, z: -(1 - phoneIn) * .012 };
@@ -594,7 +595,7 @@ export async function createCardScene(canvas) {
       color: mixColor.copy(warm).lerp(cool, takingIn),
       // Its screen, lying under it, lights the table: blue while it takes the answer in, green
       // once it has read the card.
-      screen: b.check > .01 ? [green, b.check * 1.1] : [reading, b.read * .6 + b.thinking * .3],
+      screen: b.deny > .01 ? [red, b.deny * 1.1] : b.check > .01 ? [green, b.check * 1.1] : [reading, b.read * .6 + b.thinking * .3],
       thinking: b.thinking * (.6 + .4 * Math.sin(clock * Math.PI * 2 * 1.4)),
     });
     reader.set({

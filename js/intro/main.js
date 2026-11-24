@@ -9,8 +9,8 @@ import { autoplay } from './autoplay.js?v=15';
 import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose, clamp, ease, mix, measureStage, restingFrame, scrollTime } from './timeline.js?v=3';
 import { renderSignals } from './signals.js?v=2';
 import { ANSWER_AFTER, APPROACH_DETAIL, APPROACH_TEXT, ASK, SAMPLES_PER_BIT, CARD_ID, IDLE, LAB, LAST, NEAREST, REAL_MS, SHOTS, STEPS, TALK, approach, approachBand, approachView, centimetres,
-  checkByte, chipShare, hex, message, setCardId, talkLevels, view } from './cinema.js';
-import { LAB_START, PRESETS, READERS, clampSetting, curve, labLevels, measure as measureLab, parseId, startFor, status as labStatus, wakes, chipPower } from './lab-model.js';
+  checkByte, chipShare, hex, message, proofSeconds, proofTalk, setCardId, talkLevels, view } from './cinema.js';
+import { LAB_START, PRESETS, READERS, clampSetting, curve, labLevels, measure as measureLab, parseId, proofCode, startFor, status as labStatus, wakes, chipPower } from './lab-model.js';
 
 // Resolves once the landing's opening is over (js/landing.js), the visitor scrolls, or
 // `fallback` ms pass, whichever is first: the moment to load 3D without stuttering it.
@@ -75,7 +75,7 @@ function intro(experience) {
     readings: Object.fromEntries([...experience.querySelectorAll('.try-reading')].map(node => [node.dataset.reading, node])),
     inputs: Object.fromEntries([...experience.querySelectorAll('.try-controls input')].map(input => [input.name, input])),
     outputs: Object.fromEntries([...experience.querySelectorAll('.try-controls output')].map(output => [output.dataset.for, output])),
-    id: $('.try-id input'), check: $('.try-check b'), ask: $('.try-ask'), reset: $('.try-reset'), presets: $('.try-presets'),
+    id: $('.try-id input'), check: $('.try-check b'), ask: $('.try-ask'), prove: $('.try-prove'), reset: $('.try-reset'), presets: $('.try-presets'),
     readers: [...experience.querySelectorAll('.try-reader button')], driveLabel: $('.try-control-drive span'),
   };
   // Under each slider, a thin line: amber where along it the chip would wake, with everything
@@ -143,6 +143,10 @@ function intro(experience) {
   // question went out, and whether the chip was awake to answer it).
   const lab = { set: { ...LAB_START }, m: null, chart: 'distance', points: [], talk: null, dirty: true };
   const DEFAULT_ID = CARD_ID;
+  // The card's secret key, made up fresh for each visit (its bank holds a copy), and a copy's,
+  // which can't be the same: whoever copied the card read its ID, never its key.
+  const random = n => [...crypto.getRandomValues(new Uint8Array(n))];
+  const CARD_KEY = random(16), COPY_KEY = random(16);
   // Played by itself, the lab shows its controls at work: the card moved away until the chip
   // sleeps and back, turned side-on and back, then a metal plate slid behind it and away.
   // Keyframes: [seconds into the step, { setting }]; each value glides between its keyframes.
@@ -366,7 +370,7 @@ function intro(experience) {
         const label = document.createElement('span');
         label.textContent = byte.toString(16).toUpperCase().padStart(2, '0');
         label.style.left = `${(1 + 9 * k + 4) * SAMPLES_PER_BIT / length * 100}%`;
-        label.classList.toggle('is-check', dir < 0 && k === said.bytes.length - 1);
+        label.classList.toggle('is-check', dir < 0 && said.name === 'answer' && k === said.bytes.length - 1);
         return label;
       }));
     }
@@ -646,12 +650,13 @@ function intro(experience) {
     for (const button of labUi.presets.children) {
       const p = button.preset;
       const same = p && p.reader === s.reader && Math.abs(p.distance - s.distance) < .05 && Math.abs(p.angle - s.angle) < .5
-        && Math.round(p.metal) === Math.round(s.metal) && Math.abs(p.drive - s.drive) < .5 && Math.abs(p.tune - s.tune) < .01;
+        && Math.round(p.metal) === Math.round(s.metal) && Math.abs(p.drive - s.drive) < .5 && Math.abs(p.tune - s.tune) < .01
+        && Boolean(p.clone) === Boolean(s.clone);
       button.setAttribute('aria-pressed', String(Boolean(same)));
     }
     paintPlot();
-    labUi.ask.disabled = Boolean(lab.talk) || !m.on;
-    labUi.ask.title = m.on ? '' : 'The reader is off: no field to ask with.';
+    labUi.ask.disabled = labUi.prove.disabled = Boolean(lab.talk) || !m.on;
+    labUi.ask.title = labUi.prove.title = m.on ? '' : 'The reader is off: no field to ask with.';
   }
 
   // The readings' numbers, gliding to their targets (each frame while the lab shows).
@@ -772,15 +777,23 @@ function intro(experience) {
   }
 
   // Ask in the lab: the question goes out; the card answers only if its chip is awake.
-  function labAsk() {
+  function labAsk(proof = false) {
     // A reader that is off makes no field, so it has no way to ask.
     if (step !== LAB || lab.talk || !lab.m?.on) return;
-    lab.talk = { start: clock, answers: Boolean(lab.m?.awake), still: reduce.matches };
-    labUi.ask.disabled = true;
+    lab.talk = { start: clock, answers: Boolean(lab.m?.awake), still: reduce.matches, proof };
+    if (proof) {
+      // A random challenge, new every time; the card answers with the code from its key (a copy's
+      // key is wrong), and the bank works out what the right code would be, to compare.
+      const challenge = random(4);
+      lab.talk.after = proofTalk(challenge, proofCode(lab.set.clone ? COPY_KEY : CARD_KEY, challenge));
+      lab.talk.genuine = !lab.set.clone;
+    }
+    film.traceFor = null;   // a new message, even if it has the same name as the last
+    labUi.ask.disabled = labUi.prove.disabled = true;
     // With reduced motion the clock stands still: the outcome shows, still, for a while.
     if (reduce.matches) {
       const asked = lab.talk;
-      setTimeout(() => { if (lab.talk === asked) { lab.talk = null; labUi.ask.disabled = false; invalidate(); } }, 5000);
+      setTimeout(() => { if (lab.talk === asked) { lab.talk = null; labUi.ask.disabled = labUi.prove.disabled = false; invalidate(); } }, 5000);
     }
     invalidate();
   }
@@ -790,16 +803,28 @@ function intro(experience) {
     const t = lab.talk;
     if (!t) return null;
     const e = clock - t.start;
+    if (t.proof) {
+      // The proof: the challenge, then (only from an awake chip) the code.
+      const over = () => { lab.talk = null; labUi.ask.disabled = labUi.prove.disabled = false; return null; };
+      if (reduce.matches) return t.answers ? message('response', 99) : message('challenge', 99);
+      if (!t.answers || e < t.after) {
+        if (!t.answers && e > proofSeconds('challenge') + 4) return over();
+        return message('challenge', e);
+      }
+      const said = message('response', e - t.after);
+      if (said.landed >= 1 && e - t.after > proofSeconds('response') + 3.5) return over();
+      return said;
+    }
     if (reduce.matches) return t.answers ? message('answer', 99) : message('ask', 99);
     if (!t.answers || e < ANSWER_AFTER) {
       const said = message('ask', e);
       // No answer comes: the readout says so for a few seconds, then it is over.
-      if (!t.answers && e > TALK.ask.length / SAMPLES_PER_BIT * .15 + 4) { lab.talk = null; labUi.ask.disabled = false; return null; }
+      if (!t.answers && e > TALK.ask.length / SAMPLES_PER_BIT * .15 + 4) { lab.talk = null; labUi.ask.disabled = labUi.prove.disabled = false; return null; }
       return said;
     }
     const said = message('answer', e - ANSWER_AFTER);
     // Held 3.5 s after the answer is in, so "Verified" and the check mark can be read.
-    if (said.landed >= 1 && e - ANSWER_AFTER > TALK.answer.length / SAMPLES_PER_BIT * .15 + 3.5) { lab.talk = null; labUi.ask.disabled = false; return null; }
+    if (said.landed >= 1 && e - ANSWER_AFTER > TALK.answer.length / SAMPLES_PER_BIT * .15 + 3.5) { lab.talk = null; labUi.ask.disabled = labUi.prove.disabled = false; return null; }
     return said;
   }
 
@@ -837,7 +862,16 @@ function intro(experience) {
       if (plan.lab) {
         // The lab says what the setting does, or how the conversation is going.
         ({ text, detail } = labStatus(lab.set, lab.m));
-        if (lab.talk) {
+        if (lab.talk?.proof) {
+          const t = lab.talk, e = t.still ? 99 : clock - t.start, noun = READERS[lab.set.reader].noun;
+          const landed = b.message?.dir < 0 && b.message.landed >= 1;
+          if (e < proofSeconds('challenge')) { text = `The ${noun} asks: prove you’re real.`; detail = 'It sends a random number, new every time.'; }
+          else if (!t.answers) { text = 'No answer. The chip has no power.'; detail = 'It needs about 2 volts to wake.'; }
+          else if (e < t.after) { text = 'The chip works out a code.'; detail = 'From the number and its secret key.'; }
+          else if (!landed) { text = 'The card answers with its code.'; detail = 'Only the right key gives the right code.'; }
+          else if (t.genuine) { text = 'Genuine. The code matches.'; detail = 'The bank checks it with its copy of the key.'; }
+          else { text = 'Rejected: the code is wrong.'; detail = 'A copy has the ID, but not the key.'; }
+        } else if (lab.talk) {
           const e = lab.talk.still ? 99 : clock - lab.talk.start, asked = TALK.ask.length / SAMPLES_PER_BIT * .15;
           const noun = READERS[lab.set.reader].noun;
           if (e < asked) { text = `The ${noun} asks: who are you?`; detail = 'It flicks its field off and on.'; }
@@ -948,7 +982,7 @@ function intro(experience) {
     const said = b.message;
     if (docked && said?.started && (said.landed < 1 || reduce.matches)) {
       const asking = said.dir > 0;
-      const device = STEPS[step].lab && lab.set.reader === 'phone' ? 'Phone' : 'Reader';
+      const device = STEPS[step].lab && lab.set.reader === 'phone' ? 'Phone' : 'Reader';  // (the proof too)
       tag = {
         kind: asking ? 'ask' : 'answer', text: said.words,
         // (In the lab with the phone, the phone is the reader.)
@@ -1067,7 +1101,11 @@ function intro(experience) {
         const levels = { ...plan.levels, ...labLevels(lab.set, lab.m), reply: lab.talk?.answers && said?.dir < 0 ? 1 : 0 };
         // Once the whole answer is in, the reader confirms it, as in the tap's last step: the check
         // mark over it, the pad's light (or the phone's screen) turning green.
-        if (lab.talk?.answers && said?.dir < 0 && said.landed >= 1) levels.check = 1;
+        if (lab.talk?.answers && said?.dir < 0 && said.landed >= 1) {
+          // A proof's code that is wrong (a copy) is turned down: the light goes red, no check mark.
+          if (lab.talk.proof && !lab.talk.genuine) levels.deny = 1;
+          else levels.check = 1;
+        }
         goal = said ? talkLevels(levels, said) : levels;
         if (said && reduce.matches && said.dir < 0) goal = { ...goal, reply: 1 };
       }
@@ -1205,7 +1243,7 @@ function intro(experience) {
     step = clamp(index, 0, LAST);
     auto.held = auto.after = 0;
     // A conversation started in the lab ends when it is left.
-    if (lab.talk) { lab.talk = null; labUi.ask.disabled = false; }
+    if (lab.talk) { lab.talk = null; labUi.ask.disabled = labUi.prove.disabled = false; }
     // Reaching the lab, the phone (its second reader) loads in the background.
     if (step === LAB && available) scene.usePhone();
     // The card answers by itself, a moment after the step starts; the question waits for Ask.
@@ -1268,6 +1306,7 @@ function intro(experience) {
     if (bytes) labUi.id.value = hex(bytes);
   });
   labUi.ask.addEventListener('click', event => { if (event.isTrusted) takeOver(); labAsk(); });
+  labUi.prove.addEventListener('click', event => { if (event.isTrusted) takeOver(); labAsk(true); });
   labUi.reset.addEventListener('click', event => {
     if (event.isTrusted) takeOver();
     const bytes = parseId(DEFAULT_ID);
@@ -1330,6 +1369,7 @@ function intro(experience) {
       setLab: next => setLab(next),
       reader: reader => chooseReader(reader),
       ask: () => labAsk(),
+      prove: () => labAsk(true),
       shots: SHOTS,
       scene: () => scene,
     };

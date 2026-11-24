@@ -70,11 +70,13 @@ const WAKE = power(4);   // the old curve's wake, about 9% (only without the phy
 //   readerPace, cardPace: how fast the light runs round the reader's coil and the card's, as
 //   a share of a normal tap's (the lab's: a weak current runs slowly). phone: which reader the
 //   lab uses, the card reader (0) or a phone (1); it glides, so the two swap places smoothly.
+//   deny: the reader turning a copied card down (its light, or the phone's screen, goes red).
 export const IDLE = {
   dock: 0, gap: .034, card: 1, xray: 0, copper: 1, reader: 1, shell: 1,
   emit: 0, field: 0, receive: 0, power: 0, blink: 0, reply: 0, read: 0, thinking: 0,
   check: 0, page: 1, panel: 0, explain: 0, charge: 0, dark: 0,
   tilt: 0, metal: 0, plate: .02, shield: 0, falloff: 0, answerScale: 1, readerPace: 1, cardPace: 1, phone: 0,
+  deny: 0,
 };
 const DIM = .12;   // what is not being shown fades to this
 
@@ -222,6 +224,20 @@ export function setCardId(bytes) {
   CARD_ID = hex(bytes);
   TALK.answer = say(-1, 'ID ' + CARD_ID, [...bytes, checkByte(bytes)]);
 }
+// Proving it is genuine (the lab's "Prove it's real"): the reader sends a random challenge, four
+// bytes new every time, and the card answers with a code worked out from it and a secret key
+// that only it and its bank hold (lab-model.js `proofCode`). Both go on the air exactly like the
+// ID's frames, shown a little faster (PROOF_BIT seconds a bit), so the proof takes about 9 s.
+// Returns when the card's answer starts (seconds after the challenge starts).
+export const PROOF_BIT = .07;
+export function proofTalk(challenge, code) {
+  TALK.challenge = { ...say(1, 'Prove it: ' + hex(challenge), challenge), bitSeconds: PROOF_BIT };
+  TALK.response = { ...say(-1, 'Code ' + hex(code), code), bitSeconds: PROOF_BIT };
+  const bits = TALK.challenge.bits, wait = iso ? iso.answerDelay(bits[bits.length - 1]) : 300;
+  return (TALK.challenge.lastGap + wait) / BIT * PROOF_BIT;
+}
+export const proofSeconds = name => TALK[name] ? TALK[name].length / BIT * PROOF_BIT : 0;
+
 // The card answers the standard's wait after the reader's last gap (in samples: about 86 µs).
 const DELAY = iso ? iso.answerDelay(TALK.ask.bits[TALK.ask.bits.length - 1]) : 300;
 // As shown: seconds from the question's start to the answer's, on the same clock.
@@ -242,7 +258,7 @@ export const TALK_MS = {
 // to 1 just after. `realMs`: how far into the frame, in real time; `frameMs`: the whole frame.
 export function message(name, seconds) {
   const talk = TALK[name], { length, signal, soft, dir } = talk;
-  const n = seconds / BIT_SECONDS * BIT;
+  const n = seconds / (talk.bitSeconds ?? BIT_SECONDS) * BIT;
   const i = Math.floor(n), idle = dir > 0 ? 1 : 0;
   const at = values => (n < 0 || n >= length - 1 ? idle : values[i] + (values[i + 1] - values[i]) * (n - i));
   const now = at(soft);

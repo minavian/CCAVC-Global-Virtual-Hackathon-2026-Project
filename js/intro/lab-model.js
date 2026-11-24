@@ -12,8 +12,9 @@
 //   drive     the reader's power, % of normal (0 to 150)
 //   tune      the frequency the card's coil is tuned to, MHz (5 to 30; real cards: 13.56)
 //   reader    which reader: 'pad', a shop's card reader, or 'phone', a phone's NFC
+//   clone     the card is a copy: the same ID, but not the secret key (see `proofCode`)
 export const METAL_GAPS = [null, .02, .01, .005, .002];
-export const LAB_START = { distance: 3, angle: 0, metal: 0, drive: 100, tune: 13.56, reader: 'pad' };
+export const LAB_START = { distance: 3, angle: 0, metal: 0, drive: 100, tune: 13.56, reader: 'pad', clone: false };
 export const LIMITS = {
   distance: [.5, 10], angle: [0, 90], metal: [0, METAL_GAPS.length - 1], drive: [0, 150], tune: [5, 30],
 };
@@ -38,6 +39,7 @@ export const PRESETS = {
     metal: { label: 'On metal', ...startFor('pad'), distance: 2.5, metal: 4 },
     weak: { label: 'Weak reader', ...startFor('pad'), distance: 3.5, drive: 40 },
     tuned: { label: 'Badly tuned', ...startFor('pad'), distance: 2, tune: 6 },
+    copy: { label: 'A copy', ...startFor('pad'), clone: true },
   },
   phone: {
     tap: { label: 'Normal tap', ...startFor('phone') },
@@ -46,6 +48,7 @@ export const PRESETS = {
     metal: { label: 'On metal', ...startFor('phone'), metal: 4 },
     weak: { label: 'Weak phone', ...startFor('phone'), distance: 1.2, drive: 50 },
     tuned: { label: 'Badly tuned', ...startFor('phone'), tune: 6 },
+    copy: { label: 'A copy', ...startFor('phone'), clone: true },
   },
 };
 
@@ -225,6 +228,8 @@ export function status(s, m) {
       detail: m.limited ? 'So close, its limiter soaks up the field.' : 'Far off, it barely changes the field.' };
     // The point of it all, in numbers: the power comes through the air.
     const runs = `It runs on ${(m.watts * 1000).toFixed(1)} mW from the ${noun}.`;
+    // A copy wakes and answers with the same ID: only asking it to prove itself catches it.
+    if (s.clone) return { text: 'A copy: the same ID, no secret key.', detail: 'Press Prove it’s real to catch it.' };
     if (phone) return { text: 'The phone powers the chip. It can answer.', detail: runs };
     return { text: 'The chip is awake. It can answer.', detail: runs };
   }
@@ -243,9 +248,29 @@ export function status(s, m) {
 
 // A setting kept inside its limits (the phone's camera island keeps the card 0.8 cm away).
 export function clampSetting(s) {
-  const out = { ...s, reader: readerOf(s) };
+  const out = { ...s, reader: readerOf(s), clone: Boolean(s.clone) };
   for (const key in LIMITS) out[key] = clampTo(+out[key], LIMITS[key]);
   out.distance = Math.max(out.distance, READERS[out.reader].nearest);
+  return out;
+}
+
+// The card's answer to a challenge: a code worked out from the challenge and its secret key. Real
+// cards use a standard cipher (AES or 3DES) for this; this stand-in mixes the key and the
+// challenge the same way in spirit: change either by one bit and the whole code changes, and
+// without the key there is no way to get it right. The bank keeps a copy of the key, so the
+// reader (through the bank) can check the code. A copy of the card has the ID but not the key.
+export function proofCode(key, challenge) {
+  let h = 0x811c9dc5;
+  const out = [];
+  for (let round = 0; round < 4; round++) {
+    for (const byte of [...key, ...challenge, round, ...key]) {
+      h ^= byte;
+      h = Math.imul(h, 0x01000193) >>> 0;
+      h ^= h >>> 15;
+      h = Math.imul(h, 0x2c1b3c6d) >>> 0;
+    }
+    out.push(h & 0xff);
+  }
   return out;
 }
 

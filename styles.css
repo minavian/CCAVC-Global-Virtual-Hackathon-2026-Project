@@ -1020,12 +1020,15 @@ html[data-intro] .stage-light { opacity: 0; }
 .intro .try-id input[aria-invalid="true"] { border-color: #ff8f7a; }
 .intro .try-check { margin: 0 0 .5rem; font-size: .72rem; color: rgba(244, 241, 234, .6); white-space: nowrap; }
 .intro .try-check b { font-family: "Inter Tight", system-ui, sans-serif; font-weight: 700; font-variant-numeric: tabular-nums; color: #f4f1ea; }
-.intro .try-actions { display: grid; grid-template-columns: 1fr auto; gap: .5rem; }
+.intro .try-actions { display: grid; grid-template-columns: 1fr 1fr auto; gap: .5rem; }
 .intro .try-actions button, .intro .try-presets button {
   min-height: 2.4rem; padding: .4rem .9rem; border-radius: 999px; font: inherit; font-size: .82rem; font-weight: 650; cursor: pointer;
 }
 .intro .try-ask { border: 0; color: #141210; background: #ff8a2a; }
-.intro .try-ask:disabled { opacity: .5; cursor: default; }
+.intro .try-ask:disabled, .intro .try-prove:disabled { opacity: .5; cursor: default; }
+/* Prove it's real: the answer's blue, as the card's code comes back in blue. */
+.intro .try-prove { border: 1px solid rgba(74, 147, 255, .7); color: #f4f1ea; background: rgba(74, 147, 255, .18); }
+.intro .try-prove:hover:not(:disabled) { background: rgba(74, 147, 255, .3); }
 .intro .try-reset { border: 1px solid rgba(255, 255, 255, .22); color: #f4f1ea; background: transparent; }
 .intro .try-presets { display: flex; flex-wrap: wrap; gap: .35rem; }
 .intro .try-presets button { min-height: 2rem; padding: .25rem .7rem; font-size: .74rem; border: 1px solid rgba(255, 255, 255, .16); color: #f4f1ea; background: rgba(255, 255, 255, .05); }
