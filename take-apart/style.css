@@ -98,7 +98,7 @@ body::after {
   text-wrap: balance;
 }
 #part-one-power { white-space: nowrap; }
-html.deep-blink-hold, html.deep-closer-hold, html.deep-flipping-hold, html.deep-tuning-hold { overflow-y: hidden; }
+html.deep-blink-hold, html.deep-closer-hold, html.deep-flipping-hold, html.deep-tuning-hold, html.deep-metal-hold { overflow-y: hidden; }
 .deep-blink-cover {
   position: fixed;
   inset: 0;
@@ -269,8 +269,11 @@ html.deep-blink-hold, html.deep-closer-hold, html.deep-flipping-hold, html.deep-
 .s7-control label { display: inline; }
 .s7-control output { font-variant-numeric: tabular-nums; }
 #s7-speed { display: block; block-size: 24px; margin: 0; }
-#s7.s7-awaiting:not(:focus-within) > *, #s8.s8-awaiting:not(:focus-within) > * { opacity: 0; pointer-events: none; }
+#s7.s7-awaiting:not(:focus-within) > *,
+#s8.s8-awaiting:not(:focus-within) > *,
+#s9.s9-awaiting:not(:focus-within) > * { opacity: 0; pointer-events: none; }
 #s6:has(+ .s7-awaiting), #s6:has(+ .s7-entering) { border-block-end-color: transparent; }
+#s8:has(+ .s9-awaiting), #s8:has(+ .s9-entering) { border-block-end-color: transparent; }
 .s7-track-copy, .s7-plot-copy, .s7-flow-word { position: fixed; z-index: 2; pointer-events: none; }
 input.s7-track-copy {
   block-size: 24px;
@@ -431,6 +434,7 @@ input.s7-track-copy {
 }
 
 .s9-field { position: relative; }
+.deep-metal-hold #s8 > .plate-words { z-index: 2; pointer-events: none; }
 .s9-metal-action, .s9-metal {
   position: absolute;
   inset-block-start: 0;
@@ -478,6 +482,12 @@ input.s7-track-copy {
   background: linear-gradient(174deg, #e9e6df, #c4beb3 52%, #a29b90);
   box-shadow: inset 0 1px rgba(255, 255, 255, .64), 0 2px 3px rgba(13, 13, 12, .12);
 }
+.s9-field:is(.is-moving, .is-dragging) .s9-metal-surface {
+  box-shadow: inset 0 1px rgba(255, 255, 255, .7), 0 4px 8px rgba(13, 13, 12, .19);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .s9-metal-surface { transition: box-shadow .18s ease-out; }
+}
 .s9-metal:focus-visible, .s9-metal-action:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .s9-plot-copy {
   position: fixed;
@@ -486,6 +496,11 @@ input.s7-track-copy {
   inline-size: 100%;
   block-size: 100%;
   pointer-events: none;
+}
+@media (max-width: 860px) and (max-height: 700px) {
+  #s9 { gap: 16px; padding-block: 18px; }
+  #s9 .plate-words { gap: 8px; }
+  #s9-chart { height: clamp(212px, 39svh, 275px); }
 }
 
 .s10-control { gap: 3px; }

@@ -915,34 +915,60 @@ function watchTuning(previous, plate) {
 
 function watchMetal(previous, plate) {
   const chapter = plate.closest('.deep');
+  const root = document.documentElement;
   const source = previous.querySelector('#s8-chart'), target = plate.querySelector('#s9-chart');
-  const copy = plate.querySelector('.plate-words'), figure = target.parentElement;
-  const cue = figure.querySelector('#s9-metal-action');
+  const outgoing = previous.querySelector('.plate-words'), incoming = plate.querySelector('.plate-words');
+  const figure = target.parentElement;
   const plot = document.createElement('canvas');
   plot.className = 's9-plot-copy';
   plot.setAttribute('aria-hidden', 'true');
   const ctx = plot.getContext('2d');
-  let layout, lastTop, armed;
-
-  function measure(top, height) {
-    const from = bounds(source, top), to = bounds(target, top);
-    const start = from.y - height * .06;
-    const curled = start + height * .19;
-    const end = Math.max(curled + height * .32, to.y + to.h - height * .82);
-    const unfold = Math.max(curled + height * .07, end - height * .21);
-    const reveal = Math.max(start, bounds(copy, top).y - height * .94);
-    return { from, to, start, curled, unfold, end, reveal, height, width: innerWidth,
-      stacked: matchMedia('(max-width: 860px)').matches };
-  }
+  const end = 2560, readHold = 1000;
+  let layout, frame, previousTop, targetTop, approach, lockedAt, listeners;
+  let armed = false;
+  const canPlay = () => !reducedMotion.matches && !document.hidden;
+  const active = () => lockedAt !== undefined;
 
   function settle() {
-    if (!plot.isConnected) return;
+    plate.classList.remove('s9-awaiting', 's9-entering');
+    if (!active()) return;
+    cancelAnimationFrame(frame);
     plot.remove();
+    for (const node of [source, outgoing]) node.style.removeProperty('transform');
+    incoming.style.removeProperty('transform');
+    for (const node of [outgoing, incoming]) node.style.removeProperty('clip-path');
     source.style.removeProperty('--s9-source-opacity');
-    target.style.removeProperty('opacity');
-    copy.style.removeProperty('opacity');
-    copy.style.removeProperty('transform');
-    cue.style.removeProperty('--s9-cue-drop');
+    figure.style.removeProperty('opacity');
+    lockedAt = undefined;
+    root.classList.remove('deep-metal-hold');
+    scheduleMotion();
+  }
+
+  function skip() {
+    armed = false;
+    settle();
+  }
+
+  function interrupt(direction, event) {
+    if (!active()) return;
+    const origin = layout.origin;
+    skip();
+    if (direction === -1 && event?.cancelable) {
+      event.preventDefault();
+      scrollTo({ top: origin, behavior: 'instant' });
+    }
+  }
+
+  function ready(top, height) {
+    return top >= approach - height * .065 && top < targetTop - 1;
+  }
+
+  function canBegin(event, direction) {
+    if (direction < 0 || !event.cancelable || event.defaultPrevented || !canPlay() || !armed || active() ||
+      root.classList.contains('deep-tuning-hold')) return false;
+    if (ready(scrollY, innerHeight)) return true;
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
+    return event.type === 'wheel' && scrollY + event.deltaY * unit >= targetTop;
   }
 
   function sample(points, index) {
@@ -964,54 +990,64 @@ function watchMetal(previous, plate) {
     ctx.stroke();
   }
 
-  function paint(top) {
-    const { from, to, width, height, stacked, start, curled, unfold, end, reveal } = layout;
-    const { box, points, X, Y, color } = source.resonanceCurve;
-    const cut = (points.length - 1) / 2;
-    const curl = ease(start + height * .025, curled, top), flight = ease(curled, unfold, top);
-    const bloom = stage(unfold, end, top);
-    const leave = ease(start, start + height * .06, top), arrive = ease(.76, 1, bloom);
-    const words = ease(reveal, reveal + height * .16, top);
-    source.style.setProperty('--s9-source-opacity', 1 - leave);
-    target.style.opacity = arrive;
-    plot.style.opacity = leave * (1 - arrive);
-    copy.style.opacity = mix(.87, 1, words);
-    copy.style.transform = stacked ? `translateY(${7 * (1 - words)}px)` : `translateX(${18 * (1 - words)}px)`;
-    cue.style.setProperty('--s9-cue-drop', `${Math.sin(Math.PI * ease(.72, 1, bloom)) * 4}px`);
-    ctx.clearRect(0, 0, width, height);
+  function swapCopy(progress) {
+    const edge = mix(1.05, -.05, progress);
+    const amplitude = .045 * Math.sin(Math.PI * progress);
+    // The same moving edge reveals the new copy where it removes the old copy.
+    const front = Array.from({ length: 9 }, (_, i) => {
+      const x = clamp(edge + amplitude * Math.sin(i * Math.PI / 4 - progress * Math.PI));
+      return `${x * 100}% ${i * 12.5}%`;
+    }).join(', ');
+    outgoing.style.clipPath = `polygon(0 0, ${front}, 0 100%)`;
+    incoming.style.clipPath = `polygon(100% 0, ${front}, 100% 100%)`;
+  }
 
-    // On narrow screens the loop stays beside the copy until it reaches the illustration.
-    const margin = width - to.x - to.w;
-    const centerX = stacked ? width - margin / 2 : to.x + to.w / 2;
-    const centerY = stacked ? mix(height * .51, to.y + to.h * .14 - top, flight) : height * mix(.48, .57, flight);
-    const radius = stacked ? margin * .37 : Math.min(23, to.w * .045);
-    const angle = -Math.PI / 2 + flight * .6;
+  function paint(elapsed) {
+    const { from, to, width, height, curve: { box, points, X, Y, color } } = layout;
+    const cut = (points.length - 1) / 2;
+    const split = ease(110, 440, elapsed);
+    const curl = ease(400, 1110, elapsed);
+    const bloom = stage(1270, 2320, elapsed);
+    const leave = ease(0, 170, elapsed), arrive = ease(2180, end, elapsed);
+    const top = scrollY;
+    source.style.setProperty('--s9-source-opacity', 1 - leave);
+    figure.style.opacity = arrive;
+    plot.style.opacity = leave * (1 - arrive);
+    swapCopy(ease(325, 1240, elapsed));
+    incoming.style.transform = `translateY(${layout.headingShift * (1 - ease(1050, 1600, elapsed))}px)`;
+    ctx.clearRect(0, 0, width, height);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    const peak = points[Math.floor(cut)];
+    const centerX = mix(from.x + X(peak[0]), to.x + to.w / 2, curl);
+    const centerY = mix(from.y + Y(peak[1]) + 34, to.y + to.h * .62 - top, curl);
+    const radius = Math.min(21, to.w * .054);
     const loop = (side, u) => {
-      const turn = angle + side * Math.PI * u;
-      return [centerX + radius * Math.cos(turn), centerY + radius * Math.sin(turn)];
+      const angle = -Math.PI / 2 + side * Math.PI * u;
+      return [centerX + radius * Math.cos(angle), centerY + radius * Math.sin(angle)];
     };
 
-    if (!bloom) {
-      const splitX = box.x + box.w / 2;
-      const gap = 14 * ease(0, .25, curl) * (1 - ease(.35, .9, curl));
+    const field = target.metalField;
+    if (!bloom || !field) {
+      const gap = 26 * split * (1 - curl);
       for (const side of [-1, 1]) {
         stroke(u => {
           const [frequency, volts] = sample(points, cut + side * cut * u);
-          const x = u === 0 ? splitX : X(frequency);
           const [lx, ly] = loop(side, u);
-          return [mix(from.x + x + side * gap * (1 - u / 2), lx, curl), mix(from.y + Y(volts) - top, ly, curl)];
+          const x = from.x + X(frequency) + side * gap * (1 - u * .6);
+          return [mix(x, lx, curl), mix(from.y + Y(volts), ly, curl)];
         }, color, 1, mix(2.2, 1.8, curl));
       }
       return;
     }
 
-    const field = target.metalField;
     const last = field.lines.length - 1;
     for (let i = last; i >= 0; i--) {
       const line = field.lines[i];
-      const delay = (last - i) * .105;
-      const growth = ease(delay, .91, bloom);
-      const visibility = i === last ? 1 : ease(delay, delay + .14, bloom);
+      const delay = (last - i) * .12;
+      const growth = ease(delay, .98, bloom);
+      const visibility = i === last ? 1 : ease(delay, delay + .19, bloom);
       if (!visibility) continue;
       for (const side of [-1, 1]) {
         const pointAt = u => {
@@ -1026,44 +1062,81 @@ function watchMetal(previous, plate) {
     }
   }
 
-  watchScrollMotion((top, height, needsMeasure) => {
-    if (reducedMotion.matches || document.hidden) return settle();
-    if (needsMeasure || !layout) {
-      settle();
-      layout = measure(top, height);
-      armed = top <= layout.start;
-      lastTop = top;
+  function begin(event) {
+    if (!ctx || !source.resonanceCurve) return;
+    event.preventDefault();
+    const origin = scrollY, height = innerHeight;
+    if (!ready(origin, height)) {
+      scrollTo({ top: approach, behavior: 'instant' });
+      return;
     }
-    if (Math.abs(top - lastTop) > height * .55) armed = false;
-    lastTop = top;
-    if (top <= layout.start) {
-      armed = true;
-      return settle();
-    }
-    if (!armed || top >= layout.end || !source.resonanceCurve || !target.metalField || chapter.querySelector('.s8-plot-copy')) return settle();
+    const from = bounds(source, origin), to = bounds(target, origin);
+    const chartOverhang = to.y + to.h + 8 - targetTop - height;
+    const extra = Math.max(0, Math.min(chartOverhang, plate.offsetHeight - height));
+    const oldHeadingTop = outgoing.querySelector('h3').getBoundingClientRect().top;
+    const newHeadingTop = bounds(incoming.querySelector('h3'), origin).y - targetTop;
+    const shift = oldHeadingTop - newHeadingTop;
+    const headingShift = oldHeadingTop >= 0 && Math.abs(shift) < 80 ? shift : 0;
+    layout = { origin, from: { ...from, y: from.y - origin }, to, width: innerWidth, height, headingShift, curve: source.resonanceCurve };
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    plot.width = Math.round(layout.width * dpr);
+    plot.height = Math.round(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    root.classList.add('deep-metal-hold');
+    plate.classList.add('s9-entering');
+    scrollTo({ top: targetTop, behavior: 'instant' });
+    lockedAt = scrollY;
+    const pin = `translateY(${lockedAt - origin}px)`;
+    outgoing.style.transform = pin;
+    source.style.transform = pin;
+    chapter.append(plot);
+    paint(0);
+    plate.classList.remove('s9-awaiting');
 
-    if (!plot.isConnected) {
-      const dpr = Math.min(devicePixelRatio || 1, 2);
-      plot.width = Math.round(layout.width * dpr);
-      plot.height = Math.round(height * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      chapter.append(plot);
+    const started = performance.now();
+    function tick(now) {
+      const elapsed = now - started;
+      const destination = targetTop + extra * ease(960, 1270, elapsed);
+      if (Math.abs(destination - scrollY) >= .5) {
+        scrollTo({ top: destination, behavior: 'instant' });
+        lockedAt = scrollY;
+      }
+      if (elapsed < end) paint(elapsed);
+      else if (plot.isConnected) {
+        paint(end);
+        plot.remove();
+      }
+      if (elapsed >= end + readHold) return skip();
+      frame = requestAnimationFrame(tick);
     }
-    paint(top);
+    frame = requestAnimationFrame(tick);
+  }
+
+  watchScrollMotion((top, height) => {
+    previousTop = bounds(previous, top).y;
+    targetTop = bounds(plate, top).y;
+    const { y, h } = bounds(source, top);
+    approach = Math.min(targetTop - 2, Math.max(previousTop, y + h + 12 - height));
+    if (!canPlay() || (active() && Math.abs(top - lockedAt) > 2)) skip();
+    if (!active()) {
+      if (!canPlay() || top >= targetTop - 1 || plate.contains(document.activeElement)) armed = false;
+      else if (top >= previousTop - height * .2 && top <= targetTop - height * .55) armed = true;
+      plate.classList.toggle('s9-awaiting', armed && top < targetTop - 1);
+    }
+    if (canPlay() && (active() || (armed && top >= previousTop - height * .075 && top < targetTop - 1))) {
+      listeners ??= capturePageGesture(canBegin, begin, interrupt);
+    } else {
+      listeners?.abort();
+      listeners = undefined;
+    }
   });
 
-  function interrupt() {
-    if (plot.isConnected) armed = false;
-    settle();
+  for (const node of [previous.querySelector('.plate-controls'), figure]) {
+    for (const event of ['focusin', 'pointerdown', 'input']) node.addEventListener(event, skip);
   }
-  for (const controls of [previous.querySelector('.plate-controls'), figure]) {
-    for (const event of ['focusin', 'pointerdown', 'input']) controls.addEventListener(event, interrupt);
-  }
-  const contentSize = new ResizeObserver(() => {
-    layout = null;
-    scheduleMotion();
-  });
-  for (const node of [source, figure, copy]) contentSize.observe(node);
+  for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, skip);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) skip(); });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) skip(); });
 }
 
 function watchPauses(previous, plate) {

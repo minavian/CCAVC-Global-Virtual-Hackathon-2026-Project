@@ -401,7 +401,7 @@
     const strength = document.getElementById('s9-strength'), tuning = document.getElementById('s9-tuning');
     const park = 61, restY = 68, d = .02, a = physics.READERS.pad.radius;
     const card = physics.TAGS.card.radius;
-    let value = park, model, scale, coilY, metalY = restY, pointer = null, grabOffset;
+    let value = park, model, scale, coilY, metalY = restY, pointer = null, grabOffset, travel;
     const heightAt = mm => coilY - (d + mm / 1000) * scale;
 
     function positionMetal(y = value === park ? restY : heightAt(value)) {
@@ -421,7 +421,34 @@
       scene.dirty = true;
     }
 
+    function followPlate(y) {
+      const mm = y < heightAt(60) ? park : clamp(Math.round(((coilY - y) / scale - d) * 1000), 1, 60);
+      setGap(mm);
+      positionMetal(y);
+    }
+
+    function stopTravel() {
+      travel = null;
+      figure.classList.remove('is-moving');
+    }
+
     const scene = plate('s9', p => {
+      const ctx = fit(p), k = Math.min(p.w / .2, p.h / .15);
+      coilY = p.h - 34;
+      // Leave room above the first field line for the parked metal and its cue.
+      scale = (coilY - 88) / .1;
+      if (travel) {
+        const progress = reduced.matches ? 1 : stage(0, 600, performance.now() - travel.started);
+        const end = travel.to === park ? restY : heightAt(travel.to);
+        if (progress === 1) {
+          setGap(travel.to);
+          stopTravel();
+        } else {
+          const t = progress * progress * (3 - 2 * progress);
+          followPlate(travel.from + (end - travel.from) * t);
+          p.dirty = true;
+        }
+      }
       if (model?.value !== value) {
         const gap = value === park ? null : value / 1000;
         const coils = [[a, 1, 0]];
@@ -441,10 +468,6 @@
         chip.dataset.awake = s.awake;
       }
 
-      const ctx = fit(p), k = Math.min(p.w / .2, p.h / .15);
-      coilY = p.h - 34;
-      // Leave room above the first field line for the parked metal and its cue.
-      scale = (coilY - 88) / .1;
       const X = rho => p.w / 2 + rho * k, Y = z => coilY - z * scale;
       const { lines } = model;
       p.canvas.metalField = { lines, X, Y };
@@ -454,37 +477,50 @@
 
       for (const side of [-1, 1]) dot(ctx, X(side * a), Y(0), INK, 4);
       ctx.fillStyle = 'rgba(184, 101, 42, .25)'; ctx.fillRect(X(-card), Y(d) - 3, X(card) - X(-card), 6);
-      ctx.fillStyle = INK; ctx.font = `600 11px ${SANS}`; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
-      ctx.fillText('Card', X(card) + 6, Y(d) + 4);
-      ctx.textBaseline = 'top'; ctx.fillText('Reader’s coil', X(a) + 8, Y(0) + 4);
+      ctx.fillStyle = INK; ctx.font = `600 11px ${SANS}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      ctx.fillText('Card', X(card) + 6, Y(d) + 6);
+      ctx.fillText('Reader’s coil', X(a) + 8, Y(0) + 4);
       metal.style.setProperty('--s9-metal-width', `${.16 * k}px`);
-      if (pointer === null) positionMetal();
+      if (pointer === null && !travel) positionMetal();
     });
 
-    action.addEventListener('click', () => setGap(value === park ? 1 : park));
+    action.addEventListener('click', () => {
+      const to = (travel?.to ?? value) === park ? 1 : park;
+      if (reduced.matches || !scale) {
+        stopTravel();
+        setGap(to);
+      } else {
+        travel = { from: metalY, to, started: performance.now() };
+        figure.classList.add('is-moving');
+        scene.dirty = true;
+      }
+    });
     const steps = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 10, PageDown: -10, Home: 1 - park, End: park - 1 };
     metal.addEventListener('keydown', event => {
       if (!Object.hasOwn(steps, event.key)) return;
       event.preventDefault();
+      stopTravel();
       setGap(clamp(value + steps[event.key], 1, park));
+      scene.dirty = true;
     });
     metal.addEventListener('pointerdown', event => {
       if (!event.isPrimary || event.button !== 0 || !scale) return;
+      stopTravel();
       metal.setPointerCapture(event.pointerId);
       pointer = event.pointerId;
       grabOffset = event.clientY - figure.getBoundingClientRect().top - metalY;
+      figure.classList.add('is-dragging');
     });
     metal.addEventListener('pointermove', event => {
       if (event.pointerId !== pointer) return;
       const y = clamp(event.clientY - figure.getBoundingClientRect().top - grabOffset, restY, heightAt(1));
-      const mm = y < heightAt(60) ? park : clamp(Math.round(((coilY - y) / scale - d) * 1000), 1, 60);
-      setGap(mm);
-      positionMetal(mm === park ? y : heightAt(mm));
+      followPlate(y);
     });
     for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
       metal.addEventListener(type, event => {
         if (event.pointerId !== pointer) return;
         pointer = null;
+        figure.classList.remove('is-dragging');
         positionMetal();
       });
     }
