@@ -1497,7 +1497,7 @@ function watchSoaking(part, scene) {
   const root = document.documentElement, chapter = scene.closest('.deep');
   const partTitle = part.querySelector('.deep-part-title');
   const plot = scene.querySelector('#s11-chart'), scan = scene.querySelector('.s11-scan');
-  const sample = scan.firstElementChild, playback = scene.querySelector('#s11-playback');
+  const playback = scene.querySelector('#s11-playback');
   const toggle = scene.querySelector('#s11-switch'), readout = scene.querySelector('.plate-readout');
   const words = scene.querySelector('.plate-words'), instrument = scene.querySelector('.s11-instrument');
   const filament = document.createElement('span');
@@ -1505,14 +1505,16 @@ function watchSoaking(part, scene) {
   filament.setAttribute('aria-hidden', 'true');
 
   const cut = 490, entranceEnd = 2080, readHold = 1000, sweepTime = 4000;
+  const rewindStart = sweepTime + 140, rewindEnd = rewindStart + 720;
   let intro, listeners, frame = 0, visible = false, scanPaused = false, userPaused = false;
   let axes = 1, reveal = 1;
   let blend = Number(toggle.checked), destination = blend, blendFrom, blendStart, flip;
   let capture = 0, previousCapture = 0, scanElapsed = 0, scanFrame;
   const motionAllowed = () => !reducedMotion.matches && !document.hidden;
   const canScan = () => visible && !scanPaused && !userPaused && (!intro || intro.reading);
+  const sweepPosition = () => stage(0, sweepTime, scanElapsed);
   const updatePlot = () => plot.setAnswerMotion?.(axes, reveal, blend, previousCapture, capture,
-    previousCapture === capture ? 1 : ease(0, 540, scanElapsed));
+    previousCapture === capture ? 1 : sweepPosition());
 
   function finishIntro() {
     if (!intro) return;
@@ -1580,27 +1582,21 @@ function watchSoaking(part, scene) {
     if (!trace) return;
     if (scanFrame !== undefined) scanElapsed += Math.min(64, now - scanFrame);
     scanFrame = now;
-    if (scanElapsed >= sweepTime) {
-      scanElapsed -= sweepTime;
+    if (scanElapsed >= rewindEnd) {
+      scanElapsed -= rewindEnd;
       previousCapture = capture;
       capture = (capture + 1) % plot.answerCaptureCount;
     }
 
-    const { box, points, X, Y, currentAt } = trace;
-    const progress = scanElapsed / sweepTime;
-    const index = progress * points[points.length - 1][0];
-    const i = Math.floor(index), fraction = index - i;
-    const y = Y(mix(points[i][1], points[i + 1][1], fraction)) - box.y;
-    const current = mix(currentAt(i), currentAt(i + 1), fraction);
-    const percent = `${(current * 100).toFixed(1)}%`;
-    if (sample.textContent !== percent) sample.textContent = percent;
+    const { box, Y } = trace;
+    const rewind = ease(rewindStart, rewindEnd, scanElapsed);
+    let forward = sweepPosition();
+    if (previousCapture !== capture) forward = trace.to === capture ? trace.sweep : 0;
+    const x = box.x + box.w * forward * (1 - rewind);
     scan.style.blockSize = `${box.h}px`;
-    scan.style.transform = `translate3d(${X(index)}px, ${box.y}px, 0)`;
-    scan.style.setProperty('--s11-scan-point', `${y}px`);
-    scan.style.opacity = ease(0, .045, progress) * (1 - ease(.965, 1, progress));
-    scan.toggleAttribute('data-dip', current < .99);
-    scan.toggleAttribute('data-near-edge', progress > 1 - 59 / box.w);
-    scan.toggleAttribute('data-near-bottom', y > box.h - 32);
+    scan.style.transform = `translate3d(${x}px, ${box.y}px, 0)`;
+    scan.style.setProperty('--s11-scan-reference', `${Y(1) - box.y}px`);
+    scan.style.opacity = .88 - Math.sin(Math.PI * rewind) * .42;
     scan.hidden = false;
   }
 

@@ -601,7 +601,7 @@
   };
 
   // ---------- 11. Soaking up more, then less ----------
-  const answerMotion = { axes: 1, reveal: 1, blend: undefined, from: 0, to: 0, arrival: 1 };
+  const answerMotion = { axes: 1, reveal: 1, blend: undefined, from: 0, to: 0, sweep: 1 };
   const captureNames = ['Presence reply', 'Start of card ID', 'ID after 8 known bits', 'ID after 16 known bits',
     'ID after 24 known bits', 'Selection confirmed'];
   const captureLabel = document.getElementById('s11-capture-name');
@@ -613,7 +613,7 @@
     for (const known of [0, 8, 16, 24]) link.send(iso.anticollisionBits(uid.slice(0, known)));
     const selection = iso.withCrc([iso.SEL1, iso.NVB_SELECT, ...chip.uid, iso.bcc(chip.uid)]);
     link.send(iso.standardFrame(selection));
-    return link.recording.map(({ begin, samples }) => samples.subarray(begin - 64, begin + 21 * iso.BIT));
+    return link.recording.map(({ begin, samples }) => samples.subarray(begin - iso.HALF, begin + 20 * iso.BIT));
   }
   const answerScene = plate('s11', p => {
     if (!answerRecording) {
@@ -632,7 +632,7 @@
       : 'Switch removed: the reader’s current never changes. It hears nothing at all.');
 
     const ctx = fit(p), compact = p.w < 330, bx = box(p, 26, 40, compact ? 38 : 54, compact ? 14 : 18);
-    const { axes, reveal, blend = Number(checked), from, to, arrival } = answerMotion;
+    const { axes, reveal, blend = Number(checked), from, to, sweep } = answerMotion;
     if (axes < 1) {
       const base = bx.y + bx.h;
       ctx.strokeStyle = FAINT; ctx.lineWidth = 1;
@@ -645,21 +645,25 @@
     const duration = Math.round(finalSample / iso.SAMPLE_RATE * 1e6);
     const { X, Y } = chart(ctx, bx, { from: 0, to: finalSample, ticks: [[0, '0']], label: `Time · ${duration} µs shown` },
       { from: lo, to: hi, ticks: [[1, '100%'], [lo, Math.round(lo * 100) + '%']], label: 'The reader’s coil current' });
-    const currentAt = i => {
-      const before = off[from][i] + (on[from][i] - off[from][i]) * blend;
-      if (from === to) return before;
-      const after = off[to][i] + (on[to][i] - off[to][i]) * blend;
-      return before + (after - before) * arrival;
-    };
+    const edge = sweep * finalSample;
+    // Finish the blend at the right edge before the cursor retraces the plot.
+    const feather = Math.min(12, finalSample - edge);
+    const currentAt = (i, take) => off[take][i] + (on[take][i] - off[take][i]) * blend;
+    function sampleAt(i) {
+      if (from === to || sweep === 1 || i <= edge - feather) return currentAt(i, to);
+      const before = currentAt(i, from);
+      if (i >= edge) return before;
+      return before + (currentAt(i, to) - before) * (edge - i) / feather;
+    }
     const previous = p.canvas.answerTrace;
     const points = previous?.zoom === zoom && previous.blend === blend && previous.from === from &&
-      previous.to === to && previous.arrival === arrival ? previous.points
-      : Array.from(on[to], (_, i) => [i, clamp(currentAt(i), lo, hi)]);
+      previous.to === to && previous.sweep === sweep ? previous.points
+      : Array.from(on[to], (_, i) => [i, clamp(sampleAt(i), lo, hi)]);
     const color = blend === 1 ? COPPER : blend === 0 ? INK : `color-mix(in srgb, ${COPPER} ${blend * 100}%, ${INK})`;
-    const capture = captureNames[arrival < .5 ? from : to];
+    const capture = captureNames[sweep === 1 ? to : from];
     if (captureLabel.textContent !== capture) captureLabel.textContent = capture;
     // The sweep and the next scene both follow the same coordinates as the drawn trace.
-    p.canvas.answerTrace = { box: bx, points, X, Y, color, zoom, blend, from, to, arrival, currentAt };
+    p.canvas.answerTrace = { box: bx, points, X, Y, color, zoom, blend, from, to, sweep };
     if (!reveal) return;
     ctx.save();
     if (reveal < 1) {
@@ -670,10 +674,10 @@
   });
   if (answerScene) {
     answerScene.canvas.answerCaptureCount = captureNames.length;
-    answerScene.canvas.setAnswerMotion = (axes, reveal, blend, from, to, arrival) => {
+    answerScene.canvas.setAnswerMotion = (axes, reveal, blend, from, to, sweep) => {
       if (axes === answerMotion.axes && reveal === answerMotion.reveal && blend === answerMotion.blend &&
-        from === answerMotion.from && to === answerMotion.to && arrival === answerMotion.arrival) return;
-      Object.assign(answerMotion, { axes, reveal, blend, from, to, arrival });
+        from === answerMotion.from && to === answerMotion.to && sweep === answerMotion.sweep) return;
+      Object.assign(answerMotion, { axes, reveal, blend, from, to, sweep });
       answerScene.dirty = true;
     };
   }
