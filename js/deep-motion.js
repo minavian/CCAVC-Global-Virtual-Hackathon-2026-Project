@@ -3548,8 +3548,11 @@ function watchCarKey(previous, scene) {
     const portal = document.createElement('div');
     portal.className = 's16-wallet s17-portal-wallet';
     portal.setAttribute('aria-hidden', 'true');
-    if (walletBtn) portal.innerHTML = walletBtn.innerHTML;
-    portal.dataset.open = 'true';
+    if (walletBtn) {
+      portal.innerHTML = walletBtn.innerHTML;
+      for (const node of portal.querySelectorAll('[id]')) node.removeAttribute('id');
+      if (walletBtn.matches(':hover, :focus-visible, [data-open="true"], [data-catching="true"]')) portal.dataset.open = 'true';
+    }
     portal.style.left = `${wRect.left.toFixed(1)}px`;
     portal.style.top = `${wRect.top.toFixed(1)}px`;
     portal.style.width = `${wRect.width.toFixed(1)}px`;
@@ -3587,28 +3590,24 @@ function watchCarKey(previous, scene) {
     if (elapsed >= burstStart && !run.released) releaseScene17();
 
     if (portal?.isConnected) {
-      const glide = ease(460, 740, elapsed);
+      const glide = ease(420, 790, elapsed);
       const tx = mix(0, cx - wx, glide);
       const ty = mix(0, cy - wy, glide);
-      let rot = 0, sc = mix(1, 1.08, glide);
-      if (elapsed >= 520 && elapsed < burstStart) delete portal.dataset.open;
-      if (elapsed >= 600 && elapsed < burstStart) {
-        const s = (elapsed - 600) / (burstStart - 600);
-        rot = Math.sin(s * Math.PI * 5) * (1 - s * .35) * 9;
-        sc = 1.08 + Math.sin(s * Math.PI * 2) * .06;
-      } else if (elapsed >= burstStart) {
-        const vanish = ease(1120, 1540, elapsed);
-        sc = vanish > 0 ? mix(1.12, 0, vanish) : mix(1.08, 1.16, ease(burstStart, 1080, elapsed));
-        rot = mix(0, -18, vanish);
-        portal.style.opacity = String(1 - vanish);
-        if (vanish >= 1) portal.remove();
+      const load = ease(540, 690, elapsed) * (1 - ease(700, burstStart, elapsed));
+      const vanish = ease(1120, 1540, elapsed);
+      const sc = (mix(1, 1.07, glide) - .035 * load + .08 * ease(burstStart, 1090, elapsed)) * (1 - vanish);
+      const rot = -3.5 * load - 12 * vanish;
+      if (elapsed >= 80 && elapsed < burstStart) {
+        if (elapsed < 510 && portal.dataset.open !== 'true') portal.dataset.open = 'true';
+        else if (elapsed >= 510) delete portal.dataset.open;
       }
+      portal.style.opacity = String(1 - vanish);
+      if (vanish === 1) portal.remove();
       portal.style.transform = `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px) rotate(${rot.toFixed(1)}deg) scale(${sc.toFixed(3)})`;
     }
 
     ctx.clearRect(0, 0, width, height);
     if (elapsed < 560) {
-      const wispAlpha = 1 - ease(360, 560, elapsed);
       ctx.save();
       ctx.font = '600 12px "JetBrains Mono", ui-monospace, monospace';
       ctx.textAlign = 'center';
@@ -3616,27 +3615,12 @@ function watchCarKey(previous, scene) {
       for (const w of wisps) {
         const t = ease(w.dep, w.dep + 380, elapsed);
         const px = mix(w.x, wx, t);
-        const py = mix(w.y, wy, t) + Math.sin(Math.PI * t) * w.arc;
-        ctx.globalAlpha = wispAlpha * .82;
+        const py = mix(w.y, run.mouthY, t) + Math.sin(Math.PI * t) * w.arc;
+        ctx.globalAlpha = ease(w.dep, w.dep + 100, elapsed) * (1 - ease(.80, 1, t)) * .82;
         ctx.fillStyle = w.copper ? '#b8652a' : '#0d0d0c';
         ctx.fillText(w.ch, px, py);
       }
       ctx.restore();
-    } else if (elapsed >= burstStart && elapsed < 1420) {
-      const wave = ease(burstStart, 1400, elapsed);
-      const alpha = (1 - wave) * .45;
-      if (alpha > 0) {
-        ctx.save();
-        ctx.strokeStyle = '#b8652a';
-        ctx.lineWidth = 1.6;
-        for (let r = 0; r < 2; r++) {
-          ctx.globalAlpha = alpha * (1 - r * .35);
-          ctx.beginPath();
-          ctx.arc(cx, cy, 36 + wave * (160 + r * 70), 0, Math.PI * 2);
-          ctx.stroke();
-        }
-        ctx.restore();
-      }
     }
   }
 
@@ -3665,7 +3649,8 @@ function watchCarKey(previous, scene) {
     const rawRect = walletBtn?.getBoundingClientRect();
     const wRect = rawRect && rawRect.width > 40 ? rawRect : { left: width * .74 - 70, top: height * .58 - 78, width: 140, height: 156 };
     const wx = wRect.left + wRect.width * .5;
-    const wy = wRect.top + wRect.height * .45;
+    const wy = wRect.top + wRect.height * .5;
+    const mouthY = walletBtn?.querySelector('.s16-slot-lip')?.getBoundingClientRect().top ?? wRect.top + 32;
     const cx = width * .5;
     const cy = height * .48;
     const portal = createPortalWallet(wRect);
@@ -3684,7 +3669,7 @@ function watchCarKey(previous, scene) {
     copy.height = Math.round(height * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    run = { top, width, height, start: performance.now(), destination: end, portal, wx, wy, cx, cy, wisps, animations: [] };
+    run = { top, width, height, start: performance.now(), destination: end, portal, wx, wy, mouthY, cx, cy, wisps, animations: [] };
     root.classList.add('deep-carkey-hold');
     scene.classList.add('s17-staged');
     if (walletBtn) walletBtn.style.visibility = 'hidden';
@@ -3694,7 +3679,7 @@ function watchCarKey(previous, scene) {
     swallowTargets.forEach((node, i) => {
       const r = node.getBoundingClientRect();
       const dx = wx - (r.left + r.width * .5);
-      const dy = (wRect.top + 32) - (r.top + r.height * .5);
+      const dy = mouthY - (r.top + r.height * .5);
       run.animations.push(node.animate([
         { transform: 'none', opacity: 1, filter: 'blur(0px)' },
         { transform: `translate(${(dx * .46).toFixed(1)}px, ${(dy * .46).toFixed(1)}px) scale(.56) rotate(${dx >= 0 ? 5 : -5}deg)`, opacity: .88, filter: 'blur(1.5px)', offset: .54 },
@@ -3731,21 +3716,13 @@ function watchCarKey(previous, scene) {
     const destination = bounds(previous, top).y;
     const wb = walletBtn ? bounds(walletBtn, top) : { x: width * .74 - 70, y: destination + height * .58 - 78, w: 140, h: 156 };
     const wTarget = { left: wb.x, top: wb.y - destination, width: Math.max(80, wb.w), height: Math.max(80, wb.h) };
-    const wx = wTarget.left + wTarget.width * .5, wy = wTarget.top + wTarget.height * .45;
+    const wx = wTarget.left + wTarget.width * .5, wy = wTarget.top + wTarget.height * .5;
     const cx = width * .5, cy = height * .48;
 
-    const portal = document.createElement('div');
-    portal.className = 's16-wallet s17-portal-wallet';
-    portal.setAttribute('aria-hidden', 'true');
-    if (walletBtn) portal.innerHTML = walletBtn.innerHTML;
+    const portal = createPortalWallet({ ...wTarget, left: cx - wTarget.width * .5, top: cy - wTarget.height * .5 });
     portal.dataset.open = 'true';
-    portal.style.left = `${(cx - wTarget.width * .5).toFixed(1)}px`;
-    portal.style.top = `${(cy - wTarget.height * .5).toFixed(1)}px`;
-    portal.style.width = `${wTarget.width.toFixed(1)}px`;
-    portal.style.height = `${wTarget.height.toFixed(1)}px`;
     portal.style.transform = 'scale(.05)';
     portal.style.opacity = '0';
-    chapter.append(portal);
 
     const wisps = Array.from({ length: 18 }, (_, i) => ({
       x: mix(width * .12, width * .82, ((i * 37) % 19) / 18),
@@ -3797,13 +3774,14 @@ function watchCarKey(previous, scene) {
       if (rev.portal?.isConnected) {
         const pop = ease(0, 180, elapsed), glide = ease(480, 820, elapsed);
         const tx = mix(0, rev.wx - rev.cx, glide), ty = mix(0, rev.wy - rev.cy, glide);
-        let rot = 0, sc = pop < 1 ? mix(.05, 1.1, pop) : mix(1.1, 1, glide);
+        const load = ease(380, 510, elapsed) * (1 - ease(520, 660, elapsed));
+        const rot = -3.5 * load;
+        const sc = mix(.05, 1.1, pop) - .1 * glide - .035 * load;
         if (elapsed >= 380 && elapsed < 660) {
           delete rev.portal.dataset.open;
-          const s = (elapsed - 380) / 280;
-          rot = Math.sin(s * Math.PI * 4) * (1 - s * .35) * 8;
         } else if (elapsed >= 660) {
-          rev.portal.dataset.open = 'true';
+          if (elapsed < 875) rev.portal.dataset.open = 'true';
+          else delete rev.portal.dataset.open;
           if (elapsed >= 1120) walletBtn?.style.removeProperty('visibility');
         }
         rev.portal.style.opacity = elapsed < 180 ? String(pop) : elapsed >= 1120 ? String(1 - ease(1120, 1340, elapsed)) : '1';

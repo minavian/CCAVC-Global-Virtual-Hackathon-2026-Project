@@ -405,11 +405,11 @@
     const distance = document.getElementById('s9-distance'), chip = document.getElementById('s9-chip');
     const strength = document.getElementById('s9-strength'), tuning = document.getElementById('s9-tuning');
     const park = Number(metal.getAttribute('aria-valuemax')), restY = 68, d = .02, a = physics.READERS.pad.radius;
-    const card = physics.TAGS.card.radius;
+    const card = physics.TAGS.card.radius, seeds = [.3, .5, .68, .82, .93].map(f => [f * a, 0]);
     let gapMm = park, value = park, model, scale, coilY, metalY = restY, pointer = null, grabOffset, travel;
     const heightAt = mm => coilY - (d + mm / 1000) * scale;
 
-    function positionMetal(y = gapMm === park ? restY : heightAt(gapMm)) {
+    function positionMetal(y = heightAt(gapMm)) {
       metalY = y;
       metal.style.setProperty('--s9-metal-y', `${y}px`);
     }
@@ -417,19 +417,20 @@
     function setGap(mm) {
       gapMm = mm;
       scene.dirty = true;
-      const displayed = Math.round(mm);
+      const displayed = mm === park ? park : Math.min(park - 1, Math.round(mm));
       if (displayed === value) return;
       value = displayed;
       const label = value === park ? 'No metal' : `Metal ${value} mm behind the card`;
       metal.setAttribute('aria-valuenow', value);
       metal.setAttribute('aria-valuetext', label);
       distance.textContent = label;
-      action.textContent = value === park ? 'Bring metal closer' : 'Move metal away';
+      const nextAction = value === park ? 'Bring metal closer' : 'Move metal away';
+      if (action.textContent !== nextAction) action.textContent = nextAction;
       figure.classList.toggle('has-metal', value !== park);
     }
 
     function followPlate(y) {
-      const mm = y <= restY + .5 ? park : clamp(((coilY - y) / scale - d) * 1000, 1, park - 1);
+      const mm = y === restY ? park : clamp(((coilY - y) / scale - d) * 1000, 1, park);
       setGap(mm);
       positionMetal(y);
     }
@@ -439,11 +440,22 @@
       figure.classList.remove('is-moving');
     }
 
+    function fieldAt(gap) {
+      const coils = [[a, 1, 0]];
+      if (gap !== null) coils.push([a, -1, 2 * (d + gap)]);
+      const ceiling = gap === null ? .1 : Math.min(.1, d + gap);
+      const lines = traceField(coils, seeds, ceiling).map(points => {
+        const through = points.some(([rho, z], i) => i > 0 && (points[i - 1][1] - d) * (z - d) <= 0 && Math.abs(rho) < card);
+        return { points, color: through ? COPPER : FAINT };
+      });
+      return { lines, readings: physics.solve({ tag: 'card', reader: 'pad', distance: d, metal: gap }) };
+    }
+
+    const unshielded = fieldAt(null);
     const scene = plate('s9', p => {
       const ctx = fit(p), k = Math.min(p.w / .2, p.h / .15);
       coilY = p.h - 34;
-      // Put the farthest active gap at the parking edge so the field reacts when the plate moves.
-      scale = (coilY - restY) / (d + (park - 1) / 1000);
+      scale = (coilY - restY) / (d + park / 1000);
       if (travel) {
         const progress = reduced.matches ? 1 : stage(0, 600, performance.now() - travel.started);
         const end = travel.to === park ? restY : heightAt(travel.to);
@@ -455,40 +467,44 @@
           followPlate(travel.from + (end - travel.from) * t);
         }
       }
+      // Ease out the simulated sheet as it enters the parked position.
+      const fraction = stage(0, 14, park - gapMm);
+      const shielding = fraction * fraction * (3 - 2 * fraction);
       if (model?.gapMm !== gapMm) {
-        const gap = gapMm === park ? null : gapMm / 1000;
-        const coils = [[a, 1, 0]];
-        if (gap !== null) coils.push([a, -1, 2 * (d + gap)]);
-        const ceiling = gap === null ? .1 : Math.min(.1, d + gap);
-        const paths = traceField(coils, [.3, .5, .68, .82, .93].map(f => [f * a, 0]), ceiling);
-        const lines = paths.map(points => {
-          const through = points.some(([rho, z], i) => i > 0 && (points[i - 1][1] - d) * (z - d) <= 0 && Math.abs(rho) < card);
-          return { points, color: through ? COPPER : FAINT };
-        });
-        model = { gapMm, lines };
-        const s = physics.solve({ tag: 'card', reader: 'pad', distance: d, metal: gap });
-        strength.textContent = `${s.field.toFixed(2)} A/m`;
-        tuning.textContent = si(s.resonance, 'Hz', 4);
+        const field = shielding ? fieldAt(gapMm / 1000) : unshielded;
+        model = { ...field, gapMm };
+        const s = field.readings;
+        const fieldText = `${(unshielded.readings.field + (s.field - unshielded.readings.field) * shielding).toFixed(2)} A/m`;
+        const tuningText = si(unshielded.readings.resonance + (s.resonance - unshielded.readings.resonance) * shielding, 'Hz', 4);
+        if (strength.textContent !== fieldText) strength.textContent = fieldText;
+        if (tuning.textContent !== tuningText) tuning.textContent = tuningText;
         const state = s.awake ? 'Chip awake' : 'Chip asleep';
         if (chip.textContent !== state) chip.textContent = state;
         chip.dataset.awake = s.awake;
       }
 
       const X = rho => p.w / 2 + rho * k, Y = z => coilY - z * scale;
-      const { lines } = model;
-      p.canvas.metalField = { lines, X, Y };
-      ctx.save();
-      if (value !== park) {
+      function drawField(lines, opacity) {
+        ctx.globalAlpha = opacity;
+        for (const { points, color } of lines) {
+          for (const side of [-1, 1]) curve(ctx, points, rho => X(side * rho), Y, color, 1.4);
+        }
+      }
+      p.canvas.metalField = { lines: shielding < .5 ? unshielded.lines : model.lines, X, Y };
+      if (shielding) {
         // Hide any integration step that would draw a line through the conductive sheet.
+        ctx.save();
         const edge = pointer !== null || travel ? metalY : heightAt(gapMm);
         ctx.beginPath();
         ctx.rect(0, edge - 2, p.w, p.h);
         ctx.clip();
       }
-      for (const { points, color } of lines) {
-        for (const side of [-1, 1]) curve(ctx, points, rho => X(side * rho), Y, color, 1.4);
+      if (shielding < 1) drawField(unshielded.lines, 1 - shielding);
+      if (shielding) {
+        drawField(model.lines, shielding);
+        ctx.restore();
       }
-      ctx.restore();
+      ctx.globalAlpha = 1;
       for (const side of [-1, 1]) dot(ctx, X(side * a), Y(0), INK, 4);
       ctx.fillStyle = 'rgba(184, 101, 42, .25)'; ctx.fillRect(X(-card), Y(d) - 3, X(card) - X(-card), 6);
       ctx.fillStyle = INK; ctx.font = `600 11px ${SANS}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
@@ -1933,6 +1949,7 @@
     busy: false,
     draggingSlot: -1,
     hiddenFlights: new Set(),
+    returning: new Set(),
     winnerRow: -1,
     hasClash: false,
     seqToken: 0,
@@ -1966,7 +1983,8 @@
     const walletAction = s16El.querySelector('#s16-wallet-action');
 
     const count = s16State.placed.length;
-    const inWallet = 3 - count;
+    const inWallet = [0, 1, 2].filter(slot => !s16State.placed.includes(slot) &&
+      !s16State.hiddenFlights.has(slot) && !s16State.returning.has(slot)).length;
     if (padStage) {
       padStage.dataset.active = String(count > 0);
       padStage.dataset.clash = String(hasClash);
@@ -1978,20 +1996,22 @@
       walletCount.textContent = inWallet === 0 ? 'Empty' : `${inWallet} inside`;
     }
     if (walletBtn) walletBtn.dataset.empty = String(inWallet === 0);
-    if (walletAction) walletAction.textContent = inWallet ? 'Drag or click' : 'All 3 on reader';
+    if (walletAction) walletAction.textContent = count === 3 ? 'All 3 on reader' : 'Drag or click';
 
     if (walletSlots) {
       for (const slotEl of walletSlots.querySelectorAll('.s16-slot')) {
         const slot = +slotEl.dataset.slot;
-        const shouldShow = !s16State.placed.includes(slot) && !s16State.hiddenFlights.has(slot);
+        const inserting = s16State.returning.has(slot);
+        const shouldShow = !s16State.placed.includes(slot) && (inserting || !s16State.hiddenFlights.has(slot));
         let tucked = slotEl.querySelector('.s16-tucked-card');
         if (shouldShow) {
           if (!tucked) {
             tucked = document.createElement('span');
             tucked.className = 's16-tucked-card';
+            tucked.innerHTML = buildS16CardFace(slot, s16State.uids[slot], { compact: true });
             slotEl.prepend(tucked);
           }
-          tucked.innerHTML = buildS16CardFace(slot, s16State.uids[slot], { compact: true });
+          tucked.toggleAttribute('data-inserting', inserting);
         } else {
           tucked?.remove();
         }
@@ -2021,12 +2041,16 @@
         btn.style.setProperty('--sy', `${pose.y}px`);
         btn.style.setProperty('--sr', `${pose.r}deg`);
         btn.style.zIndex = String(pos + 2);
-        btn.dataset.uid = uid ? uid.map(hex).join(' ') : '';
+        const uidText = uid ? uid.map(hex).join(' ') : '';
+        const faceChanged = btn.dataset.uid !== uidText || btn.classList.contains('is-winner') !== isWinner;
+        btn.dataset.uid = uidText;
         btn.classList.toggle('is-winner', isWinner);
         btn.classList.toggle('is-quiet', isQuiet);
         btn.classList.toggle('is-hidden-flight', s16State.hiddenFlights.has(slot));
-        btn.setAttribute('aria-label', `Card ${slot + 1} (${uid ? uid.map(hex).join(' ') : ''})${isWinner ? ', selected' : ''}. Drag off reader or press Delete to return to wallet.`);
-        btn.innerHTML = buildS16CardFace(slot, uid, { compact: false, isWinner });
+        if (faceChanged) {
+          btn.setAttribute('aria-label', `Card ${slot + 1} (${uidText})${isWinner ? ', selected' : ''}. Drag off reader or press Delete to return to wallet.`);
+          btn.innerHTML = buildS16CardFace(slot, uid, { compact: false, isWinner });
+        }
       });
     }
   }
@@ -2120,8 +2144,11 @@
       }
       s16State.flights.clear();
       s16State.hiddenFlights.clear();
+      s16State.returning.clear();
       s16State.busy = false;
       s16State.draggingSlot = -1;
+      drag?.card.classList.remove('is-dragging');
+      drag?.card.style.removeProperty('transform');
       drag = null;
       if (walletBtn) {
         delete walletBtn.dataset.open;
@@ -2129,6 +2156,53 @@
       }
       syncS16Desk(s16State.winnerRow, s16State.hasClash);
       s16.dirty = true;
+    }
+
+    function walletHasCard(slot) {
+      return !s16State.placed.includes(slot) && !s16State.hiddenFlights.has(slot) && !s16State.returning.has(slot);
+    }
+
+    function closeWalletWhenIdle() {
+      if (!s16State.busy && !s16State.returning.size && !s16State.hiddenFlights.size && !walletDrag && walletBtn) {
+        delete walletBtn.dataset.open;
+      }
+    }
+
+    function cardPose(node) {
+      const rect = node.getBoundingClientRect();
+      const { a, b } = new DOMMatrixReadOnly(getComputedStyle(node).transform);
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2,
+        width: node.offsetWidth * Math.hypot(a, b), angle: Math.atan2(b, a) * 180 / Math.PI };
+    }
+
+    async function tuckS16Card(slot, from, { delay = 0, vx = 0, vy = 0 } = {}) {
+      const sequence = s16State.seqToken;
+      s16State.returning.add(slot);
+      walletBtn.dataset.open = 'true';
+      syncS16Desk();
+      const card = walletSlots?.querySelector(`.s16-slot[data-slot="${slot}"] .s16-tucked-card`);
+      if (card && from && !reduced.matches && !document.hidden) {
+        const to = cardPose(card);
+        const dx = from.x - to.x, dy = from.y - to.y;
+        const lift = Math.max(26, card.offsetHeight - 11);
+        const animation = card.animate([
+          { transform: `translate(${dx}px, ${dy}px) rotate(${from.angle}deg) scale(${from.width / to.width})`, easing: 'cubic-bezier(.35, 0, .22, 1)' },
+          { transform: `translate(${dx * .42 + clamp(vx * 20, -18, 18)}px, ${dy * .45 - lift * .65 + clamp(vy * 20, -14, 14)}px) rotate(${from.angle * .4}deg)`,
+            offset: .36, easing: 'ease-out' },
+          { transform: `translateY(${-lift}px)`, offset: .68, easing: 'cubic-bezier(.36, .05, .6, 1)' },
+          { transform: 'none' },
+        ], { duration: 460, delay, fill: 'both' });
+        const flight = { anim: animation };
+        s16State.flights.add(flight);
+        await animation.finished.catch(() => {});
+        animation.cancel();
+        s16State.flights.delete(flight);
+      }
+      if (sequence !== s16State.seqToken) return;
+      s16State.returning.delete(slot);
+      s16State.hiddenFlights.delete(slot);
+      closeWalletWhenIdle();
+      syncS16Desk();
     }
 
     function flyS16Card(slot, fromRect, toRect, { vx = 0, vy = 0, duration = 360, arc = -28, delay = 0, scaleFrom = 1, scaleTo = 1 } = {}) {
@@ -2190,27 +2264,16 @@
       await flyS16Card(slot, fromRect, toRect, { duration: 380, arc: -28, scaleFrom: .56, scaleTo: 1 });
       if (token !== s16State.seqToken) return;
       s16State.hiddenFlights.delete(slot);
-      if (!s16State.busy && walletBtn) delete walletBtn.dataset.open;
+      closeWalletWhenIdle();
       syncS16Desk(s16State.winnerRow, s16State.hasClash);
       s16.dirty = true;
     }
 
-    async function returnCardToWallet(slot, fromRect, vx = 0, vy = 0) {
+    function returnCardToWallet(slot, from, vx = 0, vy = 0) {
       const idx = s16State.placed.indexOf(slot);
       if (idx === -1) return;
-      const token = s16State.seqToken;
       s16State.placed.splice(idx, 1);
-      s16State.hiddenFlights.add(slot);
-      if (walletBtn) walletBtn.dataset.open = 'true';
-      syncS16Desk(s16State.winnerRow, s16State.hasClash);
-      s16.dirty = true;
-      const slotNode = walletSlots?.querySelector(`.s16-slot[data-slot="${slot}"]`);
-      const toRect = slotNode?.getBoundingClientRect();
-      await flyS16Card(slot, fromRect, toRect, { vx, vy, duration: 340, arc: -24, scaleFrom: 1, scaleTo: .54 });
-      if (token !== s16State.seqToken) return;
-      s16State.hiddenFlights.delete(slot);
-      if (!s16State.busy && walletBtn) delete walletBtn.dataset.open;
-      syncS16Desk(s16State.winnerRow, s16State.hasClash);
+      void tuckS16Card(slot, from, { vx, vy });
       s16.dirty = true;
     }
 
@@ -2218,9 +2281,9 @@
       if (s16State.busy || !event.isPrimary || event.button !== 0) return;
       const slotEl = event.target.closest?.('.s16-slot');
       const picked = slotEl ? +slotEl.dataset.slot : -1;
-      const slot = (picked >= 0 && !s16State.placed.includes(picked))
+      const slot = (picked >= 0 && walletHasCard(picked))
         ? picked
-        : [0, 1, 2].find(i => !s16State.placed.includes(i));
+        : [0, 1, 2].find(walletHasCard);
       if (slot === undefined) return;
       walletDrag = {
         id: event.pointerId,
@@ -2235,7 +2298,7 @@
       walletBtn.setPointerCapture?.(event.pointerId);
     });
 
-    walletBtn?.addEventListener('pointermove', event => {
+    addEventListener('pointermove', event => {
       if (!walletDrag || event.pointerId !== walletDrag.id) return;
       const dx = event.clientX - walletDrag.startX;
       const dy = event.clientY - walletDrag.startY;
@@ -2273,7 +2336,7 @@
     });
 
     for (const name of ['pointerup', 'pointercancel']) {
-      walletBtn?.addEventListener(name, async event => {
+      addEventListener(name, async event => {
         if (!walletDrag || event.pointerId !== walletDrag.id) return;
         const ended = walletDrag;
         walletDrag = null;
@@ -2283,6 +2346,7 @@
         suppressWalletClick = true;
         setTimeout(() => { suppressWalletClick = false; }, 0);
         const fromRect = ended.ghost?.getBoundingClientRect();
+        const from = ended.ghost && cardPose(ended.ghost);
         ended.ghost?.remove();
         const token = s16State.seqToken;
 
@@ -2296,17 +2360,11 @@
           await flyS16Card(ended.slot, fromRect, toRect, { duration: 240, arc: -10, scaleFrom: 1.04, scaleTo: 1 });
           if (token !== s16State.seqToken) return;
           s16State.hiddenFlights.delete(ended.slot);
-          if (!s16State.busy) delete walletBtn.dataset.open;
+          closeWalletWhenIdle();
           syncS16Desk(s16State.winnerRow, s16State.hasClash);
           s16.dirty = true;
         } else {
-          const slotNode = walletSlots?.querySelector(`.s16-slot[data-slot="${ended.slot}"]`);
-          const toRect = slotNode?.getBoundingClientRect();
-          await flyS16Card(ended.slot, fromRect, toRect, { duration: 240, arc: -12, scaleFrom: 1, scaleTo: .54 });
-          if (token !== s16State.seqToken) return;
-          s16State.hiddenFlights.delete(ended.slot);
-          if (!s16State.busy) delete walletBtn.dataset.open;
-          syncS16Desk(s16State.winnerRow, s16State.hasClash);
+          void tuckS16Card(ended.slot, from);
         }
       });
     }
@@ -2317,9 +2375,9 @@
         return;
       }
       if (s16State.busy) return;
-      const slot = [0, 1, 2].find(i => !s16State.placed.includes(i));
+      const slot = [0, 1, 2].find(walletHasCard);
       if (slot === undefined) {
-        if (!reduced.matches && !document.hidden) {
+        if (!s16State.returning.size && !s16State.hiddenFlights.size && !reduced.matches && !document.hidden) {
           walletBtn.animate([
             { transform: 'translateX(0)' },
             { transform: 'translateX(-4px)' },
@@ -2352,10 +2410,10 @@
           vy: 0,
         };
         card.classList.add('is-dragging');
-        card.setPointerCapture?.(event.pointerId);
+        padCards.setPointerCapture?.(event.pointerId);
       });
 
-      padCards.addEventListener('pointermove', event => {
+      addEventListener('pointermove', event => {
         if (!drag || event.pointerId !== drag.id) return;
         const now = performance.now();
         const dt = Math.max(8, now - drag.lastT);
@@ -2375,7 +2433,7 @@
       });
 
       for (const name of ['pointerup', 'pointercancel']) {
-        padCards.addEventListener(name, event => {
+        addEventListener(name, event => {
           if (!drag || event.pointerId !== drag.id) return;
           const ended = drag;
           drag = null;
@@ -2388,9 +2446,7 @@
           const speed = Math.hypot(ended.vx, ended.vy);
           const toss = event.type === 'pointerup' && (dist > 62 || (speed > .36 && dist > 24));
           if (toss) {
-            const rect = ended.card.getBoundingClientRect();
-            ended.card.style.removeProperty('transform');
-            void returnCardToWallet(ended.slot, rect, ended.vx, ended.vy);
+            returnCardToWallet(ended.slot, cardPose(ended.card), ended.vx, ended.vy);
           } else {
             ended.card.style.removeProperty('transform');
           }
@@ -2403,13 +2459,14 @@
         if (!card) return;
         if (['Backspace', 'Delete', 'Enter', ' '].includes(event.key)) {
           event.preventDefault();
-          void returnCardToWallet(+card.dataset.slot, card.getBoundingClientRect(), .22, -.08);
+          returnCardToWallet(+card.dataset.slot, cardPose(card));
+          walletBtn.focus({ preventScroll: true });
         }
       });
     }
 
     tapBtn?.addEventListener('click', async () => {
-      if (s16State.busy) return;
+      if (s16State.busy || s16State.returning.size || s16State.hiddenFlights.size || drag || walletDrag) return;
       const targetCount = s16State.placed.length ? s16State.placed.length : 2;
       if (reduced.matches || document.hidden || !walletBtn) {
         s16State.seed++;
@@ -2424,19 +2481,14 @@
       s16State.busy = true;
       walletBtn.dataset.open = 'true';
 
-      const recallList = s16State.placed.map(slot => ({
-        slot,
-        rect: padCards?.querySelector(`.s16-pad-card[data-slot="${slot}"]`)?.getBoundingClientRect(),
-      }));
+      const recallList = s16State.placed.map(slot => {
+        const card = padCards?.querySelector(`.s16-pad-card[data-slot="${slot}"]`);
+        return { slot, from: card && cardPose(card) };
+      });
       s16State.placed = [];
-      for (const item of recallList) s16State.hiddenFlights.add(item.slot);
-      syncS16Desk(-1, false);
       s16.dirty = true;
 
-      await Promise.all(recallList.map((item, i) => {
-        const toRect = walletSlots?.querySelector(`.s16-slot[data-slot="${item.slot}"]`)?.getBoundingClientRect();
-        return flyS16Card(item.slot, item.rect, toRect, { duration: 300, delay: i * 45, arc: -20, scaleFrom: 1, scaleTo: .54 });
-      }));
+      await Promise.all(recallList.map((item, i) => tuckS16Card(item.slot, item.from, { delay: i * 45 })));
       if (token !== s16State.seqToken) return;
 
       s16State.hiddenFlights.clear();
@@ -2444,14 +2496,10 @@
       delete walletBtn.dataset.open;
 
       const shake = walletBtn.animate([
-        { transform: 'rotate(0deg) scale(1)' },
-        { transform: 'rotate(-6deg) translateY(-3px) scale(1.03)', offset: .18 },
-        { transform: 'rotate(6deg) translateY(-2px) scale(1.03)', offset: .36 },
-        { transform: 'rotate(-5deg) translateY(-1px)', offset: .54 },
-        { transform: 'rotate(4deg)', offset: .72 },
-        { transform: 'rotate(-2deg)', offset: .86 },
         { transform: 'none' },
-      ], { duration: 420, easing: 'ease-in-out' });
+        { transform: 'rotate(-2deg) translateY(2px)', offset: .48 },
+        { transform: 'none' },
+      ], { duration: 300, easing: 'ease-in-out' });
       const shakeToken = { el: null, anim: shake };
       s16State.flights.add(shakeToken);
       await Promise.race([
