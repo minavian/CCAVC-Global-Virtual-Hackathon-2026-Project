@@ -830,15 +830,61 @@
     const active = code === 'manchester' ? manchester : simple;
     const blend = countingMotion.codeBlend ?? (code === 'manchester' ? 1 : 0);
     const right = active.read.length === sent.length && active.read.every((b, i) => b === sent[i]);
+    const now = performance.now(), mix = (from, to, t) => from + (to - from) * t;
+    if (p.countingLetter !== letter) {
+      p.countingFrom = p.countingShown;
+      p.countingStarted = now;
+      p.countingLetter = letter;
+    }
+    const elapsed = now - p.countingStarted, bitDuration = 350, bitDelay = 10;
+    if (elapsed >= bitDuration + 7 * bitDelay || reduced.matches || document.hidden) p.countingFrom = null;
+    const before = p.countingFrom;
+    const progress = i => {
+      const t = before ? stage(0, bitDuration, elapsed - Math.min(i, 7) * bitDelay) : 1;
+      return t * t * (3 - 2 * t);
+    };
+    const bitProgress = sent.map((_, i) => progress(i));
+    const shownBits = sent.map((b, i) => mix(before?.bits[i] ?? b, b, bitProgress[i]));
+    const level = simple.level.map((value, i) => {
+      const target = mix(value, manchester.level[i], blend);
+      return mix(before?.level[i] ?? target, target, bitProgress[Math.floor(i / (2 * H))]);
+    });
+
+    // Keep each visible label's position and opacity when another keystroke interrupts the roll.
+    const captionProgress = bitProgress[0], captionTravel = 10;
+    const captions = (before?.captions ?? []).map(({ char, opacity, offset }) => ({
+      char, opacity: mix(opacity, Number(char === letter), captionProgress),
+      offset: mix(offset, char === letter ? 0 : -captionTravel, captionProgress),
+    })).filter(({ opacity }) => opacity > .005);
+    if (!captions.some(({ char }) => char === letter)) {
+      captions.push({ char: letter, opacity: captionProgress, offset: captionTravel * (1 - captionProgress) });
+    }
+
     const ctx = fit(p), bx = { x: 24, y: 46, w: p.w - 48, h: p.h - 120 };
     const X = i => bx.x + i / active.level.length * bx.w, Y = v => bx.y + bx.h - v * bx.h * .8;
-    p.canvas.timingTrace = { box: bx, X, Y, sent, level: active.level, read: active.read, ticks: active.ticks, samplesPerBit: 2 * H, color: INK, codeBlend: blend };
-    ctx.font = `600 14px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-    sent.forEach((b, i) => { ctx.fillStyle = i < 8 ? INK : MUTED; ctx.fillText(String(b), X((i + .5) * 2 * H), bx.y - 8); });
-    ctx.font = `600 11px ${SANS}`; ctx.textAlign = 'left'; ctx.fillStyle = MUTED; ctx.fillText(`“${letter}” then eight zeros`, bx.x, bx.y - 28);
+    p.canvas.timingTrace = { box: bx, X, Y, sent, level: active.level, plottedLevel: level, read: active.read, ticks: active.ticks, samplesPerBit: 2 * H, color: INK, codeBlend: blend };
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, bx.y - 21, p.w, 16); ctx.clip();
+    ctx.font = `600 14px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    shownBits.forEach((b, i) => {
+      const x = X((i + .5) * 2 * H), y = bx.y - 13;
+      ctx.fillStyle = i < 8 ? INK : MUTED;
+      if (b < 1) { ctx.globalAlpha = 1 - b; ctx.fillText('0', x, y - 10 * b); }
+      if (b > 0) { ctx.globalAlpha = b; ctx.fillText('1', x, y + 10 * (1 - b)); }
+    });
+    ctx.restore();
+    ctx.font = `600 11px ${SANS}`; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom'; ctx.fillStyle = MUTED;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, bx.y - 40, p.w, 14); ctx.clip();
+    for (const { char, opacity, offset } of captions) {
+      ctx.globalAlpha = opacity;
+      ctx.fillText(`“${char}”`, bx.x, bx.y - 28 + offset);
+    }
+    ctx.restore();
+    ctx.fillText('then eight zeros', bx.x + 22, bx.y - 28);
     ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.beginPath();
-    for (let i = 0; i < simple.level.length; i++) {
-      const y = Y(simple.level[i] + (manchester.level[i] - simple.level[i]) * blend);
+    for (let i = 0; i < level.length; i++) {
+      const y = Y(level[i]);
       i ? ctx.lineTo(X(i), y) : ctx.moveTo(X(i), y);
     }
     ctx.stroke();
@@ -850,18 +896,26 @@
       ctx.fillStyle = ok ? GREEN : RED; ctx.font = `600 12px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
       ctx.fillText(String(bit), xPos, bx.y + bx.h + 22);
     }
-    const shared = Math.min(simple.ticks.length, manchester.ticks.length);
-    for (let i = 0; i < shared; i++) {
-      const xPos = X(simple.ticks[i] + (manchester.ticks[i] - simple.ticks[i]) * blend);
-      const okSimple = simple.read[i] === sent[i], okManch = manchester.read[i] === sent[i];
-      if (simple.read[i] === manchester.read[i] && okSimple === okManch) drawTick(xPos, simple.read[i], okSimple, 1);
-      else {
-        drawTick(xPos, simple.read[i], okSimple, 1 - blend);
-        drawTick(xPos, manchester.read[i], okManch, blend);
-      }
+    const ticks = [];
+    const tickCount = Math.max(simple.ticks.length, manchester.ticks.length, before?.ticks.length ?? 0);
+    for (let i = 0; i < tickCount; i++) {
+      const previous = before?.ticks[i];
+      const a = simple.ticks[i], b = manchester.ticks[i];
+      const target = mix(a ?? b ?? previous.sample, b ?? a ?? previous.sample, blend);
+      const t = bitProgress[Math.min(sent.length - 1, Math.floor(target / (2 * H)))];
+      const sample = mix(previous?.sample ?? target, target, t);
+      // Four weights keep identical digits and colors steady when either control changes.
+      const weights = [0, 0, 0, 0];
+      if (a !== undefined) weights[2 * simple.read[i] + Number(simple.read[i] === sent[i])] += 1 - blend;
+      if (b !== undefined) weights[2 * manchester.read[i] + Number(manchester.read[i] === sent[i])] += blend;
+      weights.forEach((weight, k) => {
+        weights[k] = mix(previous?.weights[k] ?? (before ? 0 : weight), weight, t);
+        drawTick(X(sample), k >> 1, k % 2 === 1, weights[k]);
+      });
+      ticks.push({ sample, weights });
     }
-    for (let i = shared; i < simple.ticks.length; i++) drawTick(X(simple.ticks[i]), simple.read[i], simple.read[i] === sent[i], 1 - blend);
-    for (let i = shared; i < manchester.ticks.length; i++) drawTick(X(manchester.ticks[i]), manchester.read[i], manchester.read[i] === sent[i], blend);
+    p.countingShown = { captions, bits: shownBits, level, ticks };
+    if (before) p.dirty = true;
     ctx.globalAlpha = 1;
     p.say(right ? `The reader counted all ${sent.length} bits right.`
       : `The reader counted ${active.read.length} bits instead of ${sent.length}: ${active.read.filter(b => b === 0).length} zeros where there were ${sent.filter(b => b === 0).length}.`);
@@ -872,6 +926,7 @@
       countingMotion.codeBlend = codeBlend;
       counting.dirty = true;
     };
+    reduced.addEventListener('change', () => { counting.dirty = true; });
   }
   const driftControl = counting?.el.querySelector('.s13-drift-control');
   if (driftControl) {

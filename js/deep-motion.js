@@ -2589,13 +2589,14 @@ function watchMistakes(previous, scene) {
   function wavePoints(fromTop, toTop) {
     const timing = source.timingTrace, signal = chart.errorTrace;
     if (!timing?.level.length || !signal?.points.length) return [];
+    const level = timing.plottedLevel ?? timing.level;
     const from = bounds(source, scrollY), to = bounds(chart, scrollY);
     // Sample both live traces once, using the viewport position where each scene settles.
     return Array.from({ length: 641 }, (_, i) => {
-      const u = i / 640, sample = Math.min(timing.level.length - 1, Math.floor(u * timing.level.length));
+      const u = i / 640, sample = Math.min(level.length - 1, Math.floor(u * level.length));
       const [step, current] = signal.points[Math.round(u * (signal.points.length - 1))];
       return [
-        from.x + timing.X(u * timing.level.length), from.y - fromTop + timing.Y(timing.level[sample]),
+        from.x + timing.X(u * level.length), from.y - fromTop + timing.Y(level[sample]),
         to.x + signal.X(step), to.y - toTop + signal.Y(current),
       ];
     });
