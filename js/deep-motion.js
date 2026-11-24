@@ -172,7 +172,7 @@ const ALL_HOLD_CLASSES = [
 const ALL_STAGED_CLASSES = [
   's7-awaiting', 's7-entering', 's8-awaiting', 's9-awaiting', 's9-entering',
   's10-awaiting', 's10-entering', 's12-staged', 's12-title-in-flight', 's13-staged',
-  's14-staged', 's15-staged', 's16-staged', 's17-staged', 'deep-end-staged', 'deep-rev-staged',
+  's15-staged', 's16-staged', 's17-staged', 'deep-end-staged', 'deep-rev-staged',
 ];
 const STRAY_OVERLAY_SELECTOR = [
   '.deep-rev-copy', '.deep-blink-cover', '.part-two-reveal', '.part-two-reverse-cover',
@@ -196,7 +196,6 @@ function sanitizeChapter() {
     el.style.removeProperty('transform');
     el.style.removeProperty('--s8-plot-opacity');
     el.style.removeProperty('--s13-spectrum-opacity');
-    el.style.removeProperty('--s14-signal-opacity');
     el.style.removeProperty('--s15-river-opacity');
     el.style.removeProperty('--s16-chart-opacity');
   }
@@ -205,7 +204,6 @@ function sanitizeChapter() {
     if (!el) continue;
     el.style.removeProperty('visibility');
     el.style.removeProperty('opacity');
-    el.style.removeProperty('--s14-timing-opacity');
     el.style.removeProperty('--s15-source-opacity');
     el.style.removeProperty('--s16-source-opacity');
   }
@@ -297,18 +295,6 @@ function runReverseCanvasMorph(fromEl, toEl, { mode = 'default', cut = 430, arri
       { opacity: 0, transform: 'translateY(11px)', filter: 'blur(3px)' },
     ], { duration: 320, delay: i * 24, easing: 'ease-in', fill: 'both' }));
   }
-  if (mode === 'mistakes') {
-    const replies = fromEl.querySelector('#s14-replies');
-    if (replies) {
-      const rows = Array.from(replies.children);
-      rows.slice().reverse().forEach((row, i) => {
-        animations.push(row.animate([
-          { opacity: 1, transform: 'none', filter: 'blur(0px)' },
-          { opacity: 0, transform: 'translateY(-10px)', filter: 'blur(6px)' },
-        ], { duration: 280, delay: i * 60, easing: 'ease-in', fill: 'both' }));
-      });
-    }
-  }
 
   function clear() {
     if (!activeFlag) return;
@@ -375,7 +361,7 @@ function runReverseCanvasMorph(fromEl, toEl, { mode = 'default', cut = 430, arri
         ctx.stroke();
         ctx.restore();
       }
-    } else if (mode === 'mistakes' || mode === 'flipping' || mode === 'tuning' || mode === 'metal' || mode === 'pauses') {
+    } else if (mode === 'flipping' || mode === 'tuning' || mode === 'metal' || mode === 'pauses') {
       const waveFade = ease(120, 360, elapsed) * (1 - ease(cut + 180, arrivalEnd, elapsed));
       if (waveFade > 0) {
         ctx.save();
@@ -2575,210 +2561,177 @@ function watchMistakes(previous, scene) {
   const root = document.documentElement, chapter = scene.closest('.deep');
   const before = previous.querySelector('.plate-words'), after = scene.querySelector('.plate-words');
   const source = previous.querySelector('#s13-chart'), chart = scene.querySelector('#s14-chart');
-  const signalHeader = scene.querySelector('.s14-signal-label');
-  const signalHelp = scene.querySelector('#s14-signal-help');
-  const replies = scene.querySelector('#s14-replies');
+  const strip = scene.querySelector('#s14-signal'), replies = scene.querySelector('#s14-replies');
   const copy = document.createElement('canvas');
   copy.className = 's14-timing-copy';
   copy.setAttribute('aria-hidden', 'true');
   const ctx = copy.getContext('2d');
-  const cut = 580, morphEnd = 1080, arrivalEnd = 1780, readHold = 1000;
-  let run, frame, revCtrl;
-  const canPlay = () => ctx && !reducedMotion.matches && !document.hidden &&
-    CSS.supports('clip-path', 'inset(0)');
-
-  function clearEffects() {
-    if (!copy.isConnected && !scene.classList.contains('s14-staged')) return;
-    copy.remove();
-    source.style.removeProperty('--s14-timing-opacity');
-    chart.style.removeProperty('--s14-signal-opacity');
-    scene.classList.remove('s14-staged');
-    run?.animations.forEach(animation => animation.cancel());
-  }
+  const cut = 690, duration = 1740, readHold = 1000;
+  let run, frame;
+  const canPlay = () => ctx && !reducedMotion.matches && !document.hidden;
 
   function finish() {
     if (!run) return;
     cancelAnimationFrame(frame);
-    clearEffects();
-    run = undefined;
+    run.animations.forEach(animation => animation.cancel());
+    copy.remove();
     root.classList.remove('deep-mistakes-hold');
+    run = undefined;
     scheduleMotion();
   }
 
-  function land() {
-    scrollTo({ top: run.destination, behavior: 'instant' });
-    run.top = scrollY;
-    run.landed = true;
-    scene.classList.remove('s14-staged');
-    for (const [i, node] of Array.from(after.children).entries()) {
-      run.animations.push(node.animate([
-        { opacity: 0, transform: 'translateY(9px)' },
-        { opacity: 1, transform: 'none' },
-      ], { duration: 420, delay: 70 + i * 52, easing: arrivalEase, fill: 'both' }));
-    }
-    for (const node of [signalHeader, signalHelp]) {
-      if (!node) continue;
-      run.animations.push(node.animate([
-        { opacity: 0, filter: 'blur(3px)', transform: 'translateY(-5px)' },
-        { opacity: 1, filter: 'blur(0px)', transform: 'none' },
-      ], { duration: 340, delay: 140, easing: arrivalEase, fill: 'both' }));
-    }
-    if (replies) {
-      Array.from(replies.children).forEach((row, i) => {
-        run.animations.push(row.animate([
-          { opacity: 0, transform: 'translateY(-12px)', filter: 'blur(7px)', clipPath: 'inset(0 0 100% 0)' },
-          { opacity: .78, transform: 'translateY(-2px)', filter: 'blur(2.5px)', clipPath: 'inset(0 0 18% 0)', offset: .42 },
-          { opacity: 1, transform: 'none', filter: 'blur(0px)', clipPath: 'inset(0 0 0% 0)' },
-        ], { duration: 440, delay: 380 + i * 105, easing: arrivalEase, fill: 'both' }));
-      });
-    }
+  function wavePoints(fromTop, toTop) {
+    const timing = source.timingTrace, signal = chart.errorTrace;
+    if (!timing?.level.length || !signal?.points.length) return [];
+    const from = bounds(source, scrollY), to = bounds(chart, scrollY);
+    // Sample both live traces once, using the viewport position where each scene settles.
+    return Array.from({ length: 641 }, (_, i) => {
+      const u = i / 640, sample = Math.min(timing.level.length - 1, Math.floor(u * timing.level.length));
+      const [step, current] = signal.points[Math.round(u * (signal.points.length - 1))];
+      return [
+        from.x + timing.X(u * timing.level.length), from.y - fromTop + timing.Y(timing.level[sample]),
+        to.x + signal.X(step), to.y - toTop + signal.Y(current),
+      ];
+    });
   }
 
-  function drawHandoff(elapsed) {
-    const { width, height, stacked, fromBox, toBox, toChartTop, timing, signal } = run;
-    const carry = ease(70, morphEnd, elapsed);
-    const fold = ease(180, morphEnd, elapsed);
-    const arc = stacked ? 0 : Math.sin(Math.PI * carry) * -18;
-    const curX = mix(fromBox.x, toBox.x, carry);
-    const curY = mix(fromBox.y, toBox.y, carry) + arc;
-    const curW = mix(fromBox.w, toBox.w, carry);
-    const curH = mix(fromBox.h, toBox.h, carry);
+  function animateStyles() {
+    const add = (node, keyframes, delay, duration) => {
+      const animation = node.animate(keyframes, { delay, duration, easing: 'ease-in-out', fill: 'both' });
+      animation.pause();
+      run.animations.push(animation);
+    };
+    const fade = (node, delay, duration, enter, offset) => {
+      const hidden = { opacity: 0, transform: `translateY(${offset}px)`, filter: 'blur(2px)' };
+      const visible = { opacity: 1, transform: 'none', filter: 'blur(0px)' };
+      add(node, enter ? [hidden, visible] : [visible, hidden], delay, duration);
+    };
+    Array.from(before.children).forEach((node, i) => fade(node, 60 + i * 36, 380, false, -5));
+    add(source, [{ opacity: 1 }, { opacity: 0 }], 120, 300);
+    Array.from(after.children).forEach((node, i) => fade(node, cut + i * 52, 470, true, 7));
+    for (const node of [strip.previousElementSibling, strip.nextElementSibling]) fade(node, cut + 180, 460, true, 4);
+    add(strip, [
+      { opacity: 0, clipPath: 'inset(0 100% 0 0)' },
+      { opacity: 1, clipPath: 'inset(0)' },
+    ], 950, 430);
+    const rows = Array.from(replies.children);
+    rows.forEach((row, i) => fade(row, 1050 + i * (300 / rows.length), 390, true, 5));
+  }
 
-    const outFade = 1 - ease(160, 620, elapsed);
-    const overFade = 1 - ease(880, 1140, elapsed);
-    const overlayAlpha = ease(0, 120, elapsed) * overFade;
-
+  function drawHandoff(position) {
+    const { width, height, points } = run;
     ctx.clearRect(0, 0, width, height);
-    if (overlayAlpha > 0) {
-      const r = Math.round(mix(13, 184, fold));
-      const g = Math.round(mix(13, 101, fold));
-      const b = Math.round(mix(12, 42, fold));
-      ctx.save();
-      ctx.globalAlpha = overlayAlpha;
-      ctx.strokeStyle = `rgb(${r}, ${g}, ${b})`;
-      ctx.lineWidth = mix(2, 1.45, fold);
-      ctx.beginPath();
-      const divisions = 10 * timing.sent.length;
-      const fromMin = Math.min(timing.Y(1), timing.Y(0)), fromMax = Math.max(timing.Y(1), timing.Y(0));
-      const fromSpan = Math.max(1, fromMax - fromMin);
-      for (let i = 0; i <= divisions; i++) {
-        const t = i / divisions;
-        const sample = timing.level[Math.min(timing.level.length - 1, Math.floor(t * timing.level.length))];
-        const [, current] = signal.points[Math.round(t * (signal.points.length - 1))];
-        const yFrom = curY + (timing.Y(sample) - fromMin) / fromSpan * curH;
-        const yTo = curY + (signal.Y(current) / Math.max(1, signal.box.h)) * curH;
-        const px = curX + t * curW;
-        const py = mix(yFrom, yTo, fold);
-        if (i) ctx.lineTo(px, py);
-        else ctx.moveTo(px, py);
-      }
-      ctx.stroke();
+    if (!points.length) return;
+    const alpha = ease(120, 420, position) * (1 - ease(1110, 1380, position));
+    if (alpha <= 0) return;
 
-      if (outFade > 0) {
-        ctx.globalAlpha = overlayAlpha * outFade;
-        ctx.font = '600 12px "JetBrains Mono", ui-monospace, monospace';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        timing.ticks.forEach((sample, i) => {
-          ctx.fillStyle = timing.read[i] === timing.sent[i] ? '#1f7a4a' : '#b3261e';
-          ctx.fillText(String(timing.read[i]), curX + sample / timing.level.length * curW, curY + curH + 14);
-        });
-      }
-      ctx.restore();
-    }
+    const travel = ease(310, 1090, position);
+    const fold = ease(350, 1080, position);
+    const arch = Math.sin(Math.PI * travel) * -Math.min(24, height * .045);
+    const scan = ease(410, 1100, position);
+    const point = points[Math.round(scan * (points.length - 1))];
 
-    if (run.landed) {
-      const reveal = ease(780, 1080, elapsed);
-      chart.style.setProperty('--s14-signal-opacity', reveal);
-    }
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = `rgb(${Math.round(mix(13, 184, fold))}, ${Math.round(mix(13, 101, fold))}, ${Math.round(mix(12, 42, fold))})`;
+    ctx.lineWidth = mix(2, 1.45, fold);
+    ctx.beginPath();
+    points.forEach(([x0, y0, x1, y1], i) => {
+      const x = mix(x0, x1, travel), y = mix(y0, y1, fold) + arch;
+      if (i) ctx.lineTo(x, y);
+      else ctx.moveTo(x, y);
+    });
+    ctx.stroke();
+
+    ctx.globalAlpha = alpha * Math.sin(Math.PI * scan) * .8;
+    ctx.beginPath();
+    ctx.arc(mix(point[0], point[2], travel), mix(point[1], point[3], fold) + arch, 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#f5f2ec';
+    ctx.fill();
+    ctx.lineWidth = 1.3;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function render() {
+    const { position, fromTop, toTop, animations } = run;
+    for (const animation of animations) animation.currentTime = position;
+    const top = position < cut ? fromTop : toTop;
+    if (Math.abs(scrollY - top) > 1) scrollTo({ top, behavior: 'instant' });
+    run.top = scrollY;
+    drawHandoff(position);
   }
 
   function animate(now) {
-    const elapsed = now - run.start;
-    if (elapsed >= cut && !run.landed) land();
-    if (elapsed < arrivalEnd) drawHandoff(elapsed);
-    else if (copy.isConnected) clearEffects();
-    if (elapsed >= arrivalEnd + readHold) return finish();
+    const elapsed = Math.max(0, now - run.lastTime);
+    run.lastTime = now;
+    const position = Math.max(0, Math.min(duration, run.position + run.dir * elapsed));
+    if (position !== run.position) {
+      run.position = position;
+      render();
+    }
+    if (position === (run.dir > 0 ? duration : 0)) {
+      run.holdUntil ??= now + readHold;
+      if (now >= run.holdUntil) {
+        const [departed, arrived] = run.dir > 0 ? [previous, scene] : [scene, previous];
+        finish();
+        if (departed.contains(document.activeElement)) arrived.focus({ preventScroll: true });
+        return;
+      }
+    }
     frame = requestAnimationFrame(animate);
   }
 
-  function approach(top, height) {
-    const start = bounds(previous, top).y, end = bounds(scene, top).y;
-    const cue = Math.max(start, end - height);
-    return { start, cue, end };
-  }
-
-  function startRun(height) {
-    const timing = source.timingTrace, signal = chart.errorTrace;
-    if (run || !canPlay() || !timing || !signal) return;
-    const width = innerWidth;
-    const { cue, end } = approach(scrollY, height);
-    if (scrollY > cue + 1) scrollTo({ top: cue, behavior: 'instant' });
-    const top = scrollY;
-
-    const from = bounds(source, top), to = bounds(chart, top);
-    const extra = Math.max(0, Math.min(to.y + to.h + 190 - end - height, scene.offsetHeight - height));
-    const destination = end + extra;
-    const stacked = matchMedia('(max-width: 860px)').matches;
-    const timBox = timing.box;
-    const waveTop = Math.min(timing.Y(1), timing.Y(0)), waveBottom = Math.max(timing.Y(1), timing.Y(0));
-    const fromBox = { x: from.x + timBox.x, y: from.y - top + waveTop, w: timBox.w, h: Math.max(12, waveBottom - waveTop) };
-    const toChartTop = to.y - destination;
-    const toBox = { x: to.x, y: toChartTop, w: signal.box.w, h: signal.box.h };
-
+  function start(dir) {
+    if (run || !canPlay()) return;
+    sanitizeChapter();
+    const top = scrollY, width = innerWidth, height = innerHeight;
+    const sceneTop = bounds(scene, top).y;
+    const fromTop = dir > 0 ? top : bounds(previous, top).y;
+    const toTop = dir > 0 ? sceneTop : top;
     const dpr = Math.min(devicePixelRatio || 1, 2);
     copy.width = Math.round(width * dpr);
     copy.height = Math.round(height * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.lineCap = ctx.lineJoin = 'round';
 
-    run = { top, width, height, stacked, start: performance.now(), destination, fromBox, toBox, toChartTop,
-      timing, signal, animations: [] };
-
+    run = { top, width, height, fromTop, toTop, dir, position: dir > 0 ? 0 : duration,
+      lastTime: performance.now(), points: wavePoints(fromTop, toTop), animations: [] };
     root.classList.add('deep-mistakes-hold');
-    scene.classList.add('s14-staged');
-    source.style.setProperty('--s14-timing-opacity', 0);
-    chart.style.setProperty('--s14-signal-opacity', 0);
     chapter.append(copy);
-    for (const node of before.children) {
-      run.animations.push(node.animate([{ opacity: 1 }, { opacity: 0 }],
-        { duration: 420, delay: 40, fill: 'both' }));
-    }
-    drawHandoff(0);
+    animateStyles();
+    render();
     frame = requestAnimationFrame(animate);
   }
 
   watchScrollMotion((top, height) => {
-    if (run) {
-      if (!canPlay() || Math.abs(top - run.top) > height * .95) finish();
-      else if (Math.abs(top - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
-    }
+    if (!run) return;
+    if (!canPlay() || Math.abs(top - run.top) > height * .95) finish();
+    else if (Math.abs(top - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
   });
 
   for (const area of [previous.querySelector('.plate-controls'), scene.querySelector('.plate-controls'), scene.querySelector('.s14-instrument')]) {
-    if (!area) continue;
-    for (const event of ['focusin', 'pointerdown', 'input']) area.addEventListener(event, finish);
+    for (const event of ['focusin', 'input']) area?.addEventListener(event, finish);
+    area?.addEventListener('pointerdown', event => {
+      if (event.pointerType !== 'touch' || !event.target.closest('.s14-cell')) finish();
+    });
   }
   for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, finish);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) { revCtrl?.cancel(); finish(); } });
-  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) { revCtrl?.cancel(); finish(); } });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) finish(); });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) finish(); });
 
   return {
-    forward() {
-      if (!canPlay() || run || revCtrl?.active()) return;
-      sanitizeChapter();
-      if (!source.timingTrace || !chart.errorTrace) {
-        scene.scrollIntoView({ block: 'start', behavior: 'instant' });
-        return;
-      }
-      startRun(innerHeight);
+    forward: () => start(1),
+    reverse: () => start(-1),
+    turn(dir) {
+      if (!run) return false;
+      run.dir = dir;
+      run.lastTime = performance.now();
+      run.holdUntil = undefined;
+      return true;
     },
-    reverse() {
-      if (!canPlay() || run || revCtrl?.active()) return;
-      revCtrl = runReverseCanvasMorph(scene, previous, { mode: 'mistakes' });
-    },
-    cancel: () => { revCtrl?.cancel(); finish(); },
-    active: () => !!run || !!revCtrl?.active(),
+    cancel: finish,
+    active: () => !!run,
   };
 }
 
@@ -4046,7 +3999,7 @@ function createChapterDeck(stops, transitions) {
   }
 
   function isInteractiveTarget(target) {
-    return !!target?.closest?.('.s6-card, .s9-metal, .s13-drift-track, .s14-cell, .s15-card-btn, .s16-pad-card, .s16-wallet, input[type="range"], [role="slider"]');
+    return !!target?.closest?.('.s6-card, .s9-metal, .s13-drift-track, .s15-card-btn, .s16-pad-card, .s16-wallet, input[type="range"], [role="slider"]');
   }
 
   function currentStopIndex() {
@@ -4082,10 +4035,15 @@ function createChapterDeck(stops, transitions) {
     cooldownUntil = performance.now() + 180;
   }
 
-  function trigger(dir) {
+  function changeDirection(current, dir) {
+    if (current.transition.turn?.(dir)) current.dir = dir;
+    else cancelActive();
+  }
+
+  function trigger(dir, deliberate = false) {
     if (!canPage() || running()) return false;
     const now = performance.now();
-    if (now < cooldownUntil) return true;
+    if (!deliberate && now < cooldownUntil) return true;
     const idx = currentStopIndex();
     const transition = transitions[dir > 0 ? idx : idx - 1];
     if (!transition) return false;
@@ -4116,7 +4074,7 @@ function createChapterDeck(stops, transitions) {
     const current = running();
     if (current) {
       if (event.cancelable) event.preventDefault();
-      if (dir !== current.dir && Math.abs(dy) >= 24) cancelActive();
+      if (dir !== current.dir && Math.abs(dy) >= 24) changeDirection(current, dir);
       return;
     }
     if (canChildScroll(event.target, dir) || isInteractiveTarget(event.target)) return;
@@ -4142,14 +4100,15 @@ function createChapterDeck(stops, transitions) {
     if (!canPage() || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
     const { key } = event;
     if (['Home', 'End', 'Escape'].includes(key)) { cancelActive(); return; }
-    if (event.target.closest?.('a, button, input, textarea, select, [role="slider"], [contenteditable]')) return;
+    const pagesFromMistakes = ['PageUp', 'PageDown'].includes(key) && event.target.closest?.('#s14');
+    if (!pagesFromMistakes && event.target.closest?.('a, button, input, textarea, select, [role="slider"], [contenteditable]')) return;
     const dir = (['ArrowUp', 'PageUp'].includes(key) || (key === ' ' && event.shiftKey)) ? -1
       : ['ArrowDown', 'PageDown', ' '].includes(key) ? 1 : 0;
     if (!dir) return;
     const current = running();
     if (current) {
       event.preventDefault();
-      if (dir !== current.dir) cancelActive();
+      if (dir !== current.dir) changeDirection(current, dir);
       return;
     }
     const distance = distanceToEdge(dir);
@@ -4157,7 +4116,7 @@ function createChapterDeck(stops, transitions) {
     if (distance < step) {
       event.preventDefault();
       if (distance) scrollTo({ top: scrollY + dir * Math.ceil(distance), behavior: 'instant' });
-      if (!distance || step - distance >= WHEEL_THRESHOLD) trigger(dir);
+      if (!distance || step - distance >= WHEEL_THRESHOLD) trigger(dir, !event.repeat);
     }
   });
 
@@ -4177,7 +4136,7 @@ function createChapterDeck(stops, transitions) {
       if (event.cancelable) event.preventDefault();
       if (dir !== current.dir && Math.abs(delta) >= 24) {
         touchStart = null;
-        cancelActive();
+        changeDirection(current, dir);
       }
       return;
     }

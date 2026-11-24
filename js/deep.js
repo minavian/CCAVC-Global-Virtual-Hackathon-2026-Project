@@ -1310,6 +1310,7 @@
       if (!changed) return false;
       revealMode = 'jam';
       mistakes.dirty = true;
+      cellsBox?.dispatchEvent(new Event('input', { bubbles: true }));
       return true;
     }
 
@@ -1323,15 +1324,28 @@
         if (!event.isPrimary || event.button !== 0) return;
         const idx = cellIndexAt(event.clientX);
         const action = jammedCells.has(idx) ? 'clear' : 'jam';
-        painting = { id: event.pointerId, action, last: idx };
+        const pending = event.pointerType === 'touch';
+        painting = { id: event.pointerId, action, last: idx, pending, vertical: false,
+          x: event.clientX, y: event.clientY };
         suppressClick = true;
-        setFocusCell(idx);
-        applyCellState(idx, action);
+        if (!pending) {
+          setFocusCell(idx);
+          applyCellState(idx, action);
+        }
         cellsBox.setPointerCapture?.(event.pointerId);
       });
 
       cellsBox.addEventListener('pointermove', event => {
-        if (event.pointerId !== painting?.id || !(event.buttons & 1)) return;
+        if (event.pointerId !== painting?.id || painting.vertical || (event.pointerType !== 'touch' && !(event.buttons & 1))) return;
+        if (painting.pending) {
+          const dx = Math.abs(event.clientX - painting.x), dy = Math.abs(event.clientY - painting.y);
+          if (Math.max(dx, dy) < 8) return;
+          painting.pending = false;
+          painting.vertical = dy > dx;
+          if (painting.vertical) return;
+          applyCellState(painting.last, painting.action);
+          setFocusCell(painting.last);
+        }
         const idx = cellIndexAt(event.clientX);
         if (idx === painting.last) return;
         const step = Math.sign(idx - painting.last);
@@ -1343,6 +1357,10 @@
       for (const name of ['pointerup', 'pointercancel']) {
         cellsBox.addEventListener(name, event => {
           if (event.pointerId !== painting?.id) return;
+          if (name === 'pointerup' && painting.pending) {
+            applyCellState(painting.last, painting.action);
+            setFocusCell(painting.last);
+          }
           painting = null;
           setTimeout(() => { suppressClick = false; }, 0);
         });

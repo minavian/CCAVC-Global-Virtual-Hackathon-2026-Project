@@ -1059,9 +1059,10 @@ input.s7-track-copy {
   #s13-drift-input { appearance: auto; }
 }
 
-#s13-chart { opacity: var(--s14-timing-opacity, 1); }
-.s14-staged:not(:focus-within) > * { visibility: hidden; }
-.deep-mistakes-hold #s13 { border-bottom-color: transparent; }
+.deep-mistakes-hold { overflow-anchor: none; }
+.deep-mistakes-hold :is(#s13, #s14) { border-bottom-color: transparent; }
+/* Programmatic scene focus keeps keyboard paging local without drawing a viewport-edge ring. */
+:is(#s13, #s14):focus { outline: none; }
 .s14-timing-copy {
   position: fixed;
   inset: 0;
@@ -1287,7 +1288,6 @@ input.s7-track-copy {
   inline-size: 100%;
   block-size: 96px;
   height: 96px;
-  opacity: var(--s14-signal-opacity, 1);
 }
 .s14-cells {
   position: relative;
