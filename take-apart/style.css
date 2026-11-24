@@ -768,20 +768,23 @@ input.s7-track-copy {
 .s12-vortex-face {
   overflow: hidden;
   backface-visibility: hidden;
+  opacity: var(--s12-band-opacity, 1);
   transform: translate(-50%, -50%);
-  background: linear-gradient(130deg,
-    color-mix(in srgb, var(--paper) calc(var(--s12-fold) * 88%), transparent),
-    color-mix(in srgb, #eee8dd calc(var(--s12-fold) * 88%), transparent));
+  background: linear-gradient(112deg,
+    color-mix(in srgb, var(--paper) calc(var(--s12-fold) * 86%), transparent),
+    color-mix(in srgb, #fffdf7 calc(var(--s12-fold) * 76%), transparent) 46%,
+    color-mix(in srgb, #e9dfcf calc(var(--s12-fold) * 66%), transparent));
 }
 .s12-vortex-face + .s12-vortex-face { transform: translate(-50%, -50%) rotateY(180deg); }
 .s12-vortex-face::after {
   content: "";
   position: absolute;
   inset: auto 0 0;
-  border-block-end: 1px solid var(--copper);
-  opacity: calc(var(--s12-fold) * .36);
+  block-size: 1px;
+  background: linear-gradient(90deg, transparent, var(--copper) 48%, transparent);
+  opacity: calc(var(--s12-fold) * .42);
 }
-.s12-title-in-flight { opacity: 0; }
+.s12-title-in-flight { opacity: var(--s12-heading-opacity, 0); }
 .s12-wave-copy { width: 100%; height: 100%; }
 
 #s12-chart { opacity: var(--s13-spectrum-opacity, 1); }

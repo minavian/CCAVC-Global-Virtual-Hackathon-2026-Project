@@ -1760,7 +1760,7 @@ function watchWhispering(previous, scene) {
     vortex.append(band);
     return { band, faces };
   });
-  const cut = 880, arrivalEnd = 2170, readHold = 1000;
+  const cut = 880, arrivalEnd = 2260, readHold = 1000;
   let run, frame, listeners;
   const canPlay = () => ctx && !reducedMotion.matches && !document.hidden &&
     CSS.supports('mask-image', 'linear-gradient(transparent, black)');
@@ -1775,57 +1775,70 @@ function watchWhispering(previous, scene) {
   function placeBands(from, to) {
     bands.forEach(({ faces }, i) => faces.forEach((face, side) => {
       const rect = side ? to : from, height = rect.h / bands.length;
-      Object.assign(face.style, { width: `${rect.width}px`, height: `${height}px` });
-      Object.assign(face.firstChild.style, { width: `${rect.w}px`, top: `${-i * height}px` });
+      Object.assign(face.style, { width: `${rect.width}px`, height: `${height + .8}px` });
+      Object.assign(face.firstChild.style, { width: `${rect.w}px`, top: `${.4 - i * height}px` });
     }));
   }
 
   function turnHeading(elapsed) {
     const { from, to, hub, radius } = run;
-    const gather = ease(75, cut, elapsed), release = ease(960, 1770, elapsed);
-    const cx = mix(mix(from.x, hub.x, gather), to.x, release);
-    const cy = mix(mix(from.y, hub.y, gather), to.y, release);
+    title.style.setProperty('--s12-heading-opacity', ease(1755, 1950, elapsed));
+    vortex.style.setProperty('--s12-band-opacity', 1 - ease(1840, 2040, elapsed));
     bands.forEach(({ band }, i) => {
-      const offset = (i + .5) / bands.length - .5, lag = i * 57;
-      const turn = ease(230 + lag, 1290 + lag, elapsed);
-      const coil = Math.sin(Math.PI * turn), angle = turn * Math.PI * 1.3 + offset * 2.45;
-      const x = cx + Math.sin(angle) * radius * offset * coil;
-      const y = cy + mix(from.h, to.h, release) * offset * (1 + .88 * coil);
-      const z = radius * .62 * Math.cos(angle) * coil;
+      const offset = (i + .5) / bands.length - .5, lag = i * 48;
+      const gather = ease(75 + lag * .3, cut + lag * .16, elapsed);
+      const release = ease(950 + lag * .35, 1650 + lag * .24, elapsed);
+      const cx = mix(mix(from.x, hub.x, gather), to.x, release);
+      const cy = mix(mix(from.y, hub.y, gather), to.y, release);
+      const turn = ease(190 + lag, 1340 + lag, elapsed);
+      const coil = Math.sin(Math.PI * turn), angle = turn * Math.PI * 2 + offset * 2.7;
+      const side = Math.sin(angle) * coil, depth = Math.cos(angle) * coil;
+      const x = cx + radius * (.29 * side + .27 * offset * coil);
+      const y = cy + mix(from.h, to.h, release) * offset * (1 + .58 * coil) + radius * .09 * depth;
+      const z = radius * .53 * depth;
+      const roll = offset * 38 * coil + 8 * side, tilt = -16 * side;
       band.style.setProperty('--s12-fold', coil);
-      band.style.transform = `translate3d(${x}px,${y}px,${z}px) rotateZ(${offset * 42 * coil}deg) rotateY(${turn * 180}deg)`;
+      band.style.transform = `translate3d(${x}px,${y}px,${z}px) rotateZ(${roll}deg) rotateX(${tilt}deg) rotateY(${turn * 180}deg)`;
     });
   }
 
-  function drawSignal(elapsed) {
-    const { signal, trace, plot, width, height } = run;
-    const spectrum = chart.spectrumTrace;
-    const carrierX = spectrum ? spectrum.X(spectrum.carrier[0]) : (plot.w + 10) / 2;
-    const carrierY = spectrum ? spectrum.Y(spectrum.carrier[1]) : 26 + (plot.h - 70) * 6 / 116;
+  function strokeSignal(elapsed, carrierX, carrierY, opacity, lineWidth) {
+    const { signal, signalPoints, trace, plot, height } = run;
     const travel = ease(310, 1550, elapsed), pinch = ease(235, 1310, elapsed);
     const peak = ease(925, 1520, elapsed);
+    const arc = Math.sin(travel * Math.PI);
     const x = mix(signal.x, plot.x + carrierX, travel);
-    const y = mix(signal.y, plot.y + carrierY, travel) + height * .038 * Math.sin(travel * Math.PI);
+    const y = mix(signal.y, plot.y + carrierY, travel) + height * .044 * arc;
     const span = mix(trace.box.w, 11, pinch);
-    ctx.clearRect(0, 0, width, height);
-    ctx.globalAlpha = (1 - ease(1530, 1960, elapsed)) * ease(75, 330, elapsed);
+    const bend = Math.min(28, height * .038) * arc * (1 - peak);
+    ctx.globalAlpha = (1 - ease(1515, 1980, elapsed)) * ease(65, 310, elapsed) * opacity;
     ctx.strokeStyle = trace.color;
-    ctx.lineWidth = mix(1.2, 1.65, peak);
+    ctx.lineWidth = lineWidth + .4 * peak;
     ctx.beginPath();
-    trace.points.forEach(([sample, current], i) => {
-      const offset = (trace.X(sample) - trace.box.x) / trace.box.w - .5;
+    signalPoints.forEach(([offset, level, needle], i) => {
       const dx = x + offset * span;
-      const dy = y + mix((trace.Y(current) - trace.Y(1)) * (1 - pinch * .66),
-        49 * Math.pow(Math.abs(offset * 2), .37), peak);
+      const dy = y + bend * Math.sin((offset + .5 + travel) * Math.PI * 1.5) +
+        mix(level * (1 - pinch * .66), needle, peak);
       if (i === 0) ctx.moveTo(dx, dy);
       else ctx.lineTo(dx, dy);
     });
     ctx.stroke();
+  }
+
+  function drawSignal(elapsed) {
+    const { plot, width, height } = run;
+    const spectrum = chart.spectrumTrace;
+    const carrierX = spectrum ? spectrum.X(spectrum.carrier[0]) : (plot.w + 10) / 2;
+    const carrierY = spectrum ? spectrum.Y(spectrum.carrier[1]) : 26 + (plot.h - 70) * 6 / 116;
+    ctx.clearRect(0, 0, width, height);
+    const echo = ease(355, 680, elapsed) * (1 - ease(1330, 1640, elapsed));
+    if (echo) strokeSignal(elapsed - 45, carrierX, carrierY, echo * .15, 2.5);
+    strokeSignal(elapsed, carrierX, carrierY, 1, 1.2);
 
     if (!run.landed) return;
-    const open = ease(1340, 2110, elapsed);
+    const open = ease(1310, 2170, elapsed);
     const left = carrierX * (1 - open), right = mix(carrierX, plot.w, open);
-    const feather = Math.min(12, (right - left) / 2) * (1 - open);
+    const feather = Math.min(28, (right - left) / 2) * (1 - open);
     chart.style.maskImage = `linear-gradient(90deg, transparent ${left}px, #000 ${left + feather}px, #000 ${right - feather}px, transparent ${right}px)`;
   }
 
@@ -1834,6 +1847,7 @@ function watchWhispering(previous, scene) {
     vortex.remove();
     source.classList.remove('s12-title-in-flight');
     title.classList.remove('s12-title-in-flight');
+    title.style.removeProperty('--s12-heading-opacity');
     scene.classList.remove('s12-staged');
     chart.style.removeProperty('mask-image');
     run.animations.forEach(animation => animation.cancel());
@@ -1917,9 +1931,15 @@ function watchWhispering(previous, scene) {
     wave.width = Math.round(width * dpr);
     wave.height = Math.round(height * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const signal = { x: oldPlot.x + trace.box.x + trace.box.w / 2, y: oldPlot.y - top + trace.Y(1) };
+    ctx.lineCap = ctx.lineJoin = 'round';
+    const baseline = trace.Y(1);
+    const signal = { x: oldPlot.x + trace.box.x + trace.box.w / 2, y: oldPlot.y - top + baseline };
+    const signalPoints = trace.points.map(([sample, current]) => {
+      const offset = (trace.X(sample) - trace.box.x) / trace.box.w - .5;
+      return [offset, trace.Y(current) - baseline, 49 * Math.abs(offset * 2) ** .37];
+    });
     const hub = { x: width * (stacked ? .52 : .51), y: height * (stacked ? .30 : .47) };
-    run = { top, width, height, start: performance.now(), from, to, hub, destination, plot, signal, trace,
+    run = { top, width, height, start: performance.now(), from, to, hub, destination, plot, signal, signalPoints, trace,
       radius: Math.min(stacked ? 85 : 220, width * .22), animations: [] };
 
     root.classList.add('deep-whispering-hold');
