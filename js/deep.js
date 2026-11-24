@@ -19,6 +19,7 @@
   const GRID = 'rgba(13, 13, 12, .1)', FAINT = 'rgba(13, 13, 12, .35)';
   const MONO = '"JetBrains Mono", ui-monospace, monospace', SANS = '"Inter Tight", system-ui, sans-serif';
   const clamp = (v, lo, hi) => v < lo ? lo : v > hi ? hi : v;
+  const stage = (start, end, t) => clamp((t - start) / (end - start), 0, 1);
   const hex = b => b.toString(16).toUpperCase().padStart(2, '0');
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -61,25 +62,37 @@
   }
 
   // A chart box with axes. `x` and `y` are { from, to, log?, ticks: [[value, label]], label }.
-  function chart(ctx, box, x, y) {
+  function chart(ctx, box, x, y, progress = 1) {
     const map = (r, v, a, b) => {
       const t = r.log ? (Math.log(v) - Math.log(r.from)) / (Math.log(r.to) - Math.log(r.from)) : (v - r.from) / (r.to - r.from);
       return a + (b - a) * t;
     };
     const X = v => map(x, v, box.x, box.x + box.w), Y = v => map(y, v, box.y + box.h, box.y);
     ctx.save();
+    const alpha = ctx.globalAlpha;
+    const rule = i => stage(.30 + .047 * i, .62 + .047 * i, progress);
     ctx.font = `500 11px ${SANS}`; ctx.fillStyle = MUTED; ctx.strokeStyle = GRID; ctx.lineWidth = 1;
     for (const [i, [v, label]] of (x.ticks || []).entries()) {
-      ctx.beginPath(); ctx.moveTo(X(v), box.y); ctx.lineTo(X(v), box.y + box.h); ctx.stroke();
+      const sweep = rule(i);
+      ctx.beginPath(); ctx.moveTo(X(v), box.y); ctx.lineTo(X(v), box.y + box.h * sweep); ctx.stroke();
+      ctx.globalAlpha = alpha * sweep;
       ctx.textAlign = 'center'; ctx.textBaseline = 'top';
       ctx.fillText(label, X(v), box.y + box.h + (x.stagger && i % 2 ? 20 : 6));
+      ctx.globalAlpha = alpha;
     }
-    for (const [v, label] of y.ticks || []) {
-      ctx.beginPath(); ctx.moveTo(box.x, Y(v)); ctx.lineTo(box.x + box.w, Y(v)); ctx.stroke();
+    for (const [i, [v, label]] of (y.ticks || []).entries()) {
+      const sweep = rule(i);
+      ctx.beginPath(); ctx.moveTo(box.x, Y(v)); ctx.lineTo(box.x + box.w * sweep, Y(v)); ctx.stroke();
+      ctx.globalAlpha = alpha * sweep;
       ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillText(label, box.x - 6, Y(v));
+      ctx.globalAlpha = alpha;
     }
     ctx.strokeStyle = FAINT;
-    ctx.beginPath(); ctx.moveTo(box.x, box.y); ctx.lineTo(box.x, box.y + box.h); ctx.lineTo(box.x + box.w, box.y + box.h); ctx.stroke();
+    const upright = stage(0, .50, progress), baseline = stage(.50, .90, progress);
+    ctx.beginPath(); ctx.moveTo(box.x, box.y); ctx.lineTo(box.x, box.y + box.h * upright);
+    if (baseline) ctx.lineTo(box.x + box.w * baseline, box.y + box.h);
+    ctx.stroke();
+    ctx.globalAlpha = alpha * stage(.22, .79, progress);
     ctx.fillStyle = INK; ctx.font = `600 11px ${SANS}`;
     if (x.label) { ctx.textAlign = 'right'; ctx.textBaseline = 'top'; ctx.fillText(x.label, box.x + box.w, box.y + box.h + (x.stagger ? 35 : 22)); }
     if (y.label) { ctx.textAlign = 'left'; ctx.textBaseline = 'bottom'; ctx.fillText(y.label, box.x, box.y - 6); }
@@ -113,7 +126,7 @@
   const box = (p, top = 26, bottom = 40, left = 54, right = 18) => ({ x: left, y: top, w: p.w - left - right, h: p.h - top - bottom });
 
   // ---------- 6. Closer is stronger ----------
-  plate('s6', p => {
+  const closer = plate('s6', p => {
     const distance = p.input('distance'), coil = p.input('radius');
     const d = distance.valueAsNumber / 1000, r = coil.valueAsNumber / 1000;
     const distanceText = cm(d), coilText = (2 * r * 100).toFixed(1) + ' cm across';
@@ -129,28 +142,48 @@
       const x = .0015 + i / 120 * .0785, s = physics.solve({ ...opts, distance: x });
       field.push([x, s.field]); volts.push([x, s.rawVolts]);
     }
-    const a = chart(ctx, top, xr, { from: 0, to: 11, ticks: [[0, '0'], [5, '5'], [10, '10']], label: 'Field at the card (A/m)' });
-    hline(ctx, a.Y(physics.H_MIN), top.x, top.x + top.w, RED, 'The standard’s minimum, 1.5 A/m');
-    curve(ctx, field, a.X, a.Y, INK);
+    const progress = p.reveal ?? 1;
+    function trace(points, axes, plot, color, sweep) {
+      if (!sweep) return;
+      if (sweep === 1) return curve(ctx, points, axes.X, axes.Y, color);
+      // Advance in data order without changing the samples used by the live chart.
+      ctx.save();
+      ctx.beginPath(); ctx.rect(0, 0, plot.x + plot.w * sweep, p.h); ctx.clip();
+      curve(ctx, points, axes.X, axes.Y, color);
+      ctx.restore();
+    }
+    const a = chart(ctx, top, xr, { from: 0, to: 11, ticks: [[0, '0'], [5, '5'], [10, '10']], label: 'Field at the card (A/m)' }, stage(0, .30, progress));
+    const fieldLimit = stage(.52, .80, progress);
+    if (fieldLimit) hline(ctx, a.Y(physics.H_MIN), top.x, top.x + top.w * fieldLimit, RED, fieldLimit === 1 ? 'The standard’s minimum, 1.5 A/m' : '');
+    const fieldTrace = stage(.22, .71, progress);
+    trace(field, a, top, INK, fieldTrace);
     const s = physics.solve({ ...opts, distance: d });
     p.el.style.setProperty('--card-distance', (distance.valueAsNumber - Number(distance.min)) / (distance.max - distance.min));
     p.el.style.setProperty('--coil-scale', coil.valueAsNumber / Number(coil.max));
     p.el.style.setProperty('--field-strength', clamp(s.field / physics.H_MAX, .16, 1));
-    dot(ctx, a.X(d), a.Y(s.field), INK);
-    const b = chart(ctx, bottom, { ...xr, label: 'Distance from the phone' }, { from: 0, to: 6, ticks: [[0, '0 V'], [2, '2 V'], [4, '4 V'], [6, '6 V']], label: 'Volts the coil can give the chip' });
-    hline(ctx, b.Y(s.wake), bottom.x, bottom.x + bottom.w, COPPER, 'Wake-up, ' + s.wake + ' V');
+    if (fieldTrace >= d / xr.to) dot(ctx, a.X(d), a.Y(s.field), INK);
+    const b = chart(ctx, bottom, { ...xr, label: 'Distance from the phone' }, { from: 0, to: 6, ticks: [[0, '0 V'], [2, '2 V'], [4, '4 V'], [6, '6 V']], label: 'Volts the coil can give the chip' }, stage(.12, .42, progress));
+    const wakeLimit = stage(.62, .94, progress);
+    if (wakeLimit) hline(ctx, b.Y(s.wake), bottom.x, bottom.x + bottom.w * wakeLimit, COPPER, wakeLimit === 1 ? 'Wake-up, ' + s.wake + ' V' : '');
     const cappedVolts = volts.map(([x, v]) => [x, Math.min(v, 6)]);
-    curve(ctx, cappedVolts, b.X, b.Y, COPPER);
+    const voltsTrace = stage(.36, .88, progress);
+    trace(cappedVolts, b, bottom, COPPER, voltsTrace);
     // Share the drawn curves in their own plot coordinates for the Scene 7 handoff.
     p.canvas.handoffPlots = [
       { box: top, points: field.map(([x, y]) => [x / xr.to, 1 - y / 11]) },
       { box: bottom, points: cappedVolts.map(([x, y]) => [x / xr.to, 1 - y / 6]) },
     ];
-    dot(ctx, b.X(d), b.Y(Math.min(s.rawVolts, 6)), s.awake ? GREEN : RED);
+    if (voltsTrace >= d / xr.to) dot(ctx, b.X(d), b.Y(Math.min(s.rawVolts, 6)), s.awake ? GREEN : RED);
     const range = physics.range(opts);
-    vline(ctx, b.X(range), top.y, bottom.y + bottom.h, MUTED, 'Range ' + cm(range));
+    const rangeLine = stage(.76, 1, progress);
+    if (rangeLine) vline(ctx, b.X(range), top.y, top.y + (bottom.y + bottom.h - top.y) * rangeLine, MUTED, rangeLine === 1 ? 'Range ' + cm(range) : '');
     p.say(`At ${distanceText}: a field of ${s.field.toFixed(2)} A/m, enough for ${s.rawVolts.toFixed(1)} V at the chip. ${s.awake ? 'Awake.' : 'Asleep.'} This coil reaches ${cm(range)}.`);
   });
+  if (closer) closer.canvas.setReveal = progress => {
+    if (closer.reveal === progress) return;
+    closer.reveal = progress;
+    closer.dirty = true;
+  };
 
   // ---------- 7. It has to keep flipping ----------
   plate('s7', p => {

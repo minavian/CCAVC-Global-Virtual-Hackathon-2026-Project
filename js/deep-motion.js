@@ -1,5 +1,51 @@
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
+// Listen only near a scene that handles paging, so ordinary scroll stays native elsewhere.
+function capturePageGesture(canBegin, begin, interrupt) {
+  const listeners = new AbortController();
+  const { signal } = listeners;
+  let touch;
+
+  addEventListener('wheel', event => {
+    if (event.ctrlKey || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    if (event.deltaY < 0) interrupt();
+    else if (canBegin(event)) begin(event);
+  }, { passive: false, signal });
+
+  addEventListener('keydown', event => {
+    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+    const { key } = event;
+    if (['ArrowUp', 'PageUp', 'Home', 'End', 'Escape'].includes(key) || (key === ' ' && event.shiftKey)) {
+      interrupt();
+      return;
+    }
+    if (!['ArrowDown', 'PageDown', ' '].includes(key) || event.target.closest?.('a, button, input, textarea, select, [contenteditable]')) return;
+    if (canBegin(event)) begin(event);
+  }, { signal });
+
+  addEventListener('touchstart', ({ touches }) => {
+    const finger = touches[0];
+    touch = touches.length === 1 ? { x: finger.clientX, y: finger.clientY, highest: finger.clientY } : null;
+  }, { passive: true, signal });
+
+  addEventListener('touchmove', event => {
+    if (!touch || event.touches.length !== 1) return;
+    const { clientX: x, clientY: y } = event.touches[0];
+    if (y > touch.highest + 16) {
+      touch = { x, y, highest: y };
+      interrupt();
+      return;
+    }
+    touch.highest = Math.min(y, touch.highest);
+    const upward = touch.y - y;
+    if (upward <= Math.abs(x - touch.x) || !canBegin(event)) return;
+    if (upward >= 12) begin(event);
+    else event.preventDefault();
+  }, { passive: false, signal });
+
+  return listeners;
+}
+
 function watchPartOne(word, part) {
   const chapter = part.closest('.deep');
   const root = document.documentElement;
@@ -11,7 +57,7 @@ function watchPartOne(word, part) {
   const inverted = { color: 'var(--paper)', backgroundColor: 'var(--ink)' };
   const sceneHold = 1000;
   let partTop = bounds(part, scrollY).y;
-  let animation, holdTimer, startTop, arrived, touch, inputListeners;
+  let animation, holdTimer, startTop, arrived, inputListeners;
   const active = () => !!animation || holdTimer !== undefined;
 
   function releaseHold() {
@@ -82,58 +128,13 @@ function watchPartOne(word, part) {
     void blink();
   }
 
-  function onWheel(event) {
-    if (event.ctrlKey || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
-    if (event.deltaY < 0) interrupt();
-    else if (canBegin(event)) begin(event);
-  }
-
-  function onKeyDown(event) {
-    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
-    const { key } = event;
-    if (['ArrowUp', 'PageUp', 'Home', 'End', 'Escape'].includes(key) || (key === ' ' && event.shiftKey)) {
-      interrupt();
-      return;
-    }
-    if (!['ArrowDown', 'PageDown', ' '].includes(key) || event.target.closest?.('a, button, input, textarea, select, [contenteditable]')) return;
-    if (canBegin(event)) begin(event);
-  }
-
-  function onTouchStart({ touches }) {
-    const finger = touches[0];
-    touch = touches.length === 1 ? { x: finger.clientX, y: finger.clientY, highest: finger.clientY } : null;
-  }
-
-  function onTouchMove(event) {
-    if (!touch || event.touches.length !== 1) return;
-    const { clientX: x, clientY: y } = event.touches[0];
-    if (y > touch.highest + 16) {
-      touch = { x, y, highest: y };
-      interrupt();
-      return;
-    }
-    touch.highest = Math.min(y, touch.highest);
-    const upward = touch.y - y;
-    if (upward <= Math.abs(x - touch.x) || !canBegin(event)) return;
-    if (upward >= 12) begin(event);
-    else event.preventDefault();
-  }
-
   function listenForInput(top, height) {
     if (!motionAllowed() || (!active() && !openerReady(top, height))) {
       inputListeners?.abort();
       inputListeners = null;
-      touch = null;
       return;
     }
-    if (inputListeners) return;
-    // Capture the opening gesture before the browser scrolls the chapter.
-    inputListeners = new AbortController();
-    const { signal } = inputListeners;
-    addEventListener('wheel', onWheel, { passive: false, signal });
-    addEventListener('keydown', onKeyDown, { signal });
-    addEventListener('touchstart', onTouchStart, { passive: true, signal });
-    addEventListener('touchmove', onTouchMove, { passive: false, signal });
+    inputListeners ??= capturePageGesture(canBegin, begin, interrupt);
   }
 
   listenForInput(scrollY, innerHeight);
@@ -190,140 +191,154 @@ export function watchScrollMotion(update) {
 function watchCloser(source, plate) {
   const part = source.closest('.deep-part');
   const chapter = plate.closest('.deep');
+  const root = document.documentElement;
   const title = plate.querySelector('#s6-title');
   const controls = plate.querySelector('.plate-controls');
-  const rows = controls.querySelectorAll('.s6-control');
+  const rows = Array.from(controls.querySelectorAll('.s6-control'));
   const chart = plate.querySelector('#s6-chart');
-  const copy = plate.querySelectorAll('.plate-num, .s6-intro, .plate-readout, .plate-real, .s6-coupling');
-  const wordMotions = [];
-  let layout, traveledTitle, chartEntrance, chartStarted, armed, lastTop;
+  const drawDuration = 1380;
+  const readHold = 1000;
+  const motions = [];
+  const traveledTitle = document.createElement('span');
+  traveledTitle.className = 'deep-part-title s6-title-travel';
+  traveledTitle.textContent = source.textContent;
+  traveledTitle.setAttribute('aria-hidden', 'true');
 
-  function clearWords() {
-    if (!traveledTitle) return;
-    for (const { animation } of wordMotions) animation.cancel();
-    wordMotions.length = 0;
+  let inputListeners, partTop, plateTop, lockedAt, awaitingChart;
+  let frame = 0;
+  const locked = () => lockedAt !== undefined;
+  const canPlay = () => !reducedMotion.matches && !document.hidden;
+
+  function release() {
+    for (const motion of motions) motion.cancel();
+    motions.length = 0;
     traveledTitle.remove();
-    traveledTitle = null;
-    source.classList.remove('s6-title-source');
+    lockedAt = undefined;
+    root.classList.remove('deep-closer-hold');
+    scheduleMotion();
   }
 
   function settle() {
-    clearWords();
-    chartEntrance?.cancel();
-    chartEntrance = null;
+    if (!locked() && !awaitingChart && !frame) return;
+    cancelAnimationFrame(frame);
+    frame = 0;
+    awaitingChart = false;
+    chart.setReveal?.(1);
+    release();
   }
 
-  function measure(top, height) {
-    settle();
+  function drawingPosition(height) {
+    const box = chart.getBoundingClientRect();
+    const visible = Math.min(height, box.bottom) - Math.max(0, box.top);
+    return visible >= Math.min(height, box.height) * .85;
+  }
+
+  function canBegin(event) {
+    return event.cancelable && !event.defaultPrevented && canPlay() && !locked() &&
+      !root.classList.contains('deep-blink-hold') && atPartTitle(scrollY, innerHeight);
+  }
+
+  function atPartTitle(top, height) {
+    return top >= partTop - 1 && top <= partTop + height * .18;
+  }
+
+  function begin(event) {
+    event.preventDefault();
     const from = source.getBoundingClientRect(), to = title.getBoundingClientRect();
-    const origin = chapter.getBoundingClientRect();
-    const type = getComputedStyle(source);
-    // The inline anchor's bounding box includes the font's leading.
-    const fromTop = from.top + (from.height - parseFloat(type.lineHeight)) / 2;
-    const start = Math.max(part.getBoundingClientRect().top + top + height * .12, fromTop + top - height * .36);
-    const textEnd = Math.max(start + height * .26, to.top + top - height * .30);
-    const chartCue = Math.max(start + (textEnd - start) * .76, chart.getBoundingClientRect().top + top - height * .80);
-    layout = {
-      start, textEnd, chartCue, end: Math.max(textEnd, chartCue) + height * .55,
-      left: from.left - origin.left, top: fromTop - origin.top,
-      shift: [to.left - from.left, to.top - fromTop],
-      scale: parseFloat(getComputedStyle(title).fontSize) / parseFloat(type.fontSize),
-    };
-    armed = top <= start;
-    lastTop = top;
-    chartStarted = false;
-  }
+    const lineHeight = parseFloat(getComputedStyle(source).lineHeight);
+    const fromTop = from.top + (from.height - lineHeight) / 2;
+    const toTop = to.top + scrollY - plateTop;
+    const ratio = parseFloat(getComputedStyle(title).fontSize) / parseFloat(getComputedStyle(source).fontSize);
+    const gathered = `translate(${to.left - from.left}px, ${toTop - fromTop}px) scale(${ratio})`;
+    const chartFits = chart.getBoundingClientRect().bottom + scrollY - plateTop <= innerHeight + 2;
+    const started = performance.now();
+    const seatAt = 260, drawAt = 860;
+    const releaseAt = (chartFits ? drawAt + drawDuration : 1610) + readHold;
 
-  function startWords() {
-    traveledTitle = document.createElement('span');
-    traveledTitle.className = 'deep-part-title s6-title-travel';
-    traveledTitle.textContent = source.textContent;
-    traveledTitle.setAttribute('aria-hidden', 'true');
-    traveledTitle.style.left = `${layout.left}px`;
-    traveledTitle.style.top = `${layout.top}px`;
+    lockedAt = scrollY;
+    awaitingChart = !chartFits;
+    root.classList.add('deep-closer-hold');
+    traveledTitle.style.left = `${from.left}px`;
+    traveledTitle.style.top = `${fromTop}px`;
     chapter.append(traveledTitle);
-    source.classList.add('s6-title-source');
+    chart.setReveal?.(0);
 
-    function add(element, frames, start, end, easing = arrivalEase) {
-      const animation = element.animate(frames, { duration: 1, easing, fill: 'both' });
-      animation.pause();
-      wordMotions.push({ animation, start, end });
+    function animate(node, frames, duration, delay = 0, easing = arrivalEase) {
+      motions.push(node.animate(frames, { duration, delay, easing, fill: 'both' }));
     }
 
-    const [x, y] = layout.shift;
-    const gathered = `translate(${x}px, ${y}px) scale(${layout.scale})`;
-    add(traveledTitle, [
-      { transform: 'none', opacity: 1, filter: 'none', easing: 'cubic-bezier(.38, .05, .29, 1)' },
-      { transform: gathered, opacity: 1, filter: 'none', offset: .83, easing: 'ease-in-out' },
-      { transform: `${gathered} translateY(24%) scale(.93, .18)`, opacity: 0, filter: 'blur(2px)' },
-    ], 0, .76, 'linear');
-    const recede = [{ opacity: 1 }, { opacity: 0 }];
-    add(source.parentElement, recede, .04, .38, 'ease-in-out');
-    add(part.firstElementChild, recede, .04, .38, 'ease-in-out');
+    animate(traveledTitle, [
+      { transform: 'none', opacity: 1, easing: 'cubic-bezier(.42, .08, .24, 1)' },
+      { transform: gathered, opacity: 1, offset: .80 },
+      { transform: `${gathered} perspective(280px) rotateX(70deg) scaleY(.74)`, opacity: 0 },
+    ], 720, 40, 'linear');
+    for (const node of [part.firstElementChild, source.parentElement]) {
+      animate(node, [{ opacity: 1 }, { opacity: 0 }], seatAt, 0, 'ease-in-out');
+    }
+    animate(source, [{ opacity: 0 }, { opacity: 0 }], seatAt);
+
     const turnIn = [
-      { opacity: 0, transform: 'perspective(260px) rotateX(-48deg) skewX(-7deg) translateY(5px)', filter: 'blur(3px)' },
+      { opacity: 0, transform: 'perspective(360px) rotateX(-58deg) translateY(7px)', filter: 'blur(2px)' },
       { opacity: 1, transform: 'none', filter: 'none' },
     ];
-    add(title, turnIn, .69, .91, 'cubic-bezier(.36, .14, .23, 1)');
-    const appear = [{ opacity: 0, transform: 'translateY(7px)' }, { opacity: 1, transform: 'none' }];
-    for (const node of copy) add(node, appear, node.classList.contains('s6-intro') ? .72 : .78, 1);
-    rows.forEach((row, i) => {
-      const start = .73 + i * .035;
-      add(row.firstElementChild, turnIn, start, start + .18);
-      add(row.querySelector('input'), [
-        { clipPath: 'inset(-5px 100% -5px -5px)' }, { clipPath: 'inset(-5px)' },
-      ], start + .035, start + .23, 'cubic-bezier(.3, .05, .25, 1)');
-    });
+    animate(title, turnIn, 380, 744);
+    // Start at the heading and let the supporting lines turn outward above and below it.
+    const copy = plate.querySelectorAll('.plate-num, .s6-intro, .s6-control-text, .s6-coupling, .plate-readout, .plate-real');
+    copy.forEach((node, i) => animate(node, turnIn, 350, 800 + i * 76));
+    rows.forEach((row, i) => animate(row.querySelector('input'), [
+      { clipPath: 'inset(-5px 100% -5px -5px)' }, { clipPath: 'inset(-5px)' },
+    ], 390, 980 + i * 74));
+
+    let seated = false;
+    function tick(now) {
+      const elapsed = now - started;
+      if (!seated && elapsed >= seatAt) {
+        seated = true;
+        plate.scrollIntoView({ block: 'start', behavior: 'instant' });
+        lockedAt = scrollY;
+      }
+      if (chartFits && elapsed >= drawAt) chart.setReveal?.(stage(drawAt, drawAt + drawDuration, elapsed));
+      if (elapsed >= releaseAt) {
+        frame = 0;
+        release();
+        return;
+      }
+      frame = requestAnimationFrame(tick);
+    }
+    frame = requestAnimationFrame(tick);
   }
 
   watchScrollMotion((top, height, needsMeasure) => {
-    if (reducedMotion.matches || document.hidden) return settle();
-    if (needsMeasure || !layout) measure(top, height);
-    const { start, textEnd, chartCue, end } = layout;
-    const jumped = Math.abs(top - lastTop) > height * .6;
-    lastTop = top;
-    if (top <= start) {
-      armed = !controls.contains(document.activeElement);
-      chartStarted = false;
-      return settle();
+    if (needsMeasure || partTop === undefined) {
+      partTop = bounds(part, top).y;
+      plateTop = bounds(plate, top).y;
     }
-    if (jumped) armed = false;
-    if (!armed || top >= end) return settle();
 
-    if (top < textEnd) {
-      if (!traveledTitle) startWords();
-      const progress = (top - start) / (textEnd - start);
-      for (const motion of wordMotions) {
-        motion.animation.currentTime = Math.min(1, Math.max(0, (progress - motion.start) / (motion.end - motion.start)));
-      }
-    } else clearWords();
-
-    if (!chartStarted) {
-      if (!chartEntrance) {
-        chartEntrance = chart.animate([
-          { opacity: 0, transform: 'translateY(clamp(48px, 10svh, 92px)) scale(.985)', easing: arrivalEase },
-          { opacity: 1, transform: 'translateY(-13px)', offset: .76, easing: 'ease-out' },
-          { opacity: 1, transform: 'none' },
-        ], { duration: 720 });
-        chartEntrance.pause();
-        chartEntrance.currentTime = 0;
-      }
-      if (top >= chartCue) {
-        chartStarted = true;
-        chartEntrance.play();
-      }
+    if (!canPlay() || (locked() && Math.abs(top - lockedAt) > 2) || (awaitingChart && !locked() && top < plateTop - 2)) settle();
+    if (canPlay() && (locked() || atPartTitle(top, height))) {
+      inputListeners ??= capturePageGesture(canBegin, begin, settle);
+    } else {
+      inputListeners?.abort();
+      inputListeners = undefined;
     }
+
+    if (!awaitingChart || locked() || !drawingPosition(height)) return;
+    awaitingChart = false;
+    const started = performance.now();
+    function draw(now) {
+      const progress = stage(0, drawDuration, now - started);
+      chart.setReveal?.(progress);
+      frame = progress < 1 ? requestAnimationFrame(draw) : 0;
+    }
+    frame = requestAnimationFrame(draw);
   });
 
-  for (const event of ['focusin', 'pointerdown', 'input']) controls.addEventListener(event, () => {
-    armed = false;
-    settle();
-  });
+  for (const event of ['focusin', 'pointerdown', 'input']) controls.addEventListener(event, settle);
+  for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, settle);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) settle(); });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) settle(); });
 
-  return () => {
-    armed = false;
-    settle();
-  };
+  return settle;
 }
 
 function watchFlipping(previous, plate, settlePrevious) {

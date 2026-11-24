@@ -98,7 +98,7 @@ body::after {
   text-wrap: balance;
 }
 #part-one-power { white-space: nowrap; }
-html.deep-blink-hold { overflow-y: hidden; }
+html.deep-blink-hold, html.deep-closer-hold { overflow-y: hidden; }
 .deep-blink-cover {
   position: fixed;
   inset: 0;
@@ -151,7 +151,7 @@ html.deep-blink-hold { overflow-y: hidden; }
 
 /* Scene 6 pairs its existing plots with a small illustration of the two coils. */
 .s6-title-travel {
-  position: absolute;
+  position: fixed;
   z-index: 1;
   max-inline-size: none;
   font-weight: 800;
