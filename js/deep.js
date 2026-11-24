@@ -294,9 +294,9 @@
   }, { animate: true });
 
   // ---------- 8. The tuning trick ----------
-  plate('s8', p => {
+  const tuningScene = plate('s8', p => {
     const which = p.radio('tag') || 'card', T = physics.TAGS[which];
-    const cap = p.input('cap'), removed = p.input('remove').checked;
+    const cap = p.input('cap'), removed = p.input('cap-toggle').hasAttribute('data-removed');
     const setting = cap.valueAsNumber / Number(cap.max);
     const C = removed ? 0 : T.capacitance * (setting * 2);
     const capText = removed ? 'taken out' : si(C, 'F', 3);
@@ -324,6 +324,16 @@
     const tuning = removed ? 'Without its capacitor' : C === 0 ? 'At 0 F' : 'Tuned to ' + fmt(s.resonance);
     p.say(`${tuning}, the ${which === 'key' ? 'key' : 'card'} works up to ${cm(r)} away${tunedRight ? '.' : ` (${cm(r0)} when tuned right).`}`);
   });
+  if (tuningScene) {
+    const button = tuningScene.input('cap-toggle');
+    const action = button.querySelector('.s8-cap-action');
+    button.addEventListener('click', () => {
+      const removed = button.toggleAttribute('data-removed');
+      action.textContent = removed ? 'Put back' : 'Lift out';
+      button.setAttribute('aria-label', removed ? 'Put back the capacitor' : 'Lift out the capacitor');
+      tuningScene.dirty = true;
+    });
+  }
 
   // ---------- 9. Why metal fights back ----------
   function traceField(coils, seeds, limit) {

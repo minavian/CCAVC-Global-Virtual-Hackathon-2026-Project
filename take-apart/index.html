@@ -103,11 +103,13 @@
               <output for="s8-cap" data-for="s8-cap" aria-live="off"></output>
               <input id="s8-cap" type="range" min="0" max="100" value="50">
             </div>
-            <span class="s8-cap-seat" aria-hidden="true">
-              <span class="s8-cap-lift"><span class="s8-capacitor"></span></span>
-            </span>
+            <button class="s8-cap-toggle" id="s8-cap-toggle" type="button" aria-label="Lift out the capacitor">
+              <span class="s8-cap-seat" aria-hidden="true">
+                <span class="s8-cap-lift"><span class="s8-capacitor"></span></span>
+              </span>
+              <span class="s8-cap-action">Lift out</span>
+            </button>
           </div>
-          <label class="plate-check"><input id="s8-remove" type="checkbox"> Take the capacitor out</label>
           <div class="plate-switch s8-tags" role="radiogroup" aria-label="Tag">
             <label>
               <input type="radio" name="s8-tag" value="card" checked>

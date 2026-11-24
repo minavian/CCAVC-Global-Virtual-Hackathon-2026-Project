@@ -305,7 +305,7 @@ input.s7-track-copy {
 
 .s8-cap-control {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 58px;
+  grid-template-columns: minmax(0, 1fr) 74px;
   align-items: center;
   gap: clamp(12px, 2vw, 22px);
 }
@@ -313,12 +313,24 @@ input.s7-track-copy {
 .s8-cap-control output { font-variant-numeric: tabular-nums; }
 #s8-cap { display: block; block-size: 24px; margin: 3px 0 0; }
 #s8-cap:disabled { opacity: .56; }
+.plate-controls .s8-cap-toggle {
+  display: grid;
+  justify-self: stretch;
+  gap: 4px;
+  min-block-size: 44px;
+  padding: 0 0 2px;
+  border: 0;
+  border-radius: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.2;
+}
 .s8-cap-seat {
   display: grid;
   place-items: center;
   block-size: 30px;
   position: relative;
-  border: 1px solid #d2c7b8;
+  border: 1px solid #a7805e;
   border-radius: 4px;
   background: linear-gradient(#b99b7f, #b99b7f) center / 100% 1px no-repeat, #ebe3d6;
 }
@@ -340,13 +352,20 @@ input.s7-track-copy {
 }
 .s8-cap-lift { position: relative; }
 .s8-cap-lift .s8-capacitor { transform: scaleX(var(--s8-cap-size, .86)); }
-#s8:has(#s8-remove:checked) .s8-cap-lift { transform: translate(4px, -23px) rotate(-15deg); }
+.plate-controls .s8-cap-toggle:hover,
+.plate-controls .s8-cap-toggle:focus-visible { color: var(--ink); background: transparent; }
+.s8-cap-toggle:hover .s8-cap-seat,
+.s8-cap-toggle:focus-visible .s8-cap-seat { border-color: var(--copper); background-color: #efe3d3; }
+.s8-cap-toggle[data-removed] .s8-cap-lift { transform: translate(4px, -21px) rotate(-15deg); }
 @media (prefers-reduced-motion: no-preference) {
   .s8-cap-lift { transition: transform .28s cubic-bezier(.24, .8, .32, 1); }
   .s8-cap-lift .s8-capacitor { transition: transform .15s ease-out; }
 }
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .s8-cap-toggle:not([data-removed]):hover .s8-cap-lift { transform: translateY(-4px); }
+}
 
-#s8 input[type="checkbox"], .s8-tags input { accent-color: var(--ink); }
+.s8-tags input { accent-color: var(--ink); }
 .s8-tags { gap: 8px; }
 .s8-tags label {
   min-block-size: 44px;
