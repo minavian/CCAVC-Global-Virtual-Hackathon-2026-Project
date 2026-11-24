@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
-  <link rel="stylesheet" href="style.css?v=conversation-river-4">
+  <link rel="stylesheet" href="style.css?v=conversation-river-5">
   <script src="../js/rfid/physics.js" defer></script>
   <script src="../js/rfid/iso14443a.js" defer></script>
   <script src="../js/rfid/lf.js" defer></script>
@@ -18,8 +18,8 @@
   <script src="../js/rfid/air.js" defer></script>
   <script src="../js/rfid/reader.js" defer></script>
   <script src="../js/rfid/channel.js" defer></script>
-  <script src="../js/deep.js?v=conversation-river-4" defer></script>
-  <script type="module" src="../js/deep-motion.js?v=conversation-river-4"></script>
+  <script src="../js/deep.js?v=conversation-river-5" defer></script>
+  <script type="module" src="../js/deep-motion.js?v=conversation-river-5"></script>
 </head>
 <body>
   <main class="deep" id="take-apart" aria-labelledby="deep-title">
@@ -323,14 +323,14 @@
         <div class="plate-controls s15-controls">
           <div class="s15-tap-box" id="s15-tap-box" data-state="idle">
             <div class="s15-tap-head">
-              <span class="s15-tap-prompt" id="s15-tap-prompt">Tap the card on the reader</span>
-              <span class="s15-tap-hint" id="s15-tap-hint">Drag or click</span>
+              <span class="s15-tap-prompt" id="s15-tap-prompt">Drag the card onto the reader</span>
+              <span class="s15-tap-hint" id="s15-tap-hint">Drag to reader</span>
             </div>
             <div class="s15-tap-stage" id="s15-tap-stage">
               <img class="s15-reader" src="../images/intro/reader.webp" width="640" height="512" alt="" draggable="false">
               <span class="s15-reader-ring" aria-hidden="true"></span>
               <span class="s15-field-arc" aria-hidden="true"></span>
-              <button type="button" id="s15-tap" class="s15-card-btn" aria-label="Tap the card on the reader to replay the conversation" aria-describedby="s15-tap-prompt">
+              <button type="button" id="s15-tap" class="s15-card-btn" aria-label="Drag the card onto the reader to play the conversation (or press Left Arrow)" aria-describedby="s15-tap-prompt">
                 <img src="../images/intro/credit-card-face.webp" width="520" height="328" alt="" draggable="false">
               </button>
             </div>

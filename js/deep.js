@@ -1392,13 +1392,11 @@
   const river = {
     messages: [],
     started: 0,
-    steal: false,
     seed: 1,
     awaitingTap: !reduced.matches,
-    stolenIndex: -1,
-    preHeistPace: false,
     heistActive: false,
     heistGrabbed: false,
+    grabbedIndex: -1,
     grabAt: 0,
     packetPos: null,
     settledReadout: '',
@@ -1410,87 +1408,56 @@
     const randomInput = p.input('random');
     const randomState = p.input('random-state');
     if (tapBox) tapBox.dataset.state = river.awaitingTap ? 'idle' : 'ready';
-    if (prompt) prompt.textContent = river.awaitingTap ? 'Tap the card on the reader' : 'Tap again to replay';
+    if (prompt) prompt.textContent = river.awaitingTap ? 'Drag the card onto the reader' : 'Drag card to replay';
     if (randomState && randomInput) {
       randomState.textContent = randomInput.checked ? 'On' : 'Off';
       randomState.toggleAttribute('data-off', !randomInput.checked);
     }
   }
 
-  function conversation(p, { fromSteal = false } = {}) {
+  function conversation(p) {
     const random = p.input('random').checked;
     river.seed++;
     river.awaitingTap = false;
     river.heistGrabbed = false;
+    river.grabbedIndex = -1;
     river.grabAt = 0;
     river.packetPos = null;
-    river.preHeistPace = fromSteal && !reduced.matches;
     const chip = tags.cardChip({ randomUid: random, seed: random ? river.seed : 1 });
     const s = physics.solve({ tag: 'card', reader: 'phone', distance: .015 });
     const link = channel.cardChannel([{ chip, depth: s.dip, awake: true }], { noise: .0015, seed: river.seed });
-    let stolen = false;
-    const thief = {
-      send(bits) {
-        const heard = link.send(bits), rec = link.recording[link.recording.length - 1];
-        // A stolen packet: the card's ID answer is wiped cleanly off the air.
-        if (river.steal && !stolen && rec.answers[0]?.name === 'UID') {
-          stolen = true; river.steal = false;
-          const g = air.gaussian(tags.random(river.seed));
-          for (let i = rec.begin + 3 * iso.BIT; i < rec.begin + 20 * iso.BIT && i < heard.samples.length; i++) heard.samples[i] = 1 + g() * .001;
-          rec.stolen = true;
-        }
-        return heard;
-      }
-    };
-    const run = reader.activate(thief);
+    const run = reader.activate(link);
     const messages = [];
     run.steps.forEach((step, i) => {
       const rec = link.recording[i];
       const sentBytes = step.sent.length === 7 ? [iso.REQA] : iso.parseStandard(step.sent).bytes;
       const said = iso.describe('reader', sentBytes, step.sent.length === 7 ? 7 : 0);
-      messages.push({ from: 'phone', ...said, bytes: sentBytes });
+      messages.push({ from: 'phone', ...said, bytes: sentBytes, stolen: false });
       const answer = rec.answers[0];
       if (answer) {
         const bytes = step.bytes || iso.parseStandard(answer.bits).bytes;
-        const words = answer.name === 'UID' ? (rec.stolen ? 'My ID is … (lost on the way)' : 'My ID is ' + bytes.slice(0, 4).map(hex).join(' ') + '.') : iso.describe('card', bytes, 0).words;
-        messages.push({ from: 'card', name: answer.name, words, bytes, stolen: !!rec.stolen });
+        const words = answer.name === 'UID' ? 'My ID is ' + bytes.slice(0, 4).map(hex).join(' ') + '.' : iso.describe('card', bytes, 0).words;
+        messages.push({ from: 'card', name: answer.name, words, bytes, stolen: false });
       }
     });
-    if (run.ok) messages.push({ from: 'app', name: 'App', words: 'Then the app takes over: a payment, a ticket, a door.', bytes: [] });
+    if (run.ok) messages.push({ from: 'app', name: 'App', words: 'Then the app takes over: a payment, a ticket, a door.', bytes: [], stolen: false });
     river.messages = messages;
-    river.stolenIndex = messages.findIndex(m => m.stolen);
     river.started = performance.now();
     river.ok = run.ok;
     river.uid = run.uid;
-    river.settledReadout = run.ok
-      ? `Card ${run.uid.map(hex).join(' ')} selected.${messages.some(m => m.stolen) ? ' A packet went missing, so the phone simply asked again.' : ''}`
-      : run.reason;
+    river.settledReadout = run.ok ? `Card ${run.uid.map(hex).join(' ')} selected.` : run.reason;
     const chat = p.el.querySelector('.chat');
     chat.innerHTML = '';
     setS15StateUI(p);
-    p.say(river.preHeistPace ? 'Watching for the card’s ID packet…' : river.settledReadout);
+    p.say(river.settledReadout);
   }
 
   function riverTiming(elapsed) {
     if (reduced.matches) return { shown: river.messages.length, q: 1 };
-    if (!river.preHeistPace || river.stolenIndex < 0) {
-      const each = 1.1;
-      const shown = Math.min(river.messages.length, Math.floor(elapsed / each) + 1);
-      const q = Math.min(1, (elapsed - (shown - 1) * each) / (each * .8));
-      return { shown, q };
-    }
-    const preEach = .78, postEach = 1.05;
-    const splitTime = (river.stolenIndex + 1) * preEach;
-    if (elapsed < splitTime) {
-      const idx = Math.floor(elapsed / preEach);
-      return { shown: idx + 1, q: Math.min(1, (elapsed - idx * preEach) / (preEach * .82)) };
-    }
-    const rem = elapsed - splitTime;
-    const extra = Math.floor(rem / postEach);
-    const shown = Math.min(river.messages.length, river.stolenIndex + 2 + extra);
-    const q = shown >= river.messages.length && rem - extra * postEach > postEach
-      ? 1
-      : Math.min(1, (rem - extra * postEach) / (postEach * .82));
+    const each = 1.5;
+    const shown = Math.min(river.messages.length, Math.floor(elapsed / each) + 1);
+    const isFinal = shown >= river.messages.length && elapsed >= river.messages.length * each;
+    const q = isFinal ? 1 : Math.min(1, (elapsed - (shown - 1) * each) / (each * .88));
     return { shown, q };
   }
 
@@ -1519,14 +1486,14 @@
       ctx.font = `500 13px ${SANS}`;
       ctx.fillStyle = 'rgba(87, 83, 76, .88)';
       ctx.textAlign = 'center';
-      ctx.fillText('Tap the card on the reader to start', p.w / 2, mid);
+      ctx.fillText('Drag the card onto the reader to start', p.w / 2, mid);
       if (!chat.children.length) {
         const empty = document.createElement('li');
         empty.className = 'chat-empty';
-        empty.textContent = 'Waiting for you to tap the card…';
+        empty.textContent = 'Waiting for you to drag the card onto the reader…';
         chat.append(empty);
       }
-      p.say('Drag or click the card onto the reader to watch all six messages.');
+      p.say('Drag the card onto the reader to watch all six messages.');
       return;
     }
 
@@ -1535,15 +1502,15 @@
     chat.querySelector('.chat-empty')?.remove();
 
     // The packet in flight.
-    const m = river.messages[shown - 1];
+    const idx = shown - 1, m = river.messages[idx];
     if (m && m.from !== 'app') {
       const x = m.from === 'phone' ? left + q * (right - left) : right - q * (right - left);
       const label = m.name;
       ctx.font = `700 12px ${SANS}`;
       const w = ctx.measureText(label).width + 24;
-      river.packetPos = { x, y: mid, w, h: 28, stolen: !!m.stolen, q, index: shown - 1, label };
+      river.packetPos = { x, y: mid, w, h: 28, stolen: !!m.stolen, q, index: idx, label };
       p.canvas.riverState = river.packetPos;
-      if (m.stolen && river.heistGrabbed) {
+      if (river.heistGrabbed && idx === river.grabbedIndex) {
         const age = Math.min(1, (now - river.grabAt) / 480);
         if (age < 1) {
           ctx.save();
@@ -1583,8 +1550,8 @@
     const tapBtn = s15.input('tap'), stealBtn = s15.input('steal');
     const stage = s15.el.querySelector('#s15-tap-stage'), ring = s15.el.querySelector('.s15-reader-ring');
     const randomInput = s15.input('random'), randomState = s15.input('random-state');
-    const chartEl = s15.el.querySelector('#s15-chart');
-    let cardAnim, ringAnim, randomFlip, heistFrame = 0, heistSvg = null, drag = null, suppressTapClick = false;
+    const chartEl = s15.el.querySelector('#s15-chart'), chatEl = s15.el.querySelector('.chat');
+    let cardAnim, ringAnim, randomFlip, heistFrame = 0, heistSvg = null, drag = null;
     let heistStartScroll = 0;
 
     function cancelHeist() {
@@ -1594,6 +1561,7 @@
       heistSvg = null;
       river.heistActive = false;
       river.heistGrabbed = false;
+      river.grabbedIndex = -1;
       if (stealBtn) {
         stealBtn.removeAttribute('data-heist');
         stealBtn.style.removeProperty('--s15-jaw-angle');
@@ -1626,13 +1594,25 @@
       conversation(s15);
     }
 
-    function launchHeistAnimation() {
+    function nudgeHint() {
+      if (reduced.matches || document.hidden || !tapBtn?.animate) return;
+      cardAnim?.cancel();
+      cardAnim = tapBtn.animate([
+        { transform: 'translateX(0) rotate(7deg)' },
+        { transform: 'translateX(-12px) rotate(3deg)', offset: .45 },
+        { transform: 'translateX(0) rotate(7deg)' },
+      ], { duration: 280, easing: 'cubic-bezier(.16, 1, .3, 1)' });
+    }
+
+    function launchInstantHeist(targetIndex, label, width) {
       cancelHeist();
       if (reduced.matches || document.hidden || !stealBtn || !chartEl) return;
       river.heistActive = true;
+      river.grabbedIndex = targetIndex;
       heistStartScroll = scrollY;
-      stealBtn.dataset.heist = 'stalking';
+      stealBtn.dataset.heist = 'lunging';
 
+      const pillW = Math.max(44, Math.ceil(width));
       const ns = 'http://www.w3.org/2000/svg';
       const svg = document.createElementNS(ns, 'svg');
       svg.setAttribute('class', 's15-heist-svg');
@@ -1648,8 +1628,8 @@
           <text font-family="JetBrains Mono, ui-monospace, monospace" font-size="11" font-weight="700" fill="#0d0d0c">1</text>
         </g>
         <g class="s15-heist-packet" opacity="0">
-          <rect x="-22" y="-14" width="44" height="28" rx="14" fill="#b3261e"/>
-          <text x="0" y="4" text-anchor="middle" font-family="Inter Tight, system-ui, sans-serif" font-size="12" font-weight="700" fill="#f5f2ec">UID</text>
+          <rect x="${(-pillW / 2).toFixed(1)}" y="-14" width="${pillW}" height="28" rx="14" fill="#b3261e"/>
+          <text x="0" y="4" text-anchor="middle" font-family="Inter Tight, system-ui, sans-serif" font-size="12" font-weight="700" fill="#f5f2ec"></text>
         </g>
         <g class="s15-heist-hand">
           <g class="s15-hand-open">
@@ -1660,6 +1640,7 @@
             <path d="M-6 -6 V2 M-1 -6 V2 M4 -6 V2" stroke="#0d0d0c" stroke-width="1.5" stroke-linecap="round"/>
           </g>
         </g>`;
+      svg.querySelector('.s15-heist-packet text').textContent = label;
       document.body.append(svg);
       heistSvg = svg;
 
@@ -1671,7 +1652,7 @@
       const crumbsEl = svg.querySelector('.s15-heist-crumbs');
       const crumbNodes = Array.from(crumbsEl.children);
       const startTime = performance.now();
-      let grabStart = 0, grabOrigin = null, snapped = false, chomped = false;
+      let grabOrigin = null, snapped = false, chomped = false;
 
       function easeOutCubic(t) { return 1 - Math.pow(1 - clamp(t, 0, 1), 3); }
       function easeInOut(t) { const x = clamp(t, 0, 1); return x * x * (3 - 2 * x); }
@@ -1686,107 +1667,92 @@
         const cRect = chartEl.getBoundingClientRect();
         const ax = jRect.left + jRect.width * .5;
         const ay = jRect.top + jRect.height * .5;
-        const waitX = cRect.left + cRect.width * .52;
-        const waitY = cRect.top + cRect.height * .78;
         const elapsed = now - startTime;
-
-        const pkt = river.packetPos;
-        if (!grabStart && pkt?.stolen && pkt.q >= .30) {
-          grabStart = now;
-          grabOrigin = { x: cRect.left + pkt.x, y: cRect.top + pkt.y };
-        }
+        const live = river.packetPos;
+        const curTargetX = (live && live.index === targetIndex) ? cRect.left + live.x : (grabOrigin?.x ?? cRect.left + cRect.width * .5);
+        const curTargetY = (live && live.index === targetIndex) ? cRect.top + live.y : (grabOrigin?.y ?? cRect.top + cRect.height * .5);
 
         let hx = ax, hy = ay, showArm = true, showPacket = false, pScale = 1, handRot = 0;
 
-        if (!grabStart) {
-          const outT = easeOutCubic(elapsed / 900);
-          const bob = Math.sin(elapsed * .0065) * 4 * outT;
-          hx = ax + (waitX - ax) * outT;
-          hy = ay + (waitY - ay) * outT + bob;
+        if (elapsed < 170) {
+          const p = easeOutCubic(elapsed / 170);
+          hx = ax + (curTargetX - ax) * p;
+          hy = ay + (curTargetY - ay) * p;
           handRot = Math.atan2(hy - ay, hx - ax) * 180 / Math.PI + 90;
-          stealBtn.style.setProperty('--s15-jaw-angle', '6deg');
+          stealBtn.style.setProperty('--s15-jaw-angle', '8deg');
           stealBtn.style.setProperty('--s15-jaw-scale', '1');
-        } else {
-          const gElapsed = now - grabStart;
-          const livePktX = pkt?.stolen ? cRect.left + pkt.x : grabOrigin.x;
-          const livePktY = pkt?.stolen ? cRect.top + pkt.y : grabOrigin.y;
-          if (gElapsed < 170) {
-            const p = easeOutCubic(gElapsed / 170);
-            hx = waitX + (livePktX - waitX) * p;
-            hy = waitY + (livePktY - waitY) * p;
-            handRot = Math.atan2(hy - ay, hx - ax) * 180 / Math.PI + 90;
-            if (gElapsed >= 100 && !snapped) {
-              snapped = true;
-              river.heistGrabbed = true;
-              river.grabAt = now;
-              openHand.setAttribute('opacity', '0');
-              fistHand.setAttribute('opacity', '1');
-              grabOrigin = { x: livePktX, y: livePktY };
-            }
-            if (snapped) showPacket = true;
-          } else if (gElapsed < 1020) {
-            if (!snapped) {
-              snapped = true;
-              river.heistGrabbed = true;
-              river.grabAt = now;
-              openHand.setAttribute('opacity', '0');
-              fistHand.setAttribute('opacity', '1');
-            }
-            const retT = easeInOut((gElapsed - 170) / 850);
-            const arc = Math.sin(Math.PI * retT) * -36;
-            hx = grabOrigin.x + (ax - grabOrigin.x) * retT;
-            hy = grabOrigin.y + (ay - grabOrigin.y) * retT + arc;
-            handRot = Math.atan2(ay - grabOrigin.y, ax - grabOrigin.x) * 180 / Math.PI + 90;
-            showPacket = true;
-            pScale = retT > .78 ? 1 - easeInOut((retT - .78) / .22) * .42 : 1;
-            const mouthOpen = easeOutCubic((retT - .38) / .52);
-            if (mouthOpen > 0) {
-              const aim = clamp(Math.atan2(grabOrigin.y - ay, grabOrigin.x - ax) * 180 / Math.PI, -72, 24);
-              stealBtn.dataset.heist = 'open';
-              stealBtn.style.setProperty('--s15-jaw-angle', `${(mouthOpen * 52).toFixed(1)}deg`);
-              stealBtn.style.setProperty('--s15-jaw-scale', `${(1 + mouthOpen * .55).toFixed(3)}`);
-              stealBtn.style.setProperty('--s15-jaw-aim', `${(aim * mouthOpen).toFixed(1)}deg`);
-            }
-          } else if (gElapsed < 1640) {
-            const chT = gElapsed - 1020;
-            showArm = chT < 160;
-            hx = ax; hy = ay;
-            const shrinkT = easeInOut(chT / 120);
-            showPacket = chT < 120;
-            pScale = Math.max(0, .58 * (1 - shrinkT));
-            let angle = 0;
-            if (chT < 120) angle = 52 * (1 - easeInOut(chT / 120));
-            else if (chT < 260) angle = Math.sin(((chT - 120) / 140) * Math.PI) * 24;
-            else if (chT < 400) angle = Math.sin(((chT - 260) / 140) * Math.PI) * 14;
-            if (!chomped && chT >= 100) {
-              chomped = true;
-              stealBtn.dataset.heist = 'chomp';
-              stealBtn.animate?.([
-                { transform: 'scale(1)' },
-                { transform: 'scale(1.06, .93)', offset: .32 },
-                { transform: 'scale(.98, 1.03)', offset: .68 },
-                { transform: 'scale(1)' },
-              ], { duration: 340, easing: 'cubic-bezier(.16, 1, .3, 1)' });
-            }
-            stealBtn.style.setProperty('--s15-jaw-angle', `${angle.toFixed(1)}deg`);
-            stealBtn.style.setProperty('--s15-jaw-scale', `${(1.55 - easeInOut(chT / 440) * .55).toFixed(3)}`);
-
-            const burst = clamp((chT - 80) / 420, 0, 1);
-            if (burst > 0 && burst < 1) {
-              crumbsEl.setAttribute('opacity', (1 - burst).toFixed(2));
-              crumbNodes.forEach((node, idx) => {
-                const a = (-0.75 + idx * 0.42);
-                const d = (12 + (idx % 2) * 8) * easeOutCubic(burst);
-                node.setAttribute('x', (ax + Math.cos(a) * d).toFixed(1));
-                node.setAttribute('y', (ay + Math.sin(a) * d - burst * 6).toFixed(1));
-              });
-            } else {
-              crumbsEl.setAttribute('opacity', '0');
-            }
-          } else {
-            cancelHeist();
-            return;
+          if (elapsed >= 105 && !snapped) {
+            snapped = true;
+            river.heistGrabbed = true;
+            river.grabAt = now;
+            openHand.setAttribute('opacity', '0');
+            fistHand.setAttribute('opacity', '1');
+            grabOrigin = { x: curTargetX, y: curTargetY };
           }
+          if (snapped) showPacket = true;
+        } else if (elapsed < 960) {
+          if (!snapped) {
+            snapped = true;
+            river.heistGrabbed = true;
+            river.grabAt = now;
+            openHand.setAttribute('opacity', '0');
+            fistHand.setAttribute('opacity', '1');
+            grabOrigin = { x: curTargetX, y: curTargetY };
+          }
+          const retT = easeInOut((elapsed - 170) / 790);
+          const arc = Math.sin(Math.PI * retT) * -36;
+          hx = grabOrigin.x + (ax - grabOrigin.x) * retT;
+          hy = grabOrigin.y + (ay - grabOrigin.y) * retT + arc;
+          handRot = Math.atan2(ay - grabOrigin.y, ax - grabOrigin.x) * 180 / Math.PI + 90;
+          showPacket = true;
+          pScale = retT > .78 ? 1 - easeInOut((retT - .78) / .22) * .42 : 1;
+          const mouthOpen = easeOutCubic((retT - .34) / .56);
+          if (mouthOpen > 0) {
+            const aim = clamp(Math.atan2(grabOrigin.y - ay, grabOrigin.x - ax) * 180 / Math.PI, -72, 24);
+            stealBtn.dataset.heist = 'open';
+            stealBtn.style.setProperty('--s15-jaw-angle', `${(mouthOpen * 52).toFixed(1)}deg`);
+            stealBtn.style.setProperty('--s15-jaw-scale', `${(1 + mouthOpen * .55).toFixed(3)}`);
+            stealBtn.style.setProperty('--s15-jaw-aim', `${(aim * mouthOpen).toFixed(1)}deg`);
+          }
+        } else if (elapsed < 1560) {
+          const chT = elapsed - 960;
+          showArm = chT < 160;
+          hx = ax; hy = ay;
+          const shrinkT = easeInOut(chT / 120);
+          showPacket = chT < 120;
+          pScale = Math.max(0, .58 * (1 - shrinkT));
+          let angle = 0;
+          if (chT < 120) angle = 52 * (1 - easeInOut(chT / 120));
+          else if (chT < 260) angle = Math.sin(((chT - 120) / 140) * Math.PI) * 24;
+          else if (chT < 400) angle = Math.sin(((chT - 260) / 140) * Math.PI) * 14;
+          if (!chomped && chT >= 100) {
+            chomped = true;
+            stealBtn.dataset.heist = 'chomp';
+            stealBtn.animate?.([
+              { transform: 'scale(1)' },
+              { transform: 'scale(1.06, .93)', offset: .32 },
+              { transform: 'scale(.98, 1.03)', offset: .68 },
+              { transform: 'scale(1)' },
+            ], { duration: 340, easing: 'cubic-bezier(.16, 1, .3, 1)' });
+          }
+          stealBtn.style.setProperty('--s15-jaw-angle', `${angle.toFixed(1)}deg`);
+          stealBtn.style.setProperty('--s15-jaw-scale', `${(1.55 - easeInOut(chT / 440) * .55).toFixed(3)}`);
+
+          const burst = clamp((chT - 80) / 420, 0, 1);
+          if (burst > 0 && burst < 1) {
+            crumbsEl.setAttribute('opacity', (1 - burst).toFixed(2));
+            crumbNodes.forEach((node, idx) => {
+              const a = (-0.75 + idx * 0.42);
+              const d = (12 + (idx % 2) * 8) * easeOutCubic(burst);
+              node.setAttribute('x', (ax + Math.cos(a) * d).toFixed(1));
+              node.setAttribute('y', (ay + Math.sin(a) * d - burst * 6).toFixed(1));
+            });
+          } else {
+            crumbsEl.setAttribute('opacity', '0');
+          }
+        } else {
+          cancelHeist();
+          return;
         }
 
         if (showArm) {
@@ -1830,9 +1796,8 @@
         const prox = dx / drag.maxTravel;
         stage.style.setProperty('--s15-drag-x', `${(-dx).toFixed(1)}px`);
         stage.style.setProperty('--s15-prox', prox.toFixed(3));
-        if (prox >= .76 && !drag.tapped) {
+        if (prox >= .72 && !drag.tapped) {
           drag.tapped = true;
-          suppressTapClick = true;
           performTap({ fromDrag: true });
         }
       });
@@ -1846,27 +1811,20 @@
           stage.style.removeProperty('--s15-drag-x');
           stage.style.removeProperty('--s15-prox');
           if (!ended.tapped) {
-            if (ended.dx / ended.maxTravel >= .52) {
-              suppressTapClick = true;
-              performTap({ fromDrag: true });
-            } else if (ended.dx < 8 && event.type === 'pointerup') {
-              suppressTapClick = true;
-              performTap({ fromDrag: false });
-            }
+            if (ended.dx / ended.maxTravel >= .48) performTap({ fromDrag: true });
+            else if (ended.dx < 8 && event.type === 'pointerup') nudgeHint();
           }
-          setTimeout(() => { suppressTapClick = false; }, 0);
         });
       }
 
-      tapBtn.addEventListener('click', () => {
-        if (suppressTapClick) { suppressTapClick = false; return; }
-        performTap({ fromDrag: false });
+      tapBtn.addEventListener('keydown', event => {
+        if (event.altKey || event.ctrlKey || event.metaKey) return;
+        if (event.key === 'ArrowLeft' || event.key === 'Home') {
+          event.preventDefault();
+          performTap({ fromDrag: false });
+        }
       });
     }
-
-    chartEl?.addEventListener('click', () => {
-      if (river.awaitingTap) performTap({ fromDrag: false });
-    });
 
     randomInput?.addEventListener('change', () => {
       if (!randomState) return;
@@ -1884,9 +1842,37 @@
     });
 
     stealBtn?.addEventListener('click', () => {
-      river.steal = true;
-      conversation(s15, { fromSteal: true });
-      launchHeistAnimation();
+      const pkt = river.packetPos;
+      if (river.awaitingTap || river.heistActive || !pkt || pkt.stolen || pkt.q >= .96) return;
+      const idx = pkt.index, msg = river.messages[idx];
+      if (!msg || msg.from === 'app' || msg.stolen) return;
+
+      const cleanCopy = { ...msg, bytes: [...msg.bytes], stolen: false };
+      msg.stolen = true;
+      msg.words = msg.name === 'UID' ? 'My ID is … (lost on the way)' : `${msg.words.replace(/\.$/, '')} (lost on the way)`;
+
+      const existingLi = chatEl?.children[idx];
+      if (existingLi) {
+        existingLi.classList.add('is-stolen');
+        const span = existingLi.querySelector('span');
+        if (span) span.textContent = msg.words;
+      }
+
+      if (msg.from === 'phone') {
+        river.messages.splice(idx + 1, 0, cleanCopy);
+      } else {
+        const askAgain = river.messages[idx - 1]
+          ? { ...river.messages[idx - 1], bytes: [...river.messages[idx - 1].bytes], stolen: false }
+          : null;
+        river.messages.splice(idx + 1, 0, ...(askAgain ? [askAgain, cleanCopy] : [cleanCopy]));
+      }
+
+      if (!river.settledReadout.includes('missing')) {
+        river.settledReadout = `${river.settledReadout} A packet went missing, so the phone simply asked again.`;
+      }
+      pkt.stolen = true;
+      s15?.say('A packet was stolen mid-air — watch the phone ask again.');
+      launchInstantHeist(idx, pkt.label, pkt.w);
     });
 
     for (const ev of ['resize', 'hashchange', 'pagehide']) addEventListener(ev, cancelHeist);
