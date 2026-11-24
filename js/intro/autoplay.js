@@ -28,8 +28,25 @@ const GLIDE = 3;
 const BURST = 300;
 const DOWN_KEYS = new Set(['ArrowDown', 'PageDown']);    // and space
 const UP_KEYS = new Set(['ArrowUp', 'PageUp']);          // and shift + space
-// Every glide starts from standstill, eases in and out, and stops dead on its stop (smoothstep).
-const ease = k => k * k * (3 - 2 * k);
+// How far along a glide is at a share `k` of its time. It moves off at once (full pace within
+// the first 1.5% of the step, about 45 ms), keeps one even pace so the animation plays slowly
+// and evenly, and eases softly into the stop over the last 40%. A plain ease-in-out stretched to
+// 3 s barely moved for its first second, which felt like lag. Built once as a table from that
+// speed profile.
+const ease = (() => {
+  const N = 2000, START = .015, END = .4;
+  const ramp = x => { const t = Math.min(1, Math.max(0, x)); return t * t * (3 - 2 * t); };
+  const sum = [0];
+  for (let i = 1; i <= N; i++) {
+    const k = (i - .5) / N;
+    sum.push(sum[i - 1] + ramp(k / START) * ramp((1 - k) / END));
+  }
+  const total = sum[N];
+  return k => {
+    const x = Math.min(1, Math.max(0, k)) * N, i = Math.floor(x);
+    return i >= N ? 1 : (sum[i] + (sum[i + 1] - sum[i]) * (x - i)) / total;
+  };
+})();
 
 export function autoplay({ experience, stage, reduce }) {
   let list = [];            // the stops' places on the page, read when needed (`stops`)
