@@ -41,8 +41,8 @@
   <script src="js/lab.js" defer></script>
   <script src="js/deep.js" defer></script>
   <script src="js/landing.js?v=8" defer></script>
-  <script src="js/present.js?v=4" defer></script>
-  <script type="module" src="js/taps.js?v=9"></script>
+  <script src="js/present.js?v=5" defer></script>
+  <script type="module" src="js/taps.js?v=11"></script>
   <script type="module" src="js/intro/main.js?v=27"></script>
 </head>
 <body>
@@ -63,7 +63,7 @@
     </div>
   </main>
 
-  <!-- Every day: a 22-second continuous 3D sequence (js/taps.js). It slides up over
+  <!-- Every day: a 12-second continuous 3D sequence (js/taps.js). It slides up over
        the landing page; the story below starts where this section ends. -->
   <section class="taps" id="taps" aria-labelledby="taps-title">
     <h2 class="taps-title" id="taps-title">One tap, and it just works.</h2>
@@ -80,12 +80,12 @@
         </ol>
       </div>
     </div>
-    <p class="taps-caption" aria-live="polite">Tap your bank card.</p>
+    <p class="taps-caption" aria-live="polite">Tap to pay.</p>
     <div class="taps-controls">
       <div class="taps-progress-wrap">
-        <input class="taps-seek" type="range" min="0" max="22" step="0.05" value="0" aria-label="Animation progress">
+        <input class="taps-seek" type="range" min="0" max="12" step="0.05" value="0" aria-label="Animation progress">
         <div class="taps-track" aria-hidden="true"><i class="taps-fill"></i></div>
-        <span class="taps-time" aria-hidden="true">0:00 / 0:22</span>
+        <span class="taps-time" aria-hidden="true">0:00 / 0:12</span>
       </div>
       <div class="taps-actions">
         <button class="taps-toggle" type="button" aria-pressed="false"><i aria-hidden="true"></i><span>Pause</span></button>
@@ -94,10 +94,10 @@
       </div>
     </div>
     <div class="taps-chapters" role="group" aria-label="Jump to scene" hidden>
-      <button type="button" data-time="2.2">Payment</button>
-      <button type="button" data-time="7.35">Station gate</button>
-      <button type="button" data-time="10.55">Train</button>
-      <button type="button" data-time="21.5">Vehicle unlock</button>
+      <button type="button" data-time="1.1">Payment</button>
+      <button type="button" data-time="4.45">Station gate</button>
+      <button type="button" data-time="5.8">Train</button>
+      <button type="button" data-time="12">Vehicle unlock</button>
     </div>
   </section>
 

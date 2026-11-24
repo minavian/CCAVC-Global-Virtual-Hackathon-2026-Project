@@ -187,7 +187,7 @@ html[data-intro] #subline,
 html[data-intro] .stage-light { opacity: 0; }
 
 /* ---------- Every day: continuous 3D taps under the landing page (js/taps.js) ----------
-   One unified WebGL stage plays a continuous 22-second sequence across contactless payment,
+   One unified WebGL stage plays a continuous 12-second sequence across contactless payment,
    station transit gate, electric train, and remote vehicle unlock. The landing page is
    pinned, so this section starts one screen down and slides up over it like a sheet of
    paper. It is at least a screen tall, so it covers the landing page completely before the

@@ -490,71 +490,76 @@ function buildCar(T, { add, box, line, textures }, reflections) {
   return { group, setState };
 }
 
-function buildFob(T, { add, box, textures }) {
+const SEALED_FOB_PARTS = [
+  'protective-encapsulation', 'rfid-chip', 'antenna-coil',
+  'elastomer-key-mat-and-plungers', 'key-mat-pins-and-guide-mount', 'indicator-light-pipe-foot',
+  'inner-guide-rib-1', 'inner-stop-1', 'inner-guide-rib-2', 'inner-stop-2',
+  'pcb-alignment-bosses-and-indexing-pins', 'molded-support-ribs-and-hollow-standoffs', 'dielectric-cushion-strips',
+];
+
+async function buildFob(T, loader) {
+  const { scene: shell } = await loader.loadAsync('models/rfid-fob.glb');
   const group = new T.Group();
-  group.name = 'geely-ex5-smart-key';
-  const casing = new T.MeshPhysicalMaterial({ color: 0x191a1b, roughness: 0.38, clearcoat: 0.32 });
-  const trim = new T.MeshStandardMaterial({ color: 0x8a9090, metalness: 0.65, roughness: 0.32 });
-  const rubber = new T.MeshStandardMaterial({ color: 0x242626, roughness: 0.73 });
-  box(group, trim, [0.052, 0.091, 0.015], [0, 0, 0], 0.007);
-  box(group, casing, [0.049, 0.087, 0.014], [0, 0, 0.007], 0.006);
-  const buttons = [-1, 0, 1].map(index => {
-    const button = new T.Group();
-    button.position.set(0, index * 0.022, 0.015);
-    box(button, rubber, [0.034, 0.018, 0.005], [0, 0, 0], 0.002);
-    const { texture } = paintCanvas(T, 64, 64, ctx => {
-      ctx.strokeStyle = '#dedbd4';
-      ctx.lineWidth = 4;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      if (index >= 0) {
-        ctx.roundRect(19, 30, 26, 20, 4);
-        ctx.moveTo(index ? 25 : 27, index ? 30 : 25);
-        if (index) ctx.lineTo(25, 24);
-        ctx.bezierCurveTo(25, 12, 40, 12, 40, 24);
-        ctx.lineTo(40, 30);
-      } else {
-        ctx.moveTo(13, 39);
-        ctx.lineTo(21, 30);
-        ctx.lineTo(37, 30);
-        ctx.lineTo(48, 37);
-        ctx.lineTo(49, 44);
-        ctx.lineTo(14, 44);
-        ctx.closePath();
-        ctx.moveTo(39, 26);
-        ctx.lineTo(48, 17);
-      }
-      ctx.stroke();
-    });
-    textures.add(texture);
-    const ink = new T.MeshBasicMaterial({ map: texture, alphaTest: 0.4, toneMapped: false });
-    add(button, new T.PlaneGeometry(0.014, 0.014), ink, 0, 0, 0.0027);
-    group.add(button);
-    return button;
+  group.name = 'vehicle-key-fob';
+  const geometries = new Set();
+  const materials = new Set();
+  const textures = new Set();
+  shell.traverse(part => {
+    if (!part.isMesh) return;
+    geometries.add(part.geometry);
+    materials.add(part.material);
+    for (const value of Object.values(part.material)) if (value?.isTexture) textures.add(value);
   });
+
+  // This is the closed fob. Omit the teardown parts even when shaders are warmed.
+  for (const name of SEALED_FOB_PARTS) shell.getObjectByName(name)?.removeFromParent();
+  const bounds = new T.Box3().setFromObject(shell);
+  const center = bounds.getCenter(new T.Vector3());
+  const scale = 0.091 / (bounds.max.y - bounds.min.y);
+  shell.scale.setScalar(scale);
+  shell.position.copy(center).multiplyScalar(-scale);
+  const holder = new T.Group();
+  holder.rotation.z = 0.13;
+  holder.add(shell);
+  group.add(holder);
+
+  const unlock = shell.getObjectByName('unlock-button');
+  const unlockRest = unlock.position.z;
+  const indicator = shell.getObjectByName('indicator-light-guide').material;
+  indicator.emissive.setHex(COLORS.GREEN);
+
   const waves = createRipples(T, { count: 2, inner: 0.94, color: COLORS.GREEN, accentColor: COLORS.GREEN_BRIGHT });
   group.add(waves.group);
+  for (const ring of waves.group.children) {
+    geometries.add(ring.geometry);
+    materials.add(ring.material);
+  }
+
   function setState({ press, rfPulse, visible }) {
     group.visible = visible;
     if (!visible) return;
-    buttons[1].position.z = 0.015 - 0.003 * press;
+    unlock.position.z = unlockRest - 0.0009 * press;
+    indicator.emissiveIntensity = 0.85 * press;
     waves.group.visible = rfPulse > 0 && rfPulse < 1;
     if (waves.group.visible) {
       waves.group.position.set(0.022 * rfPulse, 0.015 * rfPulse, -0.018);
       waves.update(rfPulse, 0.017, 0.087, 0.38, 0.7);
     }
   }
+
   function dispose() {
-    waves.group.children[0].geometry.dispose();
-    for (const mesh of waves.group.children) mesh.material.dispose();
+    for (const geometry of geometries) geometry.dispose();
+    for (const material of materials) material.dispose();
+    for (const texture of textures) texture.dispose();
   }
+
   return { group, setState, dispose };
 }
 
-export function createVehicleAssets(T, reflections) {
+export async function createVehicleAssets(T, reflections, loader) {
+  const fob = await buildFob(T, loader);
   const meshes = builder(T);
   const car = buildCar(T, meshes, reflections);
-  const fob = buildFob(T, meshes);
   const deck = new T.Group();
   const shadows = [makeContactShadow(T, 6.7, 4.1, 0.33), makeContactShadow(T, 4.8, 2.75, 0.54)];
   shadows[1].position.y = 0.003;

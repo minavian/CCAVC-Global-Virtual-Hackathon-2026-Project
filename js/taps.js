@@ -1,5 +1,5 @@
 /*
- * Continuous 22-second 3D #taps demonstration:
+ * Continuous 12-second 3D #taps demonstration:
  *   Contactless Payment -> Station Card Handoff -> Station Gate -> Enter Station
  *   -> Electric Train -> Downward Camera Reveal -> Vehicle Unlock.
  *
@@ -113,7 +113,7 @@ function init() {
   let hasStarted = false;
   let scrubbing = false;
 
-  let clock = motion.matches ? 21.5 : 0;
+  let clock = motion.matches ? TOTAL_DURATION : 0;
   let lastNow = null;
   let frameId = 0;
   let width = 0;
@@ -182,7 +182,7 @@ function init() {
 
   const onReplay = () => {
     if (motion.matches) {
-      clock = 21.5;
+      clock = TOTAL_DURATION;
       if (ready) draw();
       return;
     }
@@ -237,7 +237,7 @@ function init() {
     if (motion.matches) {
       paused = false;
       ended = false;
-      clock = 21.5;
+      clock = TOTAL_DURATION;
       lastNow = null;
     }
     if (ready) draw();
@@ -406,7 +406,7 @@ function init() {
         const [payBundle, transitBundle, vehicleBundle] = await Promise.all([
           createPaymentAssets(T, loader),
           createGateAndTrainAssets(T),
-          createVehicleAssets(T, vehicleEnvRT.texture),
+          createVehicleAssets(T, vehicleEnvRT.texture, loader),
           waitFonts(),
         ]);
 
@@ -445,7 +445,7 @@ function init() {
         prewarmShaders();
 
         ready = true;
-        if (motion.matches && !hasStarted) clock = 21.5;
+        if (motion.matches && !hasStarted) clock = TOTAL_DURATION;
         if (inView && !hasStarted && !paused && !motion.matches) {
           hasStarted = true;
         }
@@ -471,7 +471,7 @@ function init() {
       obj.frustumCulled = false;
     });
 
-    for (const time of [3.5, 7.25, 18.35]) {
+    for (const time of [1.5, 3.9, 9.98]) {
       applySceneState(evaluateTimeline(time, anchors));
       renderer.render(scene, camera);
     }

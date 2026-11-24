@@ -1,5 +1,5 @@
 /*
- * Pure deterministic 22-second choreography for the redesigned #taps 3D sequence.
+ * Pure deterministic 12-second choreography for the #taps 3D sequence.
  * Every object pose, camera spline state, caption, and badge is derived solely from
  * playhead time `t` in [0, TOTAL_DURATION] and asset anchors.
  */
@@ -14,18 +14,28 @@ import {
   pulse,
 } from './easing.js';
 
-export const TOTAL_DURATION = 22;
+export const TOTAL_DURATION = 12;
 export const COUNTER_ORIGIN = Object.freeze({ x: 2.70, y: 0.88, z: 0.2 });
+
+const CARD_SLIDE = 1.18;
+const TURN_LEFT = 2.08;
+const SCAN = 3.16;
+const TRAIN_DOORS_CLOSE = 5.46;
+const DEPART = 6.20;
+const FOB_REVEAL = 8.90;
+const CAR_DOOR_OPEN = 10.52;
+const FINAL_FRAME = 11.55;
+
 export const PHASE_MARKS = Object.freeze([
   { id: 'payment', label: 'Payment', time: 0 },
-  { id: 'handoff', label: 'Card handoff', time: 2.5 },
-  { id: 'turn', label: 'Turn left', time: 4.2 },
-  { id: 'gate', label: 'Gate', time: 6 },
-  { id: 'enter', label: 'Enter', time: 8.2 },
-  { id: 'train', label: 'Doors close', time: 10 },
-  { id: 'depart', label: 'Departure', time: 11 },
-  { id: 'reveal', label: 'Reveal', time: 14 },
-  { id: 'unlock', label: 'Unlock', time: 17.5 },
+  { id: 'handoff', label: 'Card handoff', time: CARD_SLIDE },
+  { id: 'turn', label: 'Turn left', time: TURN_LEFT },
+  { id: 'gate', label: 'Gate', time: SCAN },
+  { id: 'enter', label: 'Enter', time: 4.45 },
+  { id: 'train', label: 'Doors close', time: TRAIN_DOORS_CLOSE },
+  { id: 'depart', label: 'Departure', time: DEPART },
+  { id: 'reveal', label: 'Reveal', time: 7.65 },
+  { id: 'unlock', label: 'Unlock', time: 9.55 },
 ]);
 
 const DEFAULT_ANCHORS = {
@@ -253,49 +263,49 @@ function vec3Spline(rows) {
 // translates toward the scanner and follows the center of the open aisle.
 const evalCamPos = vec3Spline([
   [0,     2.92, 1.52,  1.37],
-  [1.8,   2.85, 1.43,  1.17],
-  [3.7,   2.80, 1.48,  1.37],
-  [4.2,   2.80, 1.48,  1.39],
-  [5.0,   2.15, 1.49,  1.75],
-  [6.0,   0.83, 1.46,  2.38],
-  [7.25,  0.78, 1.44,  2.35],
-  [8.2,   0.20, 1.26,  2.10],
-  [8.55,  0,    1.20,  1.66],
-  [9.15,  0,    1.18, -0.35],
-  [9.65,  0,    1.23, -2.60],
-  [10.2,  0.15, 1.44, -4.68],
-  [12.0,  0.38, 1.51, -4.85],
-  [13.8,  0.95, 1.53, -5.03],
-  [14.7, -0.38, -0.80, -4.85],
-  [15.5, -2.18, -3.65, -5.55],
-  [16.2, -4.88, -4.90, -6.50],
-  [18.6, -4.67, -4.84, -6.49],
-  [19.5, -3.05, -4.38, -6.07],
-  [22,   -0.88, -4.32, -5.95],
+  [0.95,  2.85, 1.43,  1.17],
+  [1.85,  2.80, 1.48,  1.37],
+  [TURN_LEFT, 2.80, 1.48, 1.39],
+  [2.57,  2.15, 1.49,  1.75],
+  [SCAN,  0.83, 1.46,  2.38],
+  [3.85,  0.78, 1.44,  2.35],
+  [4.45,  0.20, 1.26,  2.10],
+  [4.63,  0,    1.20,  1.66],
+  [5.04,  0,    1.18, -0.35],
+  [5.38,  0,    1.23, -2.60],
+  [5.72,  0.15, 1.44, -4.68],
+  [6.75,  0.38, 1.51, -4.85],
+  [7.65,  0.95, 1.53, -5.03],
+  [8.20, -0.38, -0.80, -4.85],
+  [8.65, -2.18, -3.65, -5.55],
+  [9.10, -4.88, -4.90, -6.50],
+  [10.18,-4.67, -4.84, -6.49],
+  [10.56,-3.05, -4.38, -6.07],
+  [FINAL_FRAME, -0.88, -4.32, -5.95],
 ]);
 
 const evalCamTarget = vec3Spline([
   [0,    2.68, 1.04,  0.23],
-  [2.1,  2.67, 1.05,  0.26],
-  [3.7,  2.59, 1.05,  0.37],
-  [4.2,  2.55, 1.06,  0.38],
-  [4.9,  0.18, 0.87,  0.20],
-  [6.0,  0.12, 0.84,  0.05],
-  [7.25, 0.13, 0.84,  0.03],
-  [8.55, 0,    0.96, -2.30],
-  [9.65, 0,    0.95, -13.50],
-  [11,   0.20, 0.91, -13.50],
-  [12.8, 1.30, 0.90, -13.50],
-  [13.8, 1.35, 0.74, -13.45],
-  [14.7, 1.32, -2.20, -13.30],
-  [15.5, 1.19, -5.17, -13.20],
-  [16.2, 1.12, -5.72, -13.20],
-  [22,   1.15, -5.72, -13.20],
+  [1.12, 2.67, 1.05,  0.26],
+  [1.85, 2.59, 1.05,  0.37],
+  [TURN_LEFT, 2.55, 1.06, 0.38],
+  [2.53, 0.18, 0.87,  0.20],
+  [SCAN, 0.12, 0.84,  0.05],
+  [3.85, 0.13, 0.84,  0.03],
+  [4.63, 0,    0.96, -2.30],
+  [5.38, 0,    0.95, -13.50],
+  [DEPART, 0.20, 0.91, -13.50],
+  [7.10, 1.30, 0.90, -13.50],
+  [7.65, 1.35, 0.74, -13.45],
+  [8.20, 1.32, -2.20, -13.30],
+  [8.65, 1.19, -5.17, -13.20],
+  [9.10, 1.12, -5.72, -13.20],
+  [FINAL_FRAME, 1.15, -5.72, -13.20],
 ]);
 
 const evalCamFov = monotone([
-  [0, 33], [2, 33], [4, 37], [5.15, 42], [6.5, 38], [9.5, 42],
-  [10.4, 41], [13.8, 42], [14.7, 55], [15.4, 46], [16.2, 33], [22, 35],
+  [0, 33], [1.05, 33], [TURN_LEFT, 37], [2.68, 42], [3.44, 38], [5.28, 42],
+  [5.85, 41], [7.65, 42], [8.20, 55], [8.59, 46], [9.10, 33], [FINAL_FRAME, 35],
 ]);
 
 function cameraBasis(pos, target) {
@@ -315,29 +325,26 @@ function resolveAnchors(anchors) {
 }
 
 function evaluateCaptions(t) {
-  let text = 'Tap. Payment complete.';
-  if (t < 1.75) text = 'Tap your bank card.';
-  else if (t >= 2.5 && t < 4.2) text = 'Receive your station card.';
-  else if (t >= 4.2 && t < 6) text = 'Turn left toward the gate.';
-  else if (t >= 6 && t < 6.95) text = 'Tap your station card.';
-  else if (t >= 6.95 && t < 9.6) text = 'Access granted. The gate opens.';
-  else if (t >= 9.6 && t < 11) text = 'The train prepares to depart.';
-  else if (t >= 11 && t < 16) text = 'Your journey continues.';
-  else if (t >= 16 && t < 18.25) text = 'Press to unlock.';
-  else if (t >= 18.25 && t < 19.5) text = 'Click. Your car unlocks.';
-  else if (t >= 19.5 && t < 21) text = 'Open the driver’s door.';
-  else if (t >= 21) text = 'Wireless identification. Everyday convenience.';
+  let text;
+  if (t < CARD_SLIDE) text = 'Tap to pay.';
+  else if (t < TURN_LEFT) text = 'Collect your station card.';
+  else if (t < 3.73) text = 'Tap your station card at the gate.';
+  else if (t < TRAIN_DOORS_CLOSE) text = 'The gate opens.';
+  else if (t < FOB_REVEAL) text = 'Doors close. The train departs.';
+  else if (t < CAR_DOOR_OPEN) text = 'Press the key fob.';
+  else if (t < FINAL_FRAME) text = 'Open the driver’s door.';
+  else text = 'Wireless identification. Everyday convenience.';
 
   let badgeText = '';
-  if (t >= 1.78 && t < 4.25) badgeText = 'Payment successful.';
-  else if (t >= 6.95 && t < 8.5) badgeText = 'Access granted.';
-  else if (t >= 18.43) badgeText = 'Vehicle unlocked.';
+  if (t >= 1.02 && t < TURN_LEFT) badgeText = 'Payment successful.';
+  else if (t >= 3.73 && t < 4.85) badgeText = 'Access granted.';
+  else if (t >= 9.96) badgeText = 'Vehicle unlocked.';
   return { text, badgeText, badgeState: badgeText ? 'success' : '' };
 }
 
 function evaluateBankCard(t, a) {
-  const opacity = t < 2.70 ? 1 : 1 - smoothstep(cue(t, 2.70, 3.28));
-  const visible = opacity > 0.002 && t <= 3.35;
+  const opacity = 1 - smoothstep(cue(t, 1.42, 1.72));
+  const visible = opacity > 0.002;
   if (!visible) {
     return {
       pos: vec3(-0.56, 0.26, 0.44),
@@ -360,29 +367,29 @@ function evaluateBankCard(t, a) {
   );
   const exitQuat = facingQuat(vec3(0.10, 0.30, 0.95), vec3(-0.14, 1, 0));
 
-  const arrive = inOutCubic(cue(t, 0.12, 1.12));
-  const leave = inOutCubic(cue(t, 2.02, 2.74));
-  const exit = inOutCubic(cue(t, 2.68, 3.30));
+  const arrive = inOutCubic(cue(t, 0.06, 0.60));
+  const leave = inOutCubic(cue(t, 1.10, 1.42));
+  const exit = inOutCubic(cue(t, 1.42, 1.73));
 
   let pos;
   let quat;
-  if (t < 1.35) {
+  if (t < 1.10) {
     const c1 = add3(lerp3(restPos, tapPos, 0.32), vec3(0, 0.055, 0.025));
     const c2 = addScaled3(tapPos, a.terminalReaderNormal, 0.075);
     pos = bezier3(restPos, c1, c2, tapPos, arrive);
-    quat = slerpQuat(restQuat, tapQuat, smoothstep(cue(t, 0.12, 1.02)));
-  } else if (t < 2.68) {
+    quat = slerpQuat(restQuat, tapQuat, smoothstep(cue(t, 0.06, 0.56)));
+  } else if (t < 1.42) {
     const c1 = addScaled3(tapPos, a.terminalReaderNormal, 0.065);
     const c2 = add3(lerp3(tapPos, liftPos, 0.68), vec3(0, 0.045, 0.02));
     pos = bezier3(tapPos, c1, c2, liftPos, leave);
-    quat = slerpQuat(tapQuat, restQuat, smoothstep(cue(t, 2.04, 2.70)));
+    quat = slerpQuat(tapQuat, restQuat, smoothstep(cue(t, 1.10, 1.42)));
   } else {
     pos = lerp3(liftPos, exitPos, exit);
     quat = slerpQuat(restQuat, exitQuat, exit);
   }
 
   // Gentle tactile press on read without intersecting the reader dome.
-  const press = pulse(t, 1.12, 1.44);
+  const press = pulse(t, 0.60, 0.78);
   pos = addScaled3(pos, a.terminalReaderNormal, -0.0035 * press);
 
   // Living hover motion at rest that dampens cleanly as the card approaches the pad.
@@ -405,100 +412,100 @@ function evaluateStationCard(t, a, camPos, camTarget) {
 
   let pos;
   let quat;
-  if (t < 4.2) {
-    const delivery = smoothstep(cue(t, 2.52, 3.94));
+  if (t < TURN_LEFT) {
+    const delivery = smoothstep(cue(t, CARD_SLIDE, 2.02));
     pos = lerp3(origin, pickup, delivery);
     quat = flat;
-  } else if (t < 6) {
-    const turn = smoothstep(cue(t, 4.2, 4.78));
+  } else if (t < SCAN) {
+    const turn = smoothstep(cue(t, TURN_LEFT, 2.46));
     pos = lerp3(pickup, carry, turn);
     quat = slerpQuat(flat, carryQuat, turn);
-  } else if (t < 7.16) {
-    const aim = smoothstep(cue(t, 6, 6.53));
+  } else if (t < 3.83) {
+    const aim = smoothstep(cue(t, SCAN, 3.46));
     const hover = addScaled3(tapPos, a.gateReaderNormal, 0.16);
-    pos = lerp3(lerp3(carry, hover, aim), tapPos, smoothstep(cue(t, 6.53, 6.79)));
+    pos = lerp3(lerp3(carry, hover, aim), tapPos, smoothstep(cue(t, 3.46, 3.63)));
     quat = slerpQuat(carryQuat, tapQuat, aim);
   } else {
     const pocket = addScaled3(carry, up, -0.42);
-    const lower = smoothstep(cue(t, 7.16, 8.05));
+    const lower = smoothstep(cue(t, 3.83, 4.43));
     pos = bezier3(tapPos, addScaled3(tapPos, a.gateReaderNormal, 0.21), carry, pocket, lower);
     quat = slerpQuat(tapQuat, carryQuat, lower);
   }
 
   return {
-    pos, quat, scale: 1, opacity: 1, visible: t < 8.08,
-    counterShadow: 1 - smoothstep(cue(t, 4.2, 4.54)),
+    pos, quat, scale: 1, opacity: 1, visible: t < 4.45,
+    counterShadow: 1 - smoothstep(cue(t, TURN_LEFT, 2.29)),
   };
 }
 
 function evaluateTerminal(t) {
   return {
-    pos: vec3(), scale: 1, opacity: 1, visible: t < 6.4,
-    readProgress: smoothstep(cue(t, 1.15, 1.82)),
-    success: smoothstep(cue(t, 1.65, 2.10)),
-    pulse: cue(t, 1.2, 2.25),
-    glow: smoothstep(cue(t, 1.15, 1.45)),
+    pos: vec3(), scale: 1, opacity: 1, visible: t < 3.42,
+    readProgress: smoothstep(cue(t, 0.62, 0.97)),
+    success: smoothstep(cue(t, 0.89, 1.12)),
+    pulse: cue(t, 0.65, 1.24),
+    glow: smoothstep(cue(t, 0.62, 0.81)),
   };
 }
 
 function evaluateGate(t) {
-  const barrierOpen = inOutCubic(cue(t, 7.12, 8.16));
+  const barrierOpen = inOutCubic(cue(t, 3.79, 4.45));
   return {
-    pos: vec3(), scale: 1, visible: t < 12, opacity: 1,
-    readProgress: smoothstep(cue(t, 6.58, 6.96)),
-    authorized: smoothstep(cue(t, 6.90, 7.12)),
-    pulse: cue(t, 6.66, 7.53),
+    pos: vec3(), scale: 1, visible: t < 6.75, opacity: 1,
+    readProgress: smoothstep(cue(t, 3.53, 3.74)),
+    authorized: smoothstep(cue(t, 3.67, 3.79)),
+    pulse: cue(t, 3.57, 4.05),
     barrierOpen,
     passageClear: barrierOpen >= 0.97,
   };
 }
 
 function evaluateRailway(t) {
-  return { opacity: 1, visible: t < 16.2 };
+  return { opacity: 1, visible: t < 9.10 };
 }
 
 function evaluateTrain(t, a) {
   // Integrate acceleration over playhead time. Velocity reaches 11.2m/s and
   // stays there during the downward shot; wheel rotation uses the same distance.
-  const elapsed = Math.max(0, t - 11);
-  const accelerating = Math.min(elapsed, 3.5);
-  const xOffset = 1.6 * accelerating ** 2 + 11.2 * (elapsed - accelerating);
+  const elapsed = Math.max(0, t - DEPART);
+  const accelerating = Math.min(elapsed, 2);
+  const xOffset = 2.8 * accelerating ** 2 + 11.2 * (elapsed - accelerating);
   return {
     xOffset,
-    doorOpen: 1 - smoothstep(cue(t, 10, 10.98)),
+    doorOpen: 1 - smoothstep(cue(t, TRAIN_DOORS_CLOSE, 6.18)),
     headlights: 1,
     wheelAngle: -xOffset / a.wheelRadius,
-    visible: t < 16.2,
+    visible: t < 9.10,
   };
 }
 
 function evaluateVehicle(t) {
   return {
     pos: vec3(1.18, -6.52, -13.35),
-    lightFlash: Math.max(pulse(t, 18.29, 18.71), pulse(t, 18.82, 19.18)),
-    doorOpen: inOutCubic(cue(t, 19.5, 21.0)),
-    visible: t >= 13.85,
+    lightFlash: Math.max(pulse(t, 9.90, 10.12), pulse(t, 10.19, 10.41)),
+    doorOpen: inOutCubic(cue(t, CAR_DOOR_OPEN, FINAL_FRAME)),
+    visible: t >= 7.69,
   };
 }
 
 function evaluateFob(t, camPos, camTarget) {
-  const enter = outCubic(cue(t, 16.42, 17.28));
-  const lower = smoothstep(cue(t, 19.12, 20.03));
+  const enter = outCubic(cue(t, FOB_REVEAL, 9.47));
+  const lower = smoothstep(cue(t, 10.36, 10.89));
   const { forward, right, up } = cameraBasis(camPos, camTarget);
   const pos = addScaled3(addScaled3(addScaled3(camPos, forward, 0.60), right, lerp(-0.31, -0.12, enter)),
     up, lerp(-0.32, -0.093, enter) - lower * 0.30);
-  const press = pulse(t, 17.72, 18.18);
+  const press = pulse(t, 9.55, 9.86);
   const quat = facingQuat(addScaled3(scale3(forward, -1), up, 0.36), up);
   return {
     pos, quat, press, scale: 0.89,
-    rfPulse: cue(t, 18.04, 18.75),
+    rfPulse: cue(t, 9.76, 10.20),
     opacity: 1,
-    visible: t >= 16.42 && t < 20.03,
+    visible: t >= FOB_REVEAL && t < 10.89,
   };
 }
 
 /**
- * Evaluate the entire 3D scene state at time `t` in [0, 22].
+ * Evaluate the entire 3D scene state at time `t` in [0, TOTAL_DURATION].
  */
 export function evaluateTimeline(t, anchors) {
   const time = Number.isFinite(t) ? Math.max(0, Math.min(TOTAL_DURATION, t)) : 0;
