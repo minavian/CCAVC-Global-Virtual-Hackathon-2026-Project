@@ -9,7 +9,6 @@
 // to the reader and plays the close-up (main.js `auto`). Below that, the page scrolls as
 // usual. It is off with reduced motion, and in presenter mode (js/present.js), which plays the
 // page its own way. See EXPLAINED.md.
-import { smoother } from './easing.js';
 import { SCROLL_SCREENS } from './timeline.js?v=2';
 
 // The landing, then the everyday taps (rest: one round of all three, LOOP_ALL in js/taps.js).
@@ -31,15 +30,22 @@ const INTRO = [
 const BURST = 200;
 const DOWN_KEYS = new Set(['ArrowDown', 'PageDown']);    // and space
 const UP_KEYS = new Set(['ArrowUp', 'PageUp']);          // and shift + space
-// A step the visitor asked for moves off at once and slows into the stop (sine ease-out), so the
-// page answers the scroll straight away yet its animation still plays at its own pace.
-const prompt = k => Math.sin(k * Math.PI / 2);
-const calm = k => smoother(0, 1, k);
+// Every glide is one smooth curve (a cubic Hermite): from rest it eases in and out. Started while
+// another glide is under way, it begins at that glide's speed, so the page never jolts, and it
+// still eases out into the stop. `at`: where the page is, a share `k` of the way through;
+// `speed`: how fast it is moving there (px per second).
+function at(g, k) {
+  const k2 = k * k, k3 = k2 * k;
+  return g.from + (g.to - g.from) * (3 * k2 - 2 * k3) + g.v0 * g.length * (k - 2 * k2 + k3);
+}
+function speed(g, k) {
+  return ((g.to - g.from) * (6 * k - 6 * k * k) + g.v0 * g.length * (1 - 4 * k + 3 * k * k)) / g.length;
+}
 
 export function autoplay({ experience, stage, reduce }) {
   let list = [];            // the stops' places on the page, read when needed (`stops`)
   let cur = -1;             // the stop the page is at, or heading to
-  let glide = null;         // { from, to, y, t, length, ease }
+  let glide = null;         // { from, to, y, t, length, v0, v }
   let restLeft = null;      // seconds until it moves on by itself, or null
   let onward = false;       // moving on by itself after each rest (after a scroll down)
   let ticking = false, then = 0;
@@ -84,10 +90,10 @@ export function autoplay({ experience, stage, reduce }) {
     return list;
   }
 
-  // Go one stop down (+1) or up (-1) now, from wherever the page is, even mid-glide.
-  // `byHand`: the visitor asked. Returns false when there is nowhere to go that way, so the
-  // browser scrolls as usual (below the last stop, or above the top).
-  function step(dir, byHand) {
+  // Go one stop down (+1) or up (-1) now, from wherever the page is, even mid-glide. Returns
+  // false when there is nowhere to go that way, so the browser scrolls as usual (below the last
+  // stop, or above the top).
+  function step(dir) {
     if (!on()) return false;
     stops();
     const y = scrollY;
@@ -100,7 +106,9 @@ export function autoplay({ experience, stage, reduce }) {
     cur = i;
     const to = list[i].y;
     const share = Math.min(1, Math.abs(to - y) / Math.max(Math.abs(to - from), 1));
-    glide = { from: y, to, y, t: 0, length: Math.max(.6, list[i].glide * share), ease: byHand ? prompt : calm };
+    // Carry on at the speed of a glide still under way, so nothing jolts.
+    const v0 = glide ? glide.v : 0;
+    glide = { from: y, to, y, t: 0, length: Math.max(.6, list[i].glide * share), v0, v: v0 };
     restLeft = null;
     onward = dir > 0;
     run();
@@ -130,7 +138,8 @@ export function autoplay({ experience, stage, reduce }) {
     if (glide) {
       glide.t += dt;
       const k = Math.min(1, glide.t / glide.length);
-      glide.y = glide.from + (glide.to - glide.from) * glide.ease(k);
+      glide.y = at(glide, k);
+      glide.v = speed(glide, k);
       scrollTo(0, glide.y);
       if (k >= 1) {
         glide = null;
@@ -138,7 +147,7 @@ export function autoplay({ experience, stage, reduce }) {
       }
     } else if (restLeft !== null) {
       restLeft -= dt;
-      if (restLeft <= 0) { restLeft = null; step(1, false); }
+      if (restLeft <= 0) { restLeft = null; step(1); }
     }
     if (glide || restLeft !== null) {
       ticking = true;
@@ -157,7 +166,7 @@ export function autoplay({ experience, stage, reduce }) {
     if (event.ctrlKey || !event.deltaY || !on()) return;      // pinch zoom, or sideways
     const dir = Math.sign(event.deltaY), now = performance.now();
     // A new scroll: the next animation, now. The rest of the same scroll only rides along.
-    if (now - burst.at > BURST || dir !== burst.dir) burst = { dir, handled: step(dir, true) };
+    if (now - burst.at > BURST || dir !== burst.dir) burst = { dir, handled: step(dir) };
     burst.at = now;
     if (burst.handled && event.cancelable) event.preventDefault();
   }
@@ -181,7 +190,7 @@ export function autoplay({ experience, stage, reduce }) {
         return;
       }
       touch.dir = dy < 0 ? 1 : -1;
-      touch.handled = step(touch.dir, true);
+      touch.handled = step(touch.dir);
     }
     if (touch.handled && event.cancelable) event.preventDefault();
   }
@@ -196,7 +205,7 @@ export function autoplay({ experience, stage, reduce }) {
       return;
     }
     if (scrollY > endY + 4) return;                         // below the last stop: as usual
-    if (step(down ? 1 : -1, true)) event.preventDefault();
+    if (step(down ? 1 : -1)) event.preventDefault();
   }
 
   function onPointer(event) {
