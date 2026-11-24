@@ -579,7 +579,7 @@ export async function createCardScene(canvas) {
 
     cardTop = TOP + b.gap + .0008;
     plate.visible = (b.metal || 0) > .01;
-    plate.material.opacity = (b.metal || 0) * .8;
+    plate.material.opacity = (b.metal || 0) * .62;
     plate.position.set(-.0003, 0, .0009 + (b.plate ?? .02));
     plateHeight = .0009 + (b.plate ?? .02);
     fx.update(b, TOP + b.gap + .0004, { amp, load, reader: readerCurrent * dark, reading: takingIn });
