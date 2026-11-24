@@ -138,7 +138,13 @@
     dot(ctx, a.X(d), a.Y(s.field), INK);
     const b = chart(ctx, bottom, { ...xr, label: 'Distance from the phone' }, { from: 0, to: 6, ticks: [[0, '0 V'], [2, '2 V'], [4, '4 V'], [6, '6 V']], label: 'Volts the coil can give the chip' });
     hline(ctx, b.Y(s.wake), bottom.x, bottom.x + bottom.w, COPPER, 'Wake-up, ' + s.wake + ' V');
-    curve(ctx, volts.map(([x, v]) => [x, Math.min(v, 6)]), b.X, b.Y, COPPER);
+    const cappedVolts = volts.map(([x, v]) => [x, Math.min(v, 6)]);
+    curve(ctx, cappedVolts, b.X, b.Y, COPPER);
+    // Share the drawn curves in their own plot coordinates for the Scene 7 handoff.
+    p.canvas.handoffPlots = [
+      { box: top, points: field.map(([x, y]) => [x / xr.to, 1 - y / 11]) },
+      { box: bottom, points: cappedVolts.map(([x, y]) => [x / xr.to, 1 - y / 6]) },
+    ];
     dot(ctx, b.X(d), b.Y(Math.min(s.rawVolts, 6)), s.awake ? GREEN : RED);
     const range = physics.range(opts);
     vline(ctx, b.X(range), top.y, bottom.y + bottom.h, MUTED, 'Range ' + cm(range));
@@ -147,9 +153,13 @@
 
   // ---------- 7. It has to keep flipping ----------
   plate('s7', p => {
-    const v = +p.input('speed').value;
+    const speed = p.input('speed'), v = speed.valueAsNumber;
     const f = v === 0 ? 0 : 10 * (13.56e6 / 10) ** (v / 100);
-    p.out('speed', f === 0 ? 'not at all (a still magnet)' : si(f, 'Hz', 3).replace(' ', ' ') + (v === 100 ? ' (real)' : ''));
+    const speedText = f === 0 ? 'not at all (a still magnet)' : si(f, 'Hz', 3) + (v === 100 ? ' (real)' : '');
+    if (speed.getAttribute('aria-valuetext') !== speedText) {
+      p.out('speed', speedText);
+      speed.setAttribute('aria-valuetext', speedText);
+    }
     const s = f > 0 ? physics.solve({ tag: 'card', reader: 'phone', distance: .02, frequency: f }) : { emf: 0 };
     const ctx = fit(p);
     // The waves are slowed for the eye: their speed on screen follows the log of the real speed.
@@ -159,21 +169,24 @@
     const B = { x: 54, y: 30, w: p.w - 72, h: (p.h - 90) / 2 }, V = { x: 54, y: B.y + B.h + 40, w: p.w - 72, h: B.h };
     const emfMax = physics.solve({ tag: 'card', reader: 'phone', distance: .02 }).emf;
     const vAmp = f === 0 ? 0 : clamp(Math.log10(1 + s.emf / emfMax * 1e4) / 4, 0, 1);
+    const handoffPlots = p.canvas.drawHandoff ? [] : null;
     for (const [bx, label, fn, color] of [
       [B, 'The field through the coil', t => f === 0 ? .7 : Math.sin(t), INK],
       [V, 'The voltage it makes', t => f === 0 ? 0 : vAmp * Math.cos(t), COPPER]]) {
+      const yAt = u => .5 - fn(ph - u * Math.PI * 4) * .45;
       ctx.strokeStyle = GRID; ctx.beginPath(); ctx.moveTo(bx.x, bx.y + bx.h / 2); ctx.lineTo(bx.x + bx.w, bx.y + bx.h / 2); ctx.stroke();
       ctx.fillStyle = INK; ctx.font = `600 11px ${SANS}`; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom'; ctx.fillText(label, bx.x, bx.y - 6);
       ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
       for (let i = 0; i <= 200; i++) {
-        const x = bx.x + i / 200 * bx.w, t = ph - i / 200 * Math.PI * 4;
-        const y = bx.y + bx.h / 2 - fn(t) * bx.h / 2 * .9;
+        const u = i / 200, x = bx.x + u * bx.w, y = bx.y + yAt(u) * bx.h;
         i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
       }
       ctx.stroke();
+      handoffPlots?.push({ box: bx, yAt, color });
     }
+    if (handoffPlots) p.canvas.drawHandoff(handoffPlots);
     ctx.fillStyle = MUTED; ctx.font = `500 11px ${SANS}`; ctx.textAlign = 'right'; ctx.textBaseline = 'top';
-    ctx.fillText('Shown slowed down; the voltage’s height is drawn on a log scale', p.w - 18, p.h - 18);
+    ctx.fillText('Slowed down. Voltage height uses a log scale.', p.w - 18, p.h - 18);
     p.say(f === 0 ? 'A still magnet: the field is there, but nothing changes, so the coil makes 0 V.'
       : `Flipping ${si(f, 'Hz', 3)}: the coil makes ${si(s.emf, 'V', 2)}. ${s.emf >= 3 ? 'Plenty for the chip.' : 'The chip needs about 2 V.'}`);
   }, { animate: true });

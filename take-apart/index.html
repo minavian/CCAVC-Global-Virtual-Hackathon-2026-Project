@@ -75,15 +75,19 @@
     <section class="plate" id="s7" aria-labelledby="s7-title">
       <div class="plate-words">
         <p class="plate-num">7</p>
-        <h3 id="s7-title">It has to keep flipping</h3>
+        <h3 id="s7-title">It has to keep <span id="s7-flipping">flipping</span></h3>
         <p>Only a changing field makes electricity. The reader’s field flips 13.56 million times a second.</p>
-        <div class="plate-controls">
-          <label>How fast the field flips <output data-for="s7-speed"></output><input id="s7-speed" type="range" min="0" max="100" value="100"></label>
+        <div class="plate-controls s7-control">
+          <div class="s7-control-text">
+            <label for="s7-speed">How fast the field flips</label>
+            <output for="s7-speed" data-for="s7-speed" aria-live="off"></output>
+          </div>
+          <input id="s7-speed" type="range" min="0" max="100" value="100">
         </div>
         <p class="plate-readout" aria-live="polite"></p>
         <p class="plate-real">Real name: Faraday’s law of induction. The voltage is the speed of the change: V = ω · M · I.</p>
       </div>
-      <canvas class="plate-canvas" role="img" aria-label="The field through the coil and the voltage it makes, over time"></canvas>
+      <canvas class="plate-canvas" id="s7-chart" role="img" aria-label="The field through the coil and the voltage it makes, over time"></canvas>
     </section>
 
     <section class="plate" id="s8" aria-labelledby="s8-title">

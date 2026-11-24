@@ -225,6 +225,25 @@ body::after {
   }
 }
 
+@media (width > 860px) {
+  #s7 { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); }
+  #s7 .plate-words { grid-area: 1 / 2; }
+  #s7-chart { grid-area: 1 / 1; }
+}
+.s7-control { gap: 3px; }
+.s7-control label { display: inline; }
+.s7-control output { font-variant-numeric: tabular-nums; }
+#s7-speed { display: block; block-size: 24px; margin: 0; }
+.s7-track-copy, .s7-plot-copy { z-index: 1; pointer-events: none; }
+input.s7-track-copy {
+  position: absolute;
+  block-size: 24px;
+  margin: 0;
+  accent-color: var(--ink);
+  transform-origin: left center;
+}
+.s7-plot-copy { position: fixed; inset: 0; inline-size: 100%; block-size: 100%; }
+
 .plate-river { display: grid; gap: 14px; }
 .plate-river .plate-canvas { height: clamp(150px, 22vh, 220px); }
 .chat { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; max-height: 300px; overflow: auto; }
