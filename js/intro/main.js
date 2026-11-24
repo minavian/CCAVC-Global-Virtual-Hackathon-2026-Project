@@ -513,6 +513,10 @@ function intro(experience) {
     // (Only within one chart: the x of its points stay put.)
     lab.morph = shownBefore && shownBefore.chart === lab.chart ? { ...shownBefore, start: performance.now() } : null;
     lab.points = curve(lab.set, lab.chart);
+    // The other reader's curve, everything else the same, drawn faintly behind (not for tuning,
+    // where both readers send 13.56 MHz): the two readers compared at a glance.
+    const other = lab.set.reader === 'phone' ? 'pad' : 'phone';
+    lab.other = lab.chart === 'tuning' ? null : { reader: other, points: curve({ ...lab.set, reader: other }, lab.chart) };
     lab.pointsChart = lab.chart;
     paintZones();
     // Always: turning the card can lift it (a tilted card's edge rests on the reader), so the
@@ -763,6 +767,21 @@ function intro(experience) {
       // The reader's frequency.
       g.strokeStyle = 'rgba(74,147,255,.7)';
       g.beginPath(); g.moveTo(X(13.56), top); g.lineTo(X(13.56), H - bottom); g.stroke();
+    }
+    // The other reader's curve, faint and dashed, named at its near end, just under its line,
+    // where the curve in use never is (the label used to land on the dot of the setting).
+    if (lab.other && lab.other.points.length) {
+      const pts = lab.other.points;
+      g.strokeStyle = 'rgba(244,241,234,.3)';
+      g.lineWidth = 1.2;
+      g.setLineDash([3, 3]);
+      g.beginPath();
+      pts.forEach(([x, v], i) => (i ? g.lineTo(X(x), Y(v)) : g.moveTo(X(x), Y(v))));
+      g.stroke();
+      g.setLineDash([]);
+      const [x0, v0] = pts[0];
+      g.fillStyle = 'rgba(244,241,234,.6)';
+      g.fillText(lab.other.reader === 'phone' ? 'phone' : 'card reader', X(x0) + 3, Math.min(H - bottom - 3, Y(Math.min(v0, yMax)) + 11));
     }
     // The curve: warm where the chip wakes, dim where it does not.
     g.lineWidth = 2;
