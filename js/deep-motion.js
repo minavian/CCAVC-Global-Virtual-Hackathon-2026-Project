@@ -2077,12 +2077,19 @@ function watchCounting(previous, scene) {
   const before = previous.querySelector('.plate-words'), after = scene.querySelector('.plate-words');
   const source = previous.querySelector('#s12-chart'), chart = scene.querySelector('#s13-chart');
   const readout = scene.querySelector('.plate-readout'), exactBtn = scene.querySelector('#s13-exact');
+  const codeSwitch = scene.querySelector('.s13-code-switch');
+  const driftInput = scene.querySelector('#s13-drift-input');
+  const driftWord = scene.querySelector('.s13-drift-word');
+  const driftZero = scene.querySelector('.s13-drift-zero');
   const copy = document.createElement('canvas');
   copy.className = 's13-spectrum-copy';
   copy.setAttribute('aria-hidden', 'true');
   const ctx = copy.getContext('2d');
   const cut = 640, carryEnd = 900, sweepStart = 840, sweepEnd = 2420, arrivalEnd = 2520, readHold = 1000;
   let run, frame, listeners, armed = false, lastTop = scrollY, readoutFlip;
+  let codeBlend = scene.querySelector('input[name="s13-code"]:checked')?.value === 'manchester' ? 1 : 0;
+  let codeTarget = codeBlend, codeFrom = codeBlend, codeStart = 0, codeFrame = 0;
+  let prevDriftSign = Math.sign(driftInput?.valueAsNumber ?? 7), wordFlip, zeroPulse;
   const canPlay = () => ctx && !reducedMotion.matches && !document.hidden &&
     CSS.supports('clip-path', 'polygon(0 0, 100% 0, 100% 100%, 0 100%)');
 
@@ -2281,9 +2288,79 @@ function watchCounting(previous, scene) {
     }
   }
 
-  for (const radio of scene.querySelectorAll('input[name="s13-code"]')) {
-    radio.addEventListener('change', flipReadout);
+  function syncCodePill() {
+    if (!codeSwitch) return;
+    const checked = codeSwitch.querySelector('input:checked')?.closest('label');
+    if (!checked) return;
+    codeSwitch.style.setProperty('--s13-pill-x', `${checked.offsetLeft}px`);
+    codeSwitch.style.setProperty('--s13-pill-w', `${checked.offsetWidth}px`);
   }
+
+  function stepCodeMorph(now) {
+    codeFrame = 0;
+    const t = ease(0, 380, now - codeStart);
+    codeBlend = mix(codeFrom, codeTarget, t);
+    chart.setCountingMotion?.(codeBlend);
+    if (codeBlend !== codeTarget) codeFrame = requestAnimationFrame(stepCodeMorph);
+  }
+
+  function settleControls() {
+    cancelAnimationFrame(codeFrame);
+    codeFrame = 0;
+    codeBlend = codeTarget;
+    chart.setCountingMotion?.(codeBlend);
+    readoutFlip?.cancel();
+    wordFlip?.cancel();
+    zeroPulse?.cancel();
+  }
+
+  syncCodePill();
+  requestAnimationFrame(() => codeSwitch?.classList.add('is-ready'));
+  document.fonts?.ready.then(syncCodePill);
+  addEventListener('resize', syncCodePill);
+  if (codeSwitch && typeof ResizeObserver === 'function') new ResizeObserver(syncCodePill).observe(codeSwitch);
+
+  for (const radio of scene.querySelectorAll('input[name="s13-code"]')) {
+    radio.addEventListener('change', () => {
+      finish();
+      syncCodePill();
+      flipReadout();
+      codeTarget = radio.value === 'manchester' ? 1 : 0;
+      cancelAnimationFrame(codeFrame);
+      codeFrame = 0;
+      if (!reducedMotion.matches && !document.hidden && chart.setCountingMotion) {
+        codeFrom = chart.timingTrace?.codeBlend ?? codeBlend;
+        chart.setCountingMotion(codeFrom);
+        codeStart = performance.now();
+        codeFrame = requestAnimationFrame(stepCodeMorph);
+      } else {
+        codeBlend = codeTarget;
+        chart.setCountingMotion?.(codeBlend);
+      }
+    });
+  }
+
+  driftInput?.addEventListener('input', () => {
+    const nextSign = Math.sign(driftInput.valueAsNumber || 0);
+    if (nextSign !== prevDriftSign) {
+      const dir = Math.sign(nextSign - prevDriftSign);
+      if (!reducedMotion.matches && !document.hidden) {
+        wordFlip?.cancel();
+        wordFlip = driftWord?.animate([
+          { opacity: 0, transform: `perspective(260px) translateY(${dir * 7}px) rotateX(${-dir * 52}deg)` },
+          { opacity: 1, transform: 'none' },
+        ], { duration: 260, easing: arrivalEase });
+        zeroPulse?.cancel();
+        zeroPulse = driftZero?.animate([
+          { transform: 'translateX(-50%) scaleY(1)' },
+          { transform: 'translateX(-50%) scaleY(1.65)', offset: .36 },
+          { transform: 'translateX(-50%) scaleY(1)' },
+        ], { duration: 260, easing: arrivalEase });
+        if (scene.querySelector('input[name="s13-code"]:checked')?.value === 'simple') flipReadout();
+      }
+      prevDriftSign = nextSign;
+    }
+  });
   exactBtn?.addEventListener('click', flipReadout);
 
   watchScrollMotion((top, height) => {
@@ -2320,8 +2397,8 @@ function watchCounting(previous, scene) {
     for (const event of ['focusin', 'pointerdown', 'input']) controls.addEventListener(event, finish);
   }
   for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, finish);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) { finish(); readoutFlip?.cancel(); } });
-  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) { finish(); readoutFlip?.cancel(); } });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { finish(); settleControls(); } });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) { finish(); settleControls(); } });
 }
 
 function watchMistakes(previous, scene) {

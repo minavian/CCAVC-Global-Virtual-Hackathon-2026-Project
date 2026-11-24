@@ -776,11 +776,8 @@
 
   // ---------- 13. Keeping count ----------
   let clockDrift = 7;
-  const counting = plate('s13', p => {
-    const letter = (p.input('letter').value || 'A').slice(0, 1), code = p.radio('code') || 'manchester';
-    const drift = clockDrift / 100;
-    const byte = letter.charCodeAt(0) & 0xff, sent = [...Array.from({ length: 8 }, (_, i) => (byte >> (7 - i)) & 1), 0, 0, 0, 0, 0, 0, 0, 0];
-    const H = 40;   // samples per half bit
+  const countingMotion = { codeBlend: undefined };
+  function decodeBits(sent, code, drift, H) {
     const level = [];
     for (const b of sent) {
       if (code === 'simple') for (let k = 0; k < 2 * H; k++) level.push(b ? 1 : 0);
@@ -806,36 +803,76 @@
         i = mid + H;
       }
     }
-    const right = read.length === sent.length && read.every((b, i) => b === sent[i]);
+    return { level, read, ticks };
+  }
+  const counting = plate('s13', p => {
+    const letter = (p.input('letter').value || 'A').slice(0, 1), code = p.radio('code') || 'manchester';
+    const drift = clockDrift / 100;
+    const byte = letter.charCodeAt(0) & 0xff, sent = [...Array.from({ length: 8 }, (_, i) => (byte >> (7 - i)) & 1), 0, 0, 0, 0, 0, 0, 0, 0];
+    const H = 40;   // samples per half bit
+    const simple = decodeBits(sent, 'simple', drift, H), manchester = decodeBits(sent, 'manchester', drift, H);
+    const active = code === 'manchester' ? manchester : simple;
+    const blend = countingMotion.codeBlend ?? (code === 'manchester' ? 1 : 0);
+    const right = active.read.length === sent.length && active.read.every((b, i) => b === sent[i]);
     const ctx = fit(p), bx = { x: 24, y: 46, w: p.w - 48, h: p.h - 120 };
-    const X = i => bx.x + i / level.length * bx.w, Y = v => bx.y + bx.h - v * bx.h * .8;
-    p.canvas.timingTrace = { box: bx, X, Y, sent, level, read, ticks, samplesPerBit: 2 * H, color: INK };
+    const X = i => bx.x + i / active.level.length * bx.w, Y = v => bx.y + bx.h - v * bx.h * .8;
+    p.canvas.timingTrace = { box: bx, X, Y, sent, level: active.level, read: active.read, ticks: active.ticks, samplesPerBit: 2 * H, color: INK, codeBlend: blend };
     ctx.font = `600 14px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
     sent.forEach((b, i) => { ctx.fillStyle = i < 8 ? INK : MUTED; ctx.fillText(String(b), X((i + .5) * 2 * H), bx.y - 8); });
     ctx.font = `600 11px ${SANS}`; ctx.textAlign = 'left'; ctx.fillStyle = MUTED; ctx.fillText(`“${letter}” then eight zeros`, bx.x, bx.y - 28);
     ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.beginPath();
-    level.forEach((v, i) => { const y = Y(v); i ? ctx.lineTo(X(i), y) : ctx.moveTo(X(i), y); });
+    for (let i = 0; i < simple.level.length; i++) {
+      const y = Y(simple.level[i] + (manchester.level[i] - simple.level[i]) * blend);
+      i ? ctx.lineTo(X(i), y) : ctx.moveTo(X(i), y);
+    }
     ctx.stroke();
-    ticks.forEach((t, i) => {
-      const ok = read[i] === sent[i];
+    function drawTick(xPos, bit, ok, alpha) {
+      if (alpha <= .01) return;
+      ctx.globalAlpha = alpha;
       ctx.strokeStyle = ok ? GREEN : RED; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.moveTo(X(t), bx.y + bx.h + 6); ctx.lineTo(X(t), bx.y + bx.h + 18); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(xPos, bx.y + bx.h + 6); ctx.lineTo(xPos, bx.y + bx.h + 18); ctx.stroke();
       ctx.fillStyle = ok ? GREEN : RED; ctx.font = `600 12px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.fillText(String(read[i]), X(t), bx.y + bx.h + 22);
-    });
+      ctx.fillText(String(bit), xPos, bx.y + bx.h + 22);
+    }
+    const shared = Math.min(simple.ticks.length, manchester.ticks.length);
+    for (let i = 0; i < shared; i++) {
+      const xPos = X(simple.ticks[i] + (manchester.ticks[i] - simple.ticks[i]) * blend);
+      const okSimple = simple.read[i] === sent[i], okManch = manchester.read[i] === sent[i];
+      if (simple.read[i] === manchester.read[i] && okSimple === okManch) drawTick(xPos, simple.read[i], okSimple, 1);
+      else {
+        drawTick(xPos, simple.read[i], okSimple, 1 - blend);
+        drawTick(xPos, manchester.read[i], okManch, blend);
+      }
+    }
+    for (let i = shared; i < simple.ticks.length; i++) drawTick(X(simple.ticks[i]), simple.read[i], simple.read[i] === sent[i], 1 - blend);
+    for (let i = shared; i < manchester.ticks.length; i++) drawTick(X(manchester.ticks[i]), manchester.read[i], manchester.read[i] === sent[i], blend);
+    ctx.globalAlpha = 1;
     p.say(right ? `The reader counted all ${sent.length} bits right.`
-      : `The reader counted ${read.length} bits instead of ${sent.length}: ${read.filter(b => b === 0).length} zeros where there were ${sent.filter(b => b === 0).length}.`);
+      : `The reader counted ${active.read.length} bits instead of ${sent.length}: ${active.read.filter(b => b === 0).length} zeros where there were ${sent.filter(b => b === 0).length}.`);
   });
+  if (counting) {
+    counting.canvas.setCountingMotion = codeBlend => {
+      if (codeBlend === countingMotion.codeBlend) return;
+      countingMotion.codeBlend = codeBlend;
+      counting.dirty = true;
+    };
+  }
   const driftControl = counting?.el.querySelector('.s13-drift-control');
   if (driftControl) {
     const driftInput = counting.input('drift-input'), exactBtn = counting.input('exact');
     const driftOut = counting.el.querySelector('#s13-drift');
+    const driftNum = driftOut?.querySelector('.s13-drift-num'), driftWord = driftOut?.querySelector('.s13-drift-word');
     const limit = 12;
     function showDrift() {
-      const label = clockDrift > 0 ? `+${clockDrift}% fast` : clockDrift < 0 ? `−${-clockDrift}% slow` : '0% exact';
+      const numText = clockDrift > 0 ? `+${clockDrift}%` : clockDrift < 0 ? `−${-clockDrift}%` : '0%';
+      const wordText = clockDrift > 0 ? 'fast' : clockDrift < 0 ? 'slow' : 'exact';
+      const label = `${numText} ${wordText}`;
       const exact = clockDrift === 0;
       const ratio = Math.abs(clockDrift) / limit * 50;
-      counting.out('drift', label);
+      if (driftNum && driftWord) {
+        if (driftNum.textContent !== numText) driftNum.textContent = numText;
+        if (driftWord.textContent !== wordText) driftWord.textContent = wordText;
+      } else counting.out('drift', label);
       driftInput.value = String(clockDrift);
       driftInput.setAttribute('aria-valuetext', label);
       driftOut?.toggleAttribute('data-exact', exact);
