@@ -5,6 +5,7 @@
 // distance; dropping it lets the visitor step through the tap, ask the card for its ID and
 // watch the answer flow back, and drag to turn the camera. See EXPLAINED.md.
 import { follow, settle, smoother, spring } from './easing.js';
+import { autoplay } from './autoplay.js?v=12';
 import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose, clamp, ease, mix, measureStage, restingFrame, scrollTime } from './timeline.js?v=3';
 import { renderSignals } from './signals.js?v=2';
 import { ANSWER_AFTER, APPROACH_DETAIL, APPROACH_TEXT, ASK, SAMPLES_PER_BIT, CARD_ID, IDLE, LAB, LAST, NEAREST, REAL_MS, SHOTS, STEPS, TALK, approach, approachBand, approachView, centimetres,
@@ -1261,6 +1262,9 @@ function intro(experience) {
   experience.style.setProperty('--scroll-screens', SCROLL_SCREENS);
   experience.classList.add('enhanced');
   window.addEventListener('scroll', wake, { passive: true });
+  // One small scroll down and the page plays itself to the card's drop (autoplay.js); from
+  // there `auto` above carries the card to the reader and plays the close-up.
+  autoplay({ experience, stage, reduce });
   window.addEventListener('resize', remeasure, { passive: true });
   // The sections above can change height (fonts, a phone's toolbar), which moves this one.
   new ResizeObserver(remeasure).observe(stage);

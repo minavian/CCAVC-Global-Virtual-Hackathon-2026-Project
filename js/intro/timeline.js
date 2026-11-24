@@ -46,8 +46,8 @@ export const mouthAt = time => smoother(.40, .64, time) * (1 - smoother(.96, 1.2
 export const curlAt = time => smoother(.43, .68, time) * (1 - smoother(.99, MOUTH_CLOSED, time));
 
 // How much scroll the intro takes: each screen in `scrollFrames` below is this many screens of
-// real scrolling. The page scrolls natively, so at 1 every animation needed a page or two of
-// scrolling; at .3 the whole intro plays in under three screens.
+// real scrolling. At 1 every animation needed a page or two of scrolling whenever the page
+// moved without the auto scroll (autoplay.js); at .3 the whole intro is under three screens.
 export const PACE = .3;
 
 // Matching playhead values hold the reading composition over a stretch of scroll. The first
