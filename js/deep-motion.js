@@ -1739,6 +1739,9 @@ function watchWhispering(previous, scene) {
   const before = previous.querySelector('.plate-words'), after = scene.querySelector('.plate-words');
   const sourceChart = previous.querySelector('#s11-chart'), chart = scene.querySelector('#s12-chart');
   const instrument = sourceChart.closest('.s11-instrument');
+  const flickerToggle = scene.querySelector('#s12-flicker');
+  const flickerRate = scene.querySelector('#s12-flicker-rate');
+  const readout = scene.querySelector('.plate-readout');
   const vortex = document.createElement('div'), wave = document.createElement('canvas');
   vortex.className = 's12-vortex';
   vortex.setAttribute('aria-hidden', 'true');
@@ -1746,7 +1749,9 @@ function watchWhispering(previous, scene) {
   vortex.append(wave);
   const ctx = wave.getContext('2d');
   const cut = 880, arrivalEnd = 2260, readHold = 1000;
-  let run, frame, listeners;
+  let run, frame, listeners, armed = false, lastTop = scrollY;
+  let flickerBlend = Number(flickerToggle?.checked ?? true), flickerTarget = flickerBlend;
+  let flickerFrom = flickerBlend, flickerStart = 0, flickerFrame = 0, readoutFlip;
   const canPlay = () => ctx && !reducedMotion.matches && !document.hidden &&
     CSS.supports('mask-image', 'linear-gradient(transparent, black)');
 
@@ -1867,12 +1872,14 @@ function watchWhispering(previous, scene) {
     run = undefined;
     root.classList.remove('deep-whispering-hold');
     sourceChart.pauseAnswerScan?.(false);
+    lastTop = scrollY;
     scheduleMotion();
   }
 
   function land() {
     scrollTo({ top: run.destination, behavior: 'instant' });
     run.top = scrollY;
+    lastTop = run.top;
     run.landed = true;
     scene.classList.remove('s12-staged');
     for (const [i, node] of Array.from(after.children).entries()) {
@@ -1898,12 +1905,13 @@ function watchWhispering(previous, scene) {
   function approach(top, height) {
     const start = bounds(previous, top).y, end = bounds(scene, top).y;
     const cue = Math.max(start, Math.min(end - height, bounds(source, top).y - 8));
-    return { cue, end };
+    return { start, cue, end };
   }
 
   function canBegin(event, direction) {
-    if (direction < 0 || event.defaultPrevented || !event.cancelable || !canPlay()) return false;
+    if (direction < 0 || event.defaultPrevented || !canPlay()) return false;
     if (run) return true;
+    if (!event.cancelable && event.type !== 'wheel') return false;
     if (!sourceChart.answerTrace || root.classList.contains('deep-soaking-hold')) return false;
     const { cue, end } = approach(scrollY, innerHeight);
     if (scrollY >= end - 1) return false;
@@ -1912,17 +1920,15 @@ function watchWhispering(previous, scene) {
     return event.type === 'wheel' && scrollY + event.deltaY * unit > cue;
   }
 
-  function begin(event) {
-    event.preventDefault();
-    if (run) return;
-    const width = innerWidth, height = innerHeight;
+  function startRun(height) {
+    if (run || !canPlay() || !sourceChart.answerTrace) return;
+    const width = innerWidth;
     const { cue, end } = approach(scrollY, height);
-    if (scrollY < cue - 2) {
+    if (scrollY > cue + 1 || source.getBoundingClientRect().top < 0) {
       scrollTo({ top: cue, behavior: 'instant' });
-      return;
     }
-    if (source.getBoundingClientRect().top < 0) scrollTo({ top: cue, behavior: 'instant' });
     const top = scrollY;
+    armed = false;
     const plot = bounds(chart, top), oldPlot = bounds(sourceChart, top);
     const extra = Math.max(0, Math.min(plot.y + plot.h + 6 - end - height, bounds(title, top).y - end - 12));
     const destination = end + extra;
@@ -1947,6 +1953,7 @@ function watchWhispering(previous, scene) {
     run = { top, width, height, start: performance.now(), letters, hub, destination, plot, signal, signalPoints, trace,
       radius: Math.min(stacked ? 112 : 226, width * .28), animations: [] };
 
+    lastTop = top;
     root.classList.add('deep-whispering-hold');
     scene.classList.add('s12-staged');
     chart.style.maskImage = 'linear-gradient(transparent, transparent)';
@@ -1962,15 +1969,94 @@ function watchWhispering(previous, scene) {
     frame = requestAnimationFrame(animate);
   }
 
+  function begin(event) {
+    if (event.cancelable) event.preventDefault();
+    if (run) {
+      if (Math.abs(scrollY - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
+      return;
+    }
+    const height = innerHeight, { cue } = approach(scrollY, height);
+    if (scrollY < cue - 2) {
+      scrollTo({ top: cue, behavior: 'instant' });
+      return;
+    }
+    startRun(height);
+  }
+
   function interrupt(direction, event) {
-    if (run && !run.landed && direction === -1 && event.cancelable) event.preventDefault();
+    if (run && direction === -1 && event?.type === 'wheel' && Math.abs(event.deltaY) < 24) {
+      if (event.cancelable) event.preventDefault();
+      return;
+    }
+    if (run && !run.landed && direction === -1 && event?.cancelable) event.preventDefault();
     finish();
   }
 
+  function syncFlickerRate() {
+    if (!flickerToggle || !flickerRate) return;
+    flickerRate.textContent = flickerToggle.checked ? '847.5 kHz' : 'Off';
+    flickerRate.toggleAttribute('data-off', !flickerToggle.checked);
+  }
+
+  function stepFlicker(now) {
+    flickerFrame = 0;
+    const t = ease(0, 360, now - flickerStart);
+    flickerBlend = mix(flickerFrom, flickerTarget, t);
+    chart.setSpectrumMotion?.(flickerBlend);
+    if (flickerBlend !== flickerTarget) flickerFrame = requestAnimationFrame(stepFlicker);
+  }
+
+  function settleFlicker() {
+    cancelAnimationFrame(flickerFrame);
+    flickerFrame = 0;
+    readoutFlip?.cancel();
+    flickerBlend = flickerTarget;
+    chart.setSpectrumMotion?.(flickerBlend);
+  }
+
+  syncFlickerRate();
+  flickerToggle?.addEventListener('change', () => {
+    finish();
+    syncFlickerRate();
+    flickerTarget = Number(flickerToggle.checked);
+    cancelAnimationFrame(flickerFrame);
+    flickerFrame = 0;
+    readoutFlip?.cancel();
+    if (!reducedMotion.matches && !document.hidden && chart.setSpectrumMotion) {
+      readoutFlip = readout?.animate([
+        { transform: 'perspective(440px) rotateX(-28deg)', opacity: .66 },
+        { transform: 'none', opacity: 1 },
+      ], { duration: 230, easing: arrivalEase });
+      flickerFrom = chart.spectrumTrace?.blend ?? flickerBlend;
+      flickerStart = performance.now();
+      flickerFrame = requestAnimationFrame(stepFlicker);
+    } else {
+      flickerBlend = flickerTarget;
+      chart.setSpectrumMotion?.(flickerBlend);
+    }
+  });
+
   watchScrollMotion((top, height) => {
-    if (run && (!canPlay() || Math.abs(top - run.top) > 2)) finish();
-    const { cue, end } = approach(top, height);
-    if (canPlay() && (run || (top >= cue - height * .25 && top < end - 1))) {
+    const { start, cue, end } = approach(top, height);
+    if (run) {
+      if (!canPlay() || Math.abs(top - run.top) > height * .45) finish();
+      else if (Math.abs(top - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
+    } else {
+      if (top >= end - 1 || scene.contains(document.activeElement)) {
+        armed = false;
+      } else if (top >= start - height * .2 && top <= cue + 4) {
+        armed = true;
+      } else if (Math.abs(top - lastTop) > height * .45) {
+        armed = false;
+      }
+      if (armed && canPlay() && sourceChart.answerTrace && !root.classList.contains('deep-soaking-hold') &&
+        top > cue + 2 && top < end - 1 && top > lastTop) {
+        startRun(height);
+      }
+    }
+    lastTop = scrollY;
+    const activeBounds = approach(lastTop, height);
+    if (canPlay() && (run || (lastTop >= activeBounds.cue - height * .25 && lastTop < activeBounds.end - 1))) {
       listeners ??= capturePageGesture(canBegin, begin, interrupt);
     } else {
       listeners?.abort();
@@ -1982,8 +2068,8 @@ function watchWhispering(previous, scene) {
     for (const event of ['focusin', 'pointerdown', 'input']) controls.addEventListener(event, finish);
   }
   for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, finish);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) finish(); });
-  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) finish(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { finish(); settleFlicker(); } });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) { finish(); settleFlicker(); } });
 }
 
 function watchCounting(previous, scene) {

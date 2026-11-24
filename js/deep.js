@@ -704,9 +704,10 @@
       }
     }
   }
-  plate('s12', p => {
-    const flicker = p.input('flicker').checked, N = 8192;
-    const s = physics.solve({ tag: 'card', reader: 'pad', distance: .04 });
+  const spectrumMotion = { blend: undefined };
+  let spectrumRecording;
+  function computeSpectrum(flicker) {
+    const N = 8192, s = physics.solve({ tag: 'card', reader: 'pad', distance: .04 });
     // The card repeats an answer; with the flicker off, its switch stays closed for the whole
     // active half of each bit instead of flickering.
     const rand = tags.random(77), bits = Array.from({ length: N / iso.BIT }, () => rand() < .5 ? 1 : 0);
@@ -726,29 +727,52 @@
       re[i] = (samples[i] + wander) * hann;
     }
     fft(re, im);
-    const fs = iso.SAMPLE_RATE, spec = [];
+    const fs = iso.SAMPLE_RATE, freqs = [], raw = [];
     for (let k = -N / 2 + 1; k < N / 2; k++) {
       const j = (k + N) % N, f = k * fs / N;
       if (Math.abs(f) > 1.5e6) continue;
-      spec.push([iso.CARRIER + f, 20 * Math.log10(Math.hypot(re[j], im[j]) / N + 1e-12)]);
+      freqs.push(iso.CARRIER + f);
+      raw.push(20 * Math.log10(Math.hypot(re[j], im[j]) / N + 1e-12));
     }
+    const peak = Math.max(...raw);
+    return { freqs, values: raw.map(v => v - peak) };
+  }
+  const spectrumScene = plate('s12', p => {
+    spectrumRecording ??= { on: computeSpectrum(true), off: computeSpectrum(false) };
+    const flicker = p.input('flicker').checked;
+    const blend = spectrumMotion.blend ?? Number(flicker);
     const ctx = fit(p), stagger = p.w < 340, bx = box(p, 26, stagger ? 54 : 44, 42, 32);
-    const top = Math.max(...spec.map(([, v]) => v)), floor = top - 110;
+    const top = 0, floor = -110;
     const a = chart(ctx, bx, { from: iso.CARRIER - 1.5e6, to: iso.CARRIER + 1.5e6, ticks: [-1.5e6, -.8475e6, 0, .8475e6, 1.5e6].map(o => [iso.CARRIER + o, si(iso.CARRIER + o, 'Hz', 4)]), label: 'Pitch', stagger },
       { from: floor, to: top + 6, ticks: [[top, '0 dB'], [top - 50, '−50'], [top - 100, '−100']], label: 'Strength (decibels)' });
-    const points = spec.map(([f, v]) => [f, Math.max(v, floor)]);
+    const { freqs, values: onValues } = spectrumRecording.on, { values: offValues } = spectrumRecording.off;
+    const points = freqs.map((f, i) => [f, Math.max(offValues[i] + (onValues[i] - offValues[i]) * blend, floor)]);
     // Keep the plotted bins and their canvas coordinates available for the next scene.
-    p.canvas.spectrumTrace = { box: bx, points, ...a, color: INK, carrier: points[(points.length - 1) / 2], flicker };
+    p.canvas.spectrumTrace = { box: bx, points, ...a, color: INK, carrier: points[(points.length - 1) / 2], flicker, blend };
     ctx.save(); ctx.beginPath(); ctx.rect(bx.x, bx.y, bx.w, bx.h); ctx.clip();
     curve(ctx, points, a.X, a.Y, INK, 1);
     ctx.restore();
     ctx.fillStyle = INK; ctx.font = `600 11px ${SANS}`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
     ctx.fillText('The phone’s own field', a.X(iso.CARRIER), bx.y + 12);
-    if (flicker) for (const o of [-1, 1]) { ctx.fillStyle = COPPER; ctx.fillText('The card', a.X(iso.CARRIER + o * 847.5e3), a.Y(top - 38)); }
-    else { ctx.fillStyle = COPPER; ctx.fillText('The card, buried here', a.X(iso.CARRIER + 2.2e5), a.Y(top - 30)); }
+    if (blend > .05) {
+      ctx.globalAlpha = Math.min(1, Math.max(0, (blend - .2) / .8));
+      for (const o of [-1, 1]) { ctx.fillStyle = COPPER; ctx.fillText('The card', a.X(iso.CARRIER + o * 847.5e3), a.Y(top - 38)); }
+    }
+    if (blend < .95) {
+      ctx.globalAlpha = Math.min(1, Math.max(0, (.8 - blend) / .8));
+      ctx.fillStyle = COPPER; ctx.fillText('The card, buried here', a.X(iso.CARRIER + 2.2e5), a.Y(top - 30));
+    }
+    ctx.globalAlpha = 1;
     p.say(flicker ? 'With the flicker, the card’s answer sits 847.5 kHz either side of the phone’s field, well clear of its noise.'
       : 'Without the flicker, the card’s answer sits right beside the phone’s huge field, inside the noise around it.');
   });
+  if (spectrumScene) {
+    spectrumScene.canvas.setSpectrumMotion = blend => {
+      if (blend === spectrumMotion.blend) return;
+      spectrumMotion.blend = blend;
+      spectrumScene.dirty = true;
+    };
+  }
 
   // ---------- 13. Keeping count ----------
   let clockDrift = 7;

@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
-  <link rel="stylesheet" href="style.css?v=whisper-spectrum-3">
+  <link rel="stylesheet" href="style.css?v=whisper-spectrum-4">
   <script src="../js/rfid/physics.js" defer></script>
   <script src="../js/rfid/iso14443a.js" defer></script>
   <script src="../js/rfid/lf.js" defer></script>
@@ -18,8 +18,8 @@
   <script src="../js/rfid/air.js" defer></script>
   <script src="../js/rfid/reader.js" defer></script>
   <script src="../js/rfid/channel.js" defer></script>
-  <script src="../js/deep.js?v=whisper-spectrum-3" defer></script>
-  <script type="module" src="../js/deep-motion.js?v=whisper-spectrum-3"></script>
+  <script src="../js/deep.js?v=whisper-spectrum-4" defer></script>
+  <script type="module" src="../js/deep-motion.js?v=whisper-spectrum-4"></script>
 </head>
 <body>
   <main class="deep" id="take-apart" aria-labelledby="deep-title">
@@ -216,7 +216,10 @@
         <h3 id="s12-title">Whispering next to a shout</h3>
         <p>The card’s answer is tiny next to the reader’s own field. So the chip flickers its dips 847,500 times a second. That moves its answer to a pitch the reader can pick out.</p>
         <div class="plate-controls">
-          <label class="plate-check"><input id="s12-flicker" type="checkbox" checked> The chip’s fast flicker</label>
+          <div class="s12-flicker-control">
+            <label class="s12-flicker-label" for="s12-flicker"><input id="s12-flicker" type="checkbox" role="switch" checked> The chip’s fast flicker</label>
+            <output id="s12-flicker-rate" for="s12-flicker" aria-live="off">847.5 kHz</output>
+          </div>
         </div>
         <p class="plate-readout" aria-live="polite"></p>
         <p class="plate-real">Real name: the subcarrier, 13.56 MHz ÷ 16 = 847.5 kHz.</p>
