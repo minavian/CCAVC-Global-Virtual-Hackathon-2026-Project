@@ -6,21 +6,23 @@ function capturePageGesture(canBegin, begin, interrupt) {
   const { signal } = listeners;
   let touch;
 
+  function page(event, direction) {
+    if (canBegin(event, direction)) begin(event, direction);
+    else if (direction < 0) interrupt(direction);
+  }
+
   addEventListener('wheel', event => {
     if (event.ctrlKey || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
-    if (event.deltaY < 0) interrupt();
-    else if (canBegin(event)) begin(event);
+    page(event, Math.sign(event.deltaY));
   }, { passive: false, signal });
 
   addEventListener('keydown', event => {
     if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
     const { key } = event;
-    if (['ArrowUp', 'PageUp', 'Home', 'End', 'Escape'].includes(key) || (key === ' ' && event.shiftKey)) {
-      interrupt();
-      return;
-    }
-    if (!['ArrowDown', 'PageDown', ' '].includes(key) || event.target.closest?.('a, button, input, textarea, select, [contenteditable]')) return;
-    if (canBegin(event)) begin(event);
+    if (['Home', 'End', 'Escape'].includes(key)) return interrupt();
+    if (event.target.closest?.('a, button, input, textarea, select, [contenteditable]')) return;
+    if (['ArrowUp', 'PageUp'].includes(key) || (key === ' ' && event.shiftKey)) page(event, -1);
+    else if (['ArrowDown', 'PageDown', ' '].includes(key)) page(event, 1);
   }, { signal });
 
   addEventListener('touchstart', ({ touches }) => {
@@ -31,16 +33,21 @@ function capturePageGesture(canBegin, begin, interrupt) {
   addEventListener('touchmove', event => {
     if (!touch || event.touches.length !== 1) return;
     const { clientX: x, clientY: y } = event.touches[0];
-    if (y > touch.highest + 16) {
-      touch = { x, y, highest: y };
-      interrupt();
-      return;
-    }
+    if (touch.highest < touch.y && y > touch.highest + 16) touch = { x, y: touch.highest, highest: touch.highest };
     touch.highest = Math.min(y, touch.highest);
-    const upward = touch.y - y;
-    if (upward <= Math.abs(x - touch.x) || !canBegin(event)) return;
-    if (upward >= 12) begin(event);
-    else event.preventDefault();
+    const delta = touch.y - y;
+    if (Math.abs(delta) <= Math.abs(x - touch.x)) return;
+    const direction = Math.sign(delta);
+    if (canBegin(event, direction)) {
+      if (Math.abs(delta) < 12) event.preventDefault();
+      else {
+        touch = { x, y, highest: y };
+        begin(event, direction);
+      }
+    } else if (delta <= -16) {
+      touch = { x, y, highest: y };
+      interrupt(direction);
+    }
   }, { passive: false, signal });
 
   return listeners;
@@ -117,8 +124,8 @@ function watchPartOne(word, part) {
     return wordBox.top >= 0 && wordBox.bottom <= height;
   }
 
-  function canBegin(event) {
-    return event.cancelable && !event.defaultPrevented && !active() && motionAllowed() && openerReady(scrollY, innerHeight);
+  function canBegin(event, direction) {
+    return direction > 0 && event.cancelable && !event.defaultPrevented && !active() && motionAllowed() && openerReady(scrollY, innerHeight);
   }
 
   function begin(event) {
@@ -204,7 +211,7 @@ function watchCloser(source, plate) {
   traveledTitle.textContent = source.textContent;
   traveledTitle.setAttribute('aria-hidden', 'true');
 
-  let inputListeners, partTop, plateTop, lockedAt, awaitingChart;
+  let inputListeners, partTop, plateTop, lockedAt, awaitingChart, returning;
   let frame = 0;
   const locked = () => lockedAt !== undefined;
   const canPlay = () => !reducedMotion.matches && !document.hidden;
@@ -214,6 +221,7 @@ function watchCloser(source, plate) {
     motions.length = 0;
     traveledTitle.remove();
     lockedAt = undefined;
+    returning = false;
     root.classList.remove('deep-closer-hold');
     scheduleMotion();
   }
@@ -233,38 +241,58 @@ function watchCloser(source, plate) {
     return visible >= Math.min(height, box.height) * .85;
   }
 
-  function canBegin(event) {
-    return event.cancelable && !event.defaultPrevented && canPlay() && !locked() &&
-      !root.classList.contains('deep-blink-hold') && atPartTitle(scrollY, innerHeight);
+  function canBegin(event, direction) {
+    if (!event.cancelable || event.defaultPrevented || !canPlay() || root.classList.contains('deep-blink-hold')) return false;
+    const atPart = atPartTitle(scrollY, innerHeight);
+    if (direction > 0) return atPart && (!locked() || returning);
+    return !returning && (atCloserTitle(scrollY, innerHeight) || (locked() && atPart));
   }
 
   function atPartTitle(top, height) {
     return top >= partTop - 1 && top <= partTop + height * .18;
   }
 
-  function begin(event) {
+  function atCloserTitle(top, height) {
+    return Math.abs(top - plateTop) <= height * .18;
+  }
+
+  function begin(event, direction) {
     event.preventDefault();
+    const goingBack = direction < 0;
+    settle();
+    if (goingBack && !atCloserTitle(scrollY, innerHeight)) {
+      part.scrollIntoView({ block: 'start', behavior: 'instant' });
+      return;
+    }
     const from = source.getBoundingClientRect(), to = title.getBoundingClientRect();
     const lineHeight = parseFloat(getComputedStyle(source).lineHeight);
-    const fromTop = from.top + (from.height - lineHeight) / 2;
-    const toTop = to.top + scrollY - plateTop;
+    const fromTop = from.top + (from.height - lineHeight) / 2 + (goingBack ? scrollY - partTop : 0);
+    const toTop = to.top + (goingBack ? 0 : scrollY - plateTop);
     const ratio = parseFloat(getComputedStyle(title).fontSize) / parseFloat(getComputedStyle(source).fontSize);
     const gathered = `translate(${to.left - from.left}px, ${toTop - fromTop}px) scale(${ratio})`;
     const chartFits = chart.getBoundingClientRect().bottom + scrollY - plateTop <= innerHeight + 2;
     const started = performance.now();
-    const seatAt = 260, drawAt = 860;
-    const releaseAt = (chartFits ? drawAt + drawDuration : 1610) + readHold;
+    const titleSwap = 260, wordsEnd = 1610, drawAt = 860;
+    const pace = goingBack ? .58 : 1;
+    const seatAt = goingBack ? (wordsEnd - titleSwap) * pace : titleSwap;
+    const releaseAt = goingBack ? wordsEnd * pace + 300 : (chartFits ? drawAt + drawDuration : wordsEnd) + readHold;
 
     lockedAt = scrollY;
-    awaitingChart = !chartFits;
+    returning = goingBack;
+    awaitingChart = !goingBack && !chartFits;
     root.classList.add('deep-closer-hold');
     traveledTitle.style.left = `${from.left}px`;
     traveledTitle.style.top = `${fromTop}px`;
     chapter.append(traveledTitle);
-    chart.setReveal?.(0);
+    if (goingBack) motions.push(chart.animate({ opacity: [1, 0] }, { duration: 420, fill: 'both', easing: 'ease-in-out' }));
+    else chart.setReveal?.(0);
 
     function animate(node, frames, duration, delay = 0, easing = arrivalEase) {
-      motions.push(node.animate(frames, { duration, delay, easing, fill: 'both' }));
+      // Mirror the typography cues around the end of the forward entrance.
+      const start = goingBack ? wordsEnd - delay - duration : delay;
+      motions.push(node.animate(frames, {
+        duration: duration * pace, delay: start * pace, direction: goingBack ? 'reverse' : 'normal', easing, fill: 'both',
+      }));
     }
 
     animate(traveledTitle, [
@@ -273,9 +301,9 @@ function watchCloser(source, plate) {
       { transform: `${gathered} perspective(280px) rotateX(70deg) scaleY(.74)`, opacity: 0 },
     ], 720, 40, 'linear');
     for (const node of [part.firstElementChild, source.parentElement]) {
-      animate(node, [{ opacity: 1 }, { opacity: 0 }], seatAt, 0, 'ease-in-out');
+      animate(node, [{ opacity: 1 }, { opacity: 0 }], titleSwap, 0, 'ease-in-out');
     }
-    animate(source, [{ opacity: 0 }, { opacity: 0 }], seatAt);
+    animate(source, [{ opacity: 0 }, { opacity: 0 }], titleSwap);
 
     const turnIn = [
       { opacity: 0, transform: 'perspective(360px) rotateX(-58deg) translateY(7px)', filter: 'blur(2px)' },
@@ -294,10 +322,11 @@ function watchCloser(source, plate) {
       const elapsed = now - started;
       if (!seated && elapsed >= seatAt) {
         seated = true;
-        plate.scrollIntoView({ block: 'start', behavior: 'instant' });
+        const destination = goingBack ? part : plate;
+        destination.scrollIntoView({ block: 'start', behavior: 'instant' });
         lockedAt = scrollY;
       }
-      if (chartFits && elapsed >= drawAt) chart.setReveal?.(stage(drawAt, drawAt + drawDuration, elapsed));
+      if (!goingBack && chartFits && elapsed >= drawAt) chart.setReveal?.(stage(drawAt, drawAt + drawDuration, elapsed));
       if (elapsed >= releaseAt) {
         frame = 0;
         release();
@@ -308,6 +337,10 @@ function watchCloser(source, plate) {
     frame = requestAnimationFrame(tick);
   }
 
+  function interrupt(direction) {
+    if (direction !== -1 || !returning) settle();
+  }
+
   watchScrollMotion((top, height, needsMeasure) => {
     if (needsMeasure || partTop === undefined) {
       partTop = bounds(part, top).y;
@@ -315,8 +348,8 @@ function watchCloser(source, plate) {
     }
 
     if (!canPlay() || (locked() && Math.abs(top - lockedAt) > 2) || (awaitingChart && !locked() && top < plateTop - 2)) settle();
-    if (canPlay() && (locked() || atPartTitle(top, height))) {
-      inputListeners ??= capturePageGesture(canBegin, begin, settle);
+    if (canPlay() && (locked() || atPartTitle(top, height) || atCloserTitle(top, height))) {
+      inputListeners ??= capturePageGesture(canBegin, begin, interrupt);
     } else {
       inputListeners?.abort();
       inputListeners = undefined;
