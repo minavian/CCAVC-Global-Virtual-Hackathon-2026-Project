@@ -15,7 +15,7 @@
   // After the landing's opening (js/landing.js announces its end), a little longer while the
   // taps' and the card intro's 3D load behind it (they wait for the opening to end).
   const LOADING = 2.6;
-  const TAPS = 14.2;         // the everyday taps, all three once (js/taps.js LOOP_ALL)
+  const TAPS = 23.5;         // The 22-second taps sequence plus a brief hold.
 
   let run = null;
   const badge = document.createElement('p');

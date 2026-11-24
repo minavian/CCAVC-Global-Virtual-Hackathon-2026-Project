@@ -773,7 +773,11 @@
     if (e === skipEvent || intro !== null || !started || storyOn || e.altKey || e.ctrlKey || e.metaKey) return;
     // Left and right turn the objects; up and down are left to scroll the story.
     const direction = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
-    if (direction) { e.preventDefault(); stepCarousel(direction); return; }
+    if (direction && !e.target.matches?.('input[type="range"]')) {
+      e.preventDefault();
+      stepCarousel(direction);
+      return;
+    }
     if (e.target === stage && (e.key === 'Enter' || e.key === ' ')) {
       e.preventDefault();
       gl?.activate(focus, clock);
