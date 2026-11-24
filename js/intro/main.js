@@ -112,8 +112,11 @@ function intro(experience) {
   // or null. In the ask step it stays null until the visitor presses Ask.
   let talk = null;
   // Dragging on the stage after the drop turns the camera by this much (radians), on top
-  // of the step's own shot. It eases back to the shot when the step changes.
+  // of the step's own shot: all the way round (`spin`, no limit) and from straight above to
+  // underneath (`tilt`). It eases back to the shot when the step changes (`unturn`).
   const orbit = { spin: 0, tilt: 0 };
+  // How far the view can tip: from straight above the reader to straight underneath it.
+  const TILT_MIN = .05, TILT_MAX = Math.PI - .05;
   let orbitDrag = null, orbited = false;
   // Autoplay. Until the visitor does anything, the close-up plays by itself: once the card is
   // ready it is carried to the reader, every step holds for its `hold` (cinema.js), and Ask
@@ -858,7 +861,7 @@ function intro(experience) {
         look.tilt += Math.sin(clock * .14 + 1) * .012;
       }
       look.spin += orbit.spin;
-      look.tilt = clamp(look.tilt + orbit.tilt, .2, 1.48);
+      look.tilt = clamp(look.tilt + orbit.tilt, TILT_MIN, TILT_MAX);
       // The question is over: the camera goes to the card's chip, which answers the standard's
       // wait after the reader's last gap (ANSWER_AFTER), on the same clock.
       if (said?.done && talk?.name === 'ask' && !plan.lab) {
@@ -945,7 +948,7 @@ function intro(experience) {
     step = -1;
     band = -1;
     talk = null;
-    orbit.spin = orbit.tilt = 0;
+    unturn();
     status.textContent = '';
     focusWhenDone = false;
     retry.hidden = film.replay.hidden = true;
@@ -980,7 +983,7 @@ function intro(experience) {
     if (lab.talk) { lab.talk = null; labUi.ask.disabled = false; }
     // The card answers by itself, a moment after the step starts; the question waits for Ask.
     talk = STEPS[step].talk === 'answer' ? { name: 'answer', start: Math.max(answerAt ?? 0, clock + .2) } : null;
-    orbit.spin = orbit.tilt = 0;
+    unturn();
     focusWhenDone = step === LAST && leaving;
     film.nav.hidden = step >= LAST;
     if (step < LAST - 1) status.textContent = '';
@@ -1104,6 +1107,14 @@ function intro(experience) {
     };
   }
 
+  // Back to the step's own shot, the short way: whole turns made by hand are taken off the
+  // camera as well, so it never unwinds them one by one.
+  function unturn() {
+    const turns = Math.round(orbit.spin / (2 * Math.PI));
+    if (turns && lens) lens[7].value -= turns * 2 * Math.PI;   // lens[7]: the camera's spin
+    orbit.spin = orbit.tilt = 0;
+  }
+
   // After the drop, dragging anywhere on the stage (not on a button) turns the camera.
   stage.addEventListener('pointerdown', event => {
     if (!detected || step < 0 || step >= LAST || event.button !== 0) return;
@@ -1116,8 +1127,10 @@ function intro(experience) {
   stage.addEventListener('pointermove', event => {
     if (orbitDrag?.id !== event.pointerId) return;
     const dx = event.clientX - orbitDrag.x, dy = event.clientY - orbitDrag.y;
-    orbit.spin = clamp(orbitDrag.spin + dx * .0055, -1.4, 1.4);
-    orbit.tilt = clamp(orbitDrag.tilt - dy * .0035, -.6, .35);
+    // One drag across the stage turns it most of the way round, on a phone as on a wide screen.
+    const perPixel = Math.max(.0055, 2 * Math.PI / (stage.clientWidth * 1.2));
+    orbit.spin = orbitDrag.spin + dx * perPixel;
+    orbit.tilt = clamp(orbitDrag.tilt - dy * perPixel * .7, -Math.PI, Math.PI);
     if (Math.hypot(dx, dy) > 6) orbited = true;
     wake();
   });
