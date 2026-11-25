@@ -54,6 +54,7 @@
   text-wrap: balance;
 }
 #part-one-power { white-space: nowrap; }
+html.deep-entry-hold, html.deep-entry-hold body,
 html.deep-blink-hold, html.deep-closer-hold, html.deep-flipping-hold, html.deep-tuning-hold,
 html.deep-metal-hold, html.deep-pauses-hold, html.deep-part-two-hold, html.deep-soaking-hold,
 html.deep-whispering-hold, html.deep-counting-hold, html.deep-mistakes-hold, html.deep-conversation-hold,

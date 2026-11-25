@@ -112,7 +112,7 @@ function watchPartOne(word, part) {
     forward() {
       if (!motionAllowed() || active()) return;
       partTop = bounds(part, scrollY).y;
-      const openEnd = Math.max(0, partTop - innerHeight);
+      const openEnd = Math.max(bounds(opener, scrollY).y, partTop - innerHeight);
       if (Math.abs(scrollY - openEnd) > 2) scrollTo({ top: openEnd, behavior: 'instant' });
       void blink();
     },
@@ -3762,10 +3762,15 @@ function watchFinale(previous, end) {
 function createChapterDeck(stops, transitions) {
   if (stops.length < 2 || stops.some(stop => !stop)) return;
   const WHEEL_THRESHOLD = 75, TOUCH_THRESHOLD = 48;
+  const ENTRY_HOLD = 850, NATIVE_SCROLL_GAP = 350;
+  const opener = stops[0], root = document.documentElement;
   let accum = 0, accumDir = 0, accumStop = -1;
   let active, cooldownUntil = 0, touchStart;
+  let lastTop = scrollY, nativeEntryUntil = 0, entryHash;
+  let entryY, entryTimer;
 
   const canPage = () => !reducedMotion.matches && !document.hidden;
+  const canLockEntry = () => canPage() && !window.__presenting;
 
   function canChildScroll(target, dir) {
     let el = target instanceof Element ? target : target?.parentElement;
@@ -3811,6 +3816,7 @@ function createChapterDeck(stops, transitions) {
   }
 
   function cancelActive() {
+    releaseChapterEntry();
     accum = 0;
     accumDir = 0;
     const current = running();
@@ -3861,11 +3867,41 @@ function createChapterDeck(stops, transitions) {
     return Math.max(0, dir > 0 ? bottom - innerHeight - 96 : -top - 96);
   }
 
+  function releaseChapterEntry() {
+    nativeEntryUntil = 0;
+    if (entryY === undefined) return;
+    clearTimeout(entryTimer);
+    entryY = undefined;
+    root.classList.remove('deep-entry-hold');
+  }
+
+  function lockChapterEntry() {
+    nativeEntryUntil = 0;
+    accum = 0;
+    if (touchStart) touchStart.landed = true;
+    root.classList.add('deep-entry-hold');
+    opener.scrollIntoView({ block: 'start', behavior: 'instant' });
+    entryY = scrollY;
+    entryTimer = setTimeout(releaseChapterEntry, ENTRY_HOLD);
+  }
+
+  function noteEntryGesture(dir) {
+    if (dir < 0) {
+      releaseChapterEntry();
+    } else if (canLockEntry()) {
+      const top = scrollY, entryTop = bounds(opener, top).y;
+      if (Math.min(top, lastTop) < entryTop - 1) {
+        nativeEntryUntil = performance.now() + NATIVE_SCROLL_GAP;
+        entryHash = location.hash;
+      }
+    }
+  }
+
   function enterChapter(dir, distance) {
-    const top = stops[0].getBoundingClientRect().top;
-    if (dir < 0 || top <= 1 || distance < top) return false;
-    stops[0].scrollIntoView({ block: 'start', behavior: 'instant' });
-    cooldownUntil = performance.now() + 300;
+    if (dir < 0 || !canLockEntry()) return false;
+    const top = opener.getBoundingClientRect().top;
+    if (top <= 1 || distance < top) return false;
+    lockChapterEntry();
     return true;
   }
 
@@ -3875,6 +3911,11 @@ function createChapterDeck(stops, transitions) {
     const dy = event.deltaY * unit;
     const dir = Math.sign(dy);
     if (!dir) return;
+    noteEntryGesture(dir);
+    if (entryY !== undefined) {
+      if (event.cancelable) event.preventDefault();
+      return;
+    }
 
     const current = running();
     if (current) {
@@ -3918,6 +3959,11 @@ function createChapterDeck(stops, transitions) {
     const dir = (['ArrowUp', 'PageUp'].includes(key) || (key === ' ' && event.shiftKey)) ? -1
       : ['ArrowDown', 'PageDown', ' '].includes(key) ? 1 : 0;
     if (!dir || canChildScroll(event.target, dir)) return;
+    noteEntryGesture(dir);
+    if (entryY !== undefined) {
+      event.preventDefault();
+      return;
+    }
     const current = running();
     if (current) {
       event.preventDefault();
@@ -3952,6 +3998,11 @@ function createChapterDeck(stops, transitions) {
     const dir = Math.sign(delta);
     touchStart.x = x;
     touchStart.y = y;
+    noteEntryGesture(dir);
+    if (entryY !== undefined) {
+      if (event.cancelable) event.preventDefault();
+      return;
+    }
     const current = running();
     if (current) {
       if (event.cancelable) event.preventDefault();
@@ -3966,7 +4017,6 @@ function createChapterDeck(stops, transitions) {
     if (canChildScroll(touchStart.target, dir) || !event.cancelable) return;
     if (enterChapter(dir, Math.abs(delta))) {
       event.preventDefault();
-      touchStart.landed = true;
       return;
     }
     const distance = distanceToEdge(dir);
@@ -3984,7 +4034,20 @@ function createChapterDeck(stops, transitions) {
     }
   }, { passive: false });
 
-  watchScrollMotion(running);
+  watchScrollMotion(top => {
+    const previous = lastTop;
+    lastTop = top;
+    if (entryY !== undefined) {
+      if (!canLockEntry()) releaseChapterEntry();
+      else if (Math.abs(top - entryY) > 1) scrollTo({ top: entryY, behavior: 'instant' });
+      return;
+    }
+    if (running() || !canLockEntry() || location.hash !== entryHash || performance.now() > nativeEntryUntil || top <= previous) return;
+    // A native fling can cross the boundary after its last cancellable input event.
+    const entryTop = bounds(opener, top).y;
+    if (previous < entryTop - 1 && top >= entryTop - 1) lockChapterEntry();
+    else if (top < entryTop - 1) nativeEntryUntil = performance.now() + NATIVE_SCROLL_GAP;
+  });
   for (const ev of ['resize', 'hashchange', 'pagehide']) addEventListener(ev, cancelActive);
   document.addEventListener('visibilitychange', () => { if (document.hidden) cancelActive(); });
   reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) cancelActive(); });
