@@ -22,7 +22,7 @@
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
   <link rel="stylesheet" href="styles.css?v=20">
-  <link rel="stylesheet" href="take-apart/style.css?v=scene-seven-morph-1">
+  <link rel="stylesheet" href="take-apart/style.css?v=scene-seven-parity-1">
   <script type="importmap">
     {"imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -40,7 +40,7 @@
   <script src="js/models.js" defer></script>
   <script src="js/story.js?v=5" defer></script>
   <script src="js/lab.js" defer></script>
-  <script src="js/deep.js?v=scene-seven-morph-1" defer></script>
+  <script src="js/deep.js?v=scene-seven-parity-1" defer></script>
   <script type="module" src="js/deep-motion.js?v=scene-seven-morph-1"></script>
   <script src="js/landing.js?v=8" defer></script>
   <script src="js/present.js?v=5" defer></script>
@@ -352,7 +352,7 @@
           <p class="plate-num">7</p>
           <h3 id="s7-title"><span>It</span> <span>has</span> <span>to</span> <span>keep</span> <span id="s7-flipping">flipping</span></h3>
         </div>
-        <p>A changing magnetic field generates voltage in the coil. Move the slider to see what happens as the field slows down or stops.</p>
+        <p>Only a changing magnetic field induces voltage in the coil. The reader’s field flips 13.56 million times a second.</p>
       </header>
       <figure class="s7-scope">
         <canvas class="plate-canvas" id="s7-chart" role="img" aria-label="The magnetic field through the coil and the voltage it induces, over time" aria-describedby="s7-chart-note"></canvas>
@@ -365,20 +365,17 @@
             <output for="s7-speed" data-for="s7-speed" aria-live="off">13.56 MHz</output>
           </div>
           <input id="s7-speed" type="range" min="0" max="100" value="100">
-          <div class="s7-endpoints">
-            <button type="button" data-s7-speed="0" aria-pressed="false">Still field</button>
-            <button type="button" data-s7-speed="100" aria-pressed="true">Reader speed</button>
-          </div>
+          <div class="s7-endpoints" aria-hidden="true"><span>Still field</span><span>Reader speed</span></div>
         </div>
-        <div class="s7-measure">
+        <div class="s7-measure" role="status" aria-atomic="true">
           <div>
             <p class="s7-measure-label">Induced voltage</p>
-            <p class="plate-readout" aria-live="polite"></p>
+            <p class="plate-readout"></p>
           </div>
           <p class="s7-threshold">The chip needs about 2 V.</p>
         </div>
       </div>
-      <p class="plate-real s7-formula">Faraday’s law of induction <span>V = ω · M · I</span></p>
+      <p class="plate-real s7-formula">Faraday’s law of induction. A faster-changing field induces more voltage. <span>V = ω · M · I</span></p>
     </section>
 
     <section class="plate" id="s8" aria-labelledby="s8-title">

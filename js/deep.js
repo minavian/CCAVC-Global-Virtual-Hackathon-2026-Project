@@ -245,7 +245,7 @@
 
   // ---------- 7. It has to keep flipping ----------
   const s7VoltageFormat = new Intl.NumberFormat('en', { maximumSignificantDigits: 2 });
-  const flipping = plate('s7', p => {
+  plate('s7', p => {
     const speed = p.input('speed'), v = speed.valueAsNumber;
     const f = v === 0 ? 0 : 10 * (13.56e6 / 10) ** (v / 100);
     const emf = f > 0 ? physics.solve({ tag: 'card', reader: 'phone', distance: .02, frequency: f }).emf : 0;
@@ -256,9 +256,8 @@
       speed.setAttribute('aria-valuetext', speedText);
       const [scale, unit] = emf === 0 || emf >= 1 ? [1, 'V'] : emf >= .001 ? [1e3, 'mV'] : [1e6, 'µV'];
       p.say(`${s7VoltageFormat.format(emf * scale)} ${unit}`);
-      for (const button of p.el.querySelectorAll('[data-s7-speed]')) {
-        button.setAttribute('aria-pressed', String(Number(button.dataset.s7Speed) === v));
-      }
+      p.el.querySelector('.s7-threshold').textContent = f === 0 ? 'A still field induces no voltage.'
+        : emf >= 3 ? 'Plenty for the chip.' : 'The chip needs about 2 V.';
     }
     const ctx = fit(p);
     // The waves are slowed for the eye: their speed on screen follows the log of the real speed.
@@ -275,9 +274,9 @@
     const divider = (B.y + B.h + V.y) / 2 - 6;
     hline(ctx, divider, B.x, B.x + B.w, '#d3cabe', '', []);
     for (const [bx, label, fn, color] of [
-      [B, 'Magnetic field', t => f === 0 ? .7 : Math.sin(t), INK],
+      [B, 'Magnetic field through the coil', t => f === 0 ? .7 : Math.sin(t), INK],
       [V, 'Induced voltage', t => f === 0 ? 0 : vAmp * Math.cos(t), COPPER]]) {
-      const yAt = u => .5 - fn(ph - u * Math.PI * 4) * .40;
+      const yAt = u => .5 - fn(ph - u * Math.PI * 4) * .45;
       ctx.strokeStyle = '#ded7cc'; ctx.lineWidth = 1; ctx.beginPath();
       for (let i = 0; i <= 8; i++) {
         const x = bx.x + bx.w * i / 8;
@@ -299,13 +298,6 @@
     p.canvas.transitionTraces = handoffPlots;
     p.canvas.drawOutgoingHandoff?.(handoffPlots);
   }, { animate: true });
-  for (const button of flipping?.el.querySelectorAll('[data-s7-speed]') ?? []) {
-    button.addEventListener('click', () => {
-      const speed = flipping.input('speed');
-      speed.value = button.dataset.s7Speed;
-      speed.dispatchEvent(new Event('input', { bubbles: true }));
-    });
-  }
 
   // ---------- 8. The tuning trick ----------
   function blendTuningPlot(from, to, t) {

@@ -286,16 +286,7 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
 .s7-control output { font: 600 13px "JetBrains Mono", ui-monospace, monospace; color: var(--ink); }
 .s7-control output::before { content: none; }
 #s7-speed { display: block; block-size: 28px; margin: 1px 0 0; }
-.s7-endpoints { display: flex; justify-content: space-between; }
-.s7-endpoints button {
-  padding: 4px 10px;
-  min-height: 30px;
-  color: var(--muted);
-  border: 1px solid #d9d1c5;
-  font-size: 12px;
-}
-.s7-endpoints button:hover { background: #eeeae2; color: var(--ink); }
-.s7-endpoints button[aria-pressed="true"] { border-color: #a5917c; background: #ebe4d8; color: var(--ink); }
+.s7-endpoints { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; }
 .s7-measure {
   display: flex;
   align-items: end;
@@ -315,7 +306,7 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   letter-spacing: -.035em;
   white-space: nowrap;
 }
-.s7-threshold { margin-block-end: 3px; }
+.s7-threshold { max-inline-size: 20ch; margin-block-end: 3px; line-height: 1.4; }
 .s7-formula {
   display: flex;
   justify-content: space-between;
@@ -347,7 +338,6 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   #s7-title { font-size: clamp(35px, 7.8vw, 54px); text-wrap: balance; }
   .s7-heading, .s7-console { grid-template-columns: minmax(0, 1fr); gap: 14px; }
   #s7-chart { height: clamp(205px, 35svh, 315px); }
-  .s7-endpoints button { min-height: 36px; }
 }
 @media (max-width: 360px) and (max-height: 700px) {
   #s7 { gap: 13px; padding-block: 16px; }
