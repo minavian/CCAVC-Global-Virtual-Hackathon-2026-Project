@@ -77,7 +77,7 @@ function intro(experience) {
   // The lab (cinema.js `lab` step, lab-model.js): its panel, readings, chart and controls.
   const labUi = {
     panel: $('.try'), plot: $('.try-plot'), tabs: [...experience.querySelectorAll('.try-tabs button')],
-    readings: Object.fromEntries([...experience.querySelectorAll('.try-reading')].map(node => [node.dataset.reading, node])), readingsBox: $('.try-readings'),
+    readings: Object.fromEntries([...experience.querySelectorAll('.try-reading')].map(node => [node.dataset.reading, node])),
     inputs: Object.fromEntries([...experience.querySelectorAll('.try-controls input')].map(input => [input.name, input])),
     outputs: Object.fromEntries([...experience.querySelectorAll('.try-controls output')].map(output => [output.dataset.for, output])),
     id: $('.try-id input'), idNote: $('.try-id-note'), behind: $('.try-behind'), check: $('.try-check b'), ask: $('.try-ask'), prove: $('.try-prove'), reset: $('.try-reset'), presets: $('.try-presets'),
@@ -616,8 +616,6 @@ function intro(experience) {
     lab.set = clampSetting({ ...lab.set, ...next });
     const switched = lab.set.reader !== before || lab.set.tag !== tagBefore;
     if (switched || !labUi.presets.childElementCount) paintReader();
-    // Another reader or another tag: the readings blink once as they change, so it shows.
-    if (switched) pulse(labUi.readingsBox);
     lab.m = measureLab(lab.set);
     // A conversation under way follows what happens to it. With the reader off there is no field
     // to carry it; a chip that falls asleep loses everything it was doing (woken again, it starts
@@ -660,12 +658,62 @@ function intro(experience) {
     invalidate();
   }
 
-  // Plays a node's one-off animation again from its start (styles.css `.is-pulsed`).
-  function pulse(node) {
-    if (!node || reduce.matches) return;
-    node.classList.remove('is-pulsed');
-    void node.offsetWidth;
-    node.classList.add('is-pulsed');
+  // A number shown so that only the characters that change move (styles.css `.try-char`). Each
+  // character is a slot; when a slot's character changes, the new one rolls in out of a blur as
+  // the old one rolls out into one: up for a rising number, down for a falling one, as on an
+  // odometer. So 3.19 A/m to 3.18 A/m moves the 9 alone. Aligned from the right, so 9.8 cm to
+  // 10.2 cm moves the right places. A slot that changes again while it still rolls just takes the
+  // new character, so a slider dragged fast never keeps a digit blurred. With reduced motion the
+  // text simply changes. `node.rolled` is the text shown; '' makes the next text roll in whole.
+  const ROLL_AGAIN = 280;
+  function roll(node, text) {
+    const before = node.rolled ?? null;
+    if (before === text) return;
+    node.rolled = text;
+    const animate = before !== null && !reduce.matches, now = performance.now();
+    const up = !(parseFloat(text) < parseFloat(before));
+    const slots = [...node.children].filter(el => el.classList.contains('try-char'));
+    if (!before || slots.length !== text.length) {
+      const old = before ?? '';
+      node.replaceChildren(...[...text].map((char, i) => {
+        const was = old[old.length - text.length + i] ?? '';
+        const slot = document.createElement('span'), inner = document.createElement('span');
+        slot.className = 'try-char';
+        inner.className = 'try-char-in';
+        slot.append(inner);
+        slot.char = char;
+        inner.textContent = char;
+        if (animate && was !== char) rollSlot(slot, was, up, now);
+        return slot;
+      }));
+      return;
+    }
+    [...text].forEach((char, i) => {
+      const slot = slots[i];
+      if (slot.char === char) return;
+      const was = slot.char;
+      slot.char = char;
+      if (animate && now - (slot.at ?? -Infinity) > ROLL_AGAIN) rollSlot(slot, was, up, now);
+      else slot.firstChild.textContent = char;
+    });
+  }
+  function rollSlot(slot, was, up, now) {
+    slot.at = now;
+    slot.style.setProperty('--dir', up ? 1 : -1);
+    slot.querySelector('.try-char-out')?.remove();
+    const inner = slot.firstChild;
+    inner.textContent = slot.char;
+    inner.classList.remove('is-rolling');
+    void inner.offsetWidth;
+    inner.classList.add('is-rolling');
+    if (was.trim()) {
+      const out = document.createElement('span');
+      out.className = 'try-char-out';
+      out.setAttribute('aria-hidden', 'true');
+      out.textContent = was;
+      out.addEventListener('animationend', () => out.remove());
+      slot.append(out);
+    }
   }
 
   // Where along each slider the chip would wake, everything else as set: about 250 solves of
@@ -843,7 +891,7 @@ function intro(experience) {
   }
 
   // The sliders' thumbs, each gliding after its slider's value on a critically damped spring
-  // (quick, and never overshooting), and the value beside each slider counting along with it.
+  // (quick, and never overshooting), and the value beside each slider, its changed digits rolled.
   // `--stretch` draws the thumb a little wider the faster it moves. On the panel's entrance the
   // thumbs start at 0 and glide out to their values one after the other (`lab.slidersIn`), slower.
   // With reduced motion `chase` puts them straight there. Returns whether any is still moving.
@@ -858,17 +906,12 @@ function intro(experience) {
       moving ||= p !== target || at.velocity !== 0;
       box.style.setProperty('--p', p.toFixed(4));
       box.style.setProperty('--stretch', Math.min(.4, Math.abs(at.velocity) * .05).toFixed(3));
-      // At rest it says exactly what is set; on the way, the value the thumb is passing.
-      const rest = p === fraction(input), v = +input.min + (+input.max - +input.min) * p, s = lab.set;
-      const text = name === 'distance' ? (rest ? s.distance : v).toFixed(1) + ' cm'
-        : name === 'angle' ? Math.round(rest ? s.angle : v) + '°'
-        : name === 'metal' ? METAL_TEXT[Math.round(rest ? s.metal : v)]
-        : name === 'drive' ? Math.round(rest ? s.drive : v) + '%'
-        : (rest ? s.tune : sliderToTune(v)).toFixed(2) + ' MHz';
-      const output = labUi.outputs[name];
-      if (output.textContent !== text) output.textContent = text;
-      // The value blurs a little while its thumb glides fast, as the readings do.
-      output.style.setProperty('--blur', (reduce.matches ? 0 : Math.min(2.5, Math.abs(at.velocity) * .6)).toFixed(2) + 'px');
+      const s = lab.set;
+      roll(labUi.outputs[name], name === 'distance' ? s.distance.toFixed(1) + ' cm'
+        : name === 'angle' ? Math.round(s.angle) + '°'
+        : name === 'metal' ? METAL_TEXT[Math.round(s.metal)]
+        : name === 'drive' ? Math.round(s.drive) + '%'
+        : s.tune.toFixed(2) + ' MHz');
     });
     return moving;
   }
@@ -880,7 +923,7 @@ function intro(experience) {
     const { readings } = labUi;
     const reading = (name, text, good, bar, need) => {
       const node = readings[name];
-      if (!lab.tweens) node.querySelector('b').textContent = text;
+      roll(node.querySelector('b'), text);
       node.classList.toggle('is-good', good === true);
       node.classList.toggle('is-low', good === false);
       const barNode = node.querySelector('.try-bar');
@@ -898,9 +941,9 @@ function intro(experience) {
     reading('volts', m.volts.toFixed(2) + ' V', m.awake, m.volts / m.clamp, m.wake / m.clamp);
     reading('reach', m.reach < .05 ? 'Nowhere' : m.reach.toFixed(1) + ' cm', m.reach >= lab.set.distance);
     reading('answer', m.awake ? (m.dip * 100).toFixed(1) + '%' : 'None', m.awake ? m.dip >= .02 : false);
-    // The numbers glide to their new values (paintLabNumbers, every frame), so a change reads as
-    // a change, not a flicker.
-    lab.targets = { field: m.field, volts: m.volts, reach: m.reach, answer: m.awake ? m.dip * 100 : null, watts: m.watts * 1000 };
+    // Under the voltage: the power the chip gets, and what it needs to wake; its limiter, once on.
+    roll(labUi.readings.volts.querySelector('.try-watts'), m.limited
+      ? `${(m.watts * 1000).toFixed(1)} mW, its limiter holds 3.3 V` : `${(m.watts * 1000).toFixed(1)} mW, needs ${(m.needs * 1000).toFixed(1)} mW`);
     // The situation that is set now, if it is one of the list.
     const s = lab.set;
     for (const button of labUi.presets.children) {
@@ -916,41 +959,10 @@ function intro(experience) {
       : lab.set.reader === 'phone' ? 'The phone’s NFC is off: no field to ask with.' : 'The reader is off: no field to ask with.';
   }
 
-  // The readings' numbers, gliding to their targets (each frame while the lab shows).
+  // What moves in the panel, each frame while the lab shows: the sliders, their black stretches
+  // and the chart. (The numbers roll by themselves, in CSS, when they change: `roll`.)
   function paintLabNumbers(dt) {
-    const t = lab.targets;
-    if (!t) return;
-    lab.tweens ??= { ...t };
-    const k = reduce.matches ? 1 : 1 - Math.exp(-dt * 14);
-    let moving = false;
-    // Each number blurs as it rolls, as much as it is moving (its change a second, as a share of
-    // where it is going; at most 3 px), and comes sharp as it settles.
-    const blur = {};
-    for (const key of ['field', 'volts', 'reach', 'answer', 'watts']) {
-      const to = t[key];
-      blur[key] = 0;
-      if (to === null) { lab.tweens[key] = null; continue; }
-      const from = lab.tweens[key] ?? 0;
-      const next = Math.abs(to - from) < 1e-3 ? to : from + (to - from) * k;
-      lab.tweens[key] = next;
-      moving ||= next !== to;
-      if (!reduce.matches && dt > 0) blur[key] = Math.min(3, Math.abs(next - from) / dt / Math.max(Math.abs(to), 1) * .8);
-    }
-    const v = lab.tweens, set = (name, text) => {
-      const node = labUi.readings[name].querySelector('b');
-      if (node.textContent !== text) node.textContent = text;
-      node.style.setProperty('--blur', blur[name].toFixed(2) + 'px');
-    };
-    set('field', v.field.toFixed(2) + ' A/m');
-    set('volts', v.volts.toFixed(2) + ' V');
-    set('reach', t.reach < .05 ? 'Nowhere' : v.reach.toFixed(1) + ' cm');
-    set('answer', v.answer === null ? 'None' : v.answer.toFixed(1) + '%');
-    // Under the voltage: the power the chip gets, and what it needs to wake; its limiter, once on.
-    const watts = labUi.readings.volts.querySelector('.try-watts');
-    const need = (lab.m.needs * 1000).toFixed(1);
-    const line = lab.m.limited ? `${v.watts.toFixed(1)} mW, its limiter holds 3.3 V` : `${v.watts.toFixed(1)} mW, needs ${need} mW`;
-    if (watts.textContent !== line) watts.textContent = line;
-    watts.style.setProperty('--blur', blur.watts.toFixed(2) + 'px');
+    if (!lab.m) return;
     const sliding = paintSliders(dt) | paintZoneMotion(dt);
     // The chart's entrance (or a new tab's), and its glide, at the same time.
     if (lab.reveal) {
@@ -966,7 +978,7 @@ function intro(experience) {
       if (performance.now() - lab.mapFade.start > MAP_FADE) { lab.mapFade = null; paintPlot(); }
     }
     if (lab.tabFade) paintPlot();
-    return moving || sliding || Boolean(lab.morph) || Boolean(lab.reveal) || Boolean(lab.mapFade) || Boolean(lab.tabFade);
+    return sliding || Boolean(lab.morph) || Boolean(lab.reveal) || Boolean(lab.mapFade) || Boolean(lab.tabFade);
   }
 
   // How long the chart takes to draw itself in: 0.8 s on the panel's entrance, quicker on a new tab.
@@ -1610,12 +1622,12 @@ function intro(experience) {
       // appears, the sliders' tracks sweep in and their thumbs glide out from 0 to their values.
       // Called back while leaving, it simply comes back as it is.
       if (panelState === 'hidden' && !reduce.matches) {
-        lab.tweens = { field: 0, volts: 0, reach: 0, answer: lab.targets?.answer === null ? null : 0, watts: 0 };
+        for (const node of [...labUi.panel.querySelectorAll('.try-reading b, .try-watts'), ...Object.values(labUi.outputs)]) node.rolled = '';
         lab.reveal = lab.slidersIn = performance.now();
         lab.revealMs = null;
         for (const slider of Object.values(labUi.sliders)) slider.at.value = slider.at.velocity = 0;
       }
-      requestAnimationFrame(() => { labUi.panel.classList.add('is-shown'); paintPlot(); });
+      requestAnimationFrame(() => { labUi.panel.classList.add('is-shown'); paintLabPanel(); paintSliders(0); });
     } else if (!labShown && panelState === 'shown') {
       // Its exit: the same fade and slide as its entrance, backwards (.45 s), then hidden. A focus
       // left in it goes to the readout's Next (to the explanation, `focusWhenDone` sees to it).
