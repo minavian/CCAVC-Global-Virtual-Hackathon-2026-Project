@@ -1094,8 +1094,14 @@ html[data-intro] .stage-light { opacity: 0; }
 .intro .try-slider { --thumb: 16px; position: relative; grid-column: 1 / -1; display: block; height: 1.35rem; }
 .intro .try-zone {
   position: absolute; left: calc(var(--thumb) / 2); right: calc(var(--thumb) / 2); top: 50%;
-  height: 4px; margin-top: -2px; border-radius: 4px; background: var(--try-line);
+  height: 4px; margin-top: -2px; border-radius: 4px;
 }
+/* The grey bar, from where a card can first be, and on it a black bar for each stretch where the
+   chip wakes. main.js moves their edges every frame on a spring (`paintZoneMotion`), so when
+   anything changes the black glides to its new place, grows in or shrinks away, never jumps. */
+.intro .try-zone > * { position: absolute; top: 0; bottom: 0; border-radius: inherit; }
+.intro .try-zone-track { right: 0; background: var(--try-line); }
+.intro .try-zone b { background: var(--try-ink); }
 .intro .try-thumb {
   position: absolute; top: 50%; left: calc(var(--thumb) / 2 + var(--p, 0) * (100% - var(--thumb)));
   width: var(--thumb); height: var(--thumb); margin: calc(var(--thumb) / -2) 0 0 calc(var(--thumb) / -2);

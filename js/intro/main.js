@@ -103,7 +103,14 @@ function intro(experience) {
     box.append(track, thumb, input);
     return [name, { box, input, at: spring(fraction(input)) }];
   }));
-  labUi.zones = Object.fromEntries(Object.entries(labUi.sliders).map(([name, slider]) => [name, slider.box.firstChild]));
+  // Each track: a grey bar (from where a card can first be) and a black bar for each stretch where
+  // the chip wakes, every edge gliding to its place (`aimZone`, `paintZoneMotion`).
+  labUi.zones = Object.fromEntries(Object.entries(labUi.sliders).map(([name, slider]) => {
+    const el = slider.box.firstChild, track = document.createElement('i');
+    track.className = 'try-zone-track';
+    el.append(track);
+    return [name, { el, track, blank: spring(0), toBlank: 0, spans: [] }];
+  }));
   // The three switches (the chart's tabs, the reader, the tag): a black pill slides under the
   // pressed button whenever it changes, however it changed (a click, a situation, the demo, Reset).
   // Placed at once the first time it can be measured (the panel starts hidden), then it slides.
@@ -665,18 +672,64 @@ function intro(experience) {
         // Closer than a turned card can come: neither black nor grey, no track at all.
         on.push(name === 'distance' && real.distance > value + .05 ? null : wakes(real));
       }
-      // Each sample stands for the stretch of the track around it.
-      const stops = [];
+      // Each sample stands for the stretch of the track around it: the black stretches (% along
+      // the track), and where the track starts (after any stretch where no card can be).
+      const spans = [];
       const edge = i => (i <= 0 ? 0 : i > n ? 100 : (i - .5) / n * 100);
-      let from = 0;
+      let from = 0, blank = 0;
       for (let i = 1; i <= n + 1; i++) {
         if (i <= n && on[i] === on[from]) continue;
-        const color = on[from] === null ? 'rgba(10, 10, 10, 0)' : on[from] ? 'rgba(10, 10, 10, .9)' : 'rgba(10, 10, 10, .1)';
-        stops.push(`${color} ${edge(from).toFixed(2)}%`, `${color} ${edge(i).toFixed(2)}%`);
+        if (on[from] === null) blank = Math.max(blank, edge(i));
+        else if (on[from]) spans.push([edge(from), edge(i)]);
         from = i;
       }
-      labUi.zones[name].style.background = `linear-gradient(90deg, ${stops.join(', ')})`;
+      aimZone(labUi.zones[name], spans, blank);
     }
+  }
+
+  // A slider's black stretches, aimed at their new places. Paired in order with the ones shown, each
+  // keeps its bar and glides there; a new stretch grows out from its own middle, and one no longer
+  // there shrinks into its middle and goes.
+  function aimZone(zone, spans, blank) {
+    const staying = zone.spans.filter(span => !span.going), next = [];
+    spans.forEach(([a, b], i) => {
+      let span = staying[i];
+      if (!span) {
+        const el = document.createElement('b');
+        zone.el.append(el);
+        span = { el, a: spring((a + b) / 2), b: spring((a + b) / 2) };
+      }
+      Object.assign(span, { toA: a, toB: b, going: false });
+      next.push(span);
+    });
+    for (const span of [...staying.slice(spans.length), ...zone.spans.filter(span => span.going)]) {
+      const middle = (span.a.value + span.b.value) / 2;
+      Object.assign(span, { toA: middle, toB: middle, going: true });
+      next.push(span);
+    }
+    zone.spans = next;
+    zone.toBlank = blank;
+  }
+
+  // Every frame while the lab shows: the stretches' edges and the track's start follow their places
+  // on a critically damped spring (quick, never overshooting). Returns whether any still moves.
+  function paintZoneMotion(dt) {
+    let moving = false;
+    for (const zone of Object.values(labUi.zones)) {
+      const blank = chase(zone.blank, zone.toBlank, 12, dt, .02);
+      moving ||= !resting(zone.blank, zone.toBlank);
+      zone.track.style.left = blank.toFixed(2) + '%';
+      zone.spans = zone.spans.filter(span => {
+        const a = chase(span.a, span.toA, 12, dt, .02), b = chase(span.b, span.toB, 12, dt, .02);
+        const still = resting(span.a, span.toA) && resting(span.b, span.toB);
+        if (span.going && still) { span.el.remove(); return false; }
+        moving ||= !still;
+        span.el.style.left = a.toFixed(2) + '%';
+        span.el.style.width = Math.max(0, b - a).toFixed(2) + '%';
+        return true;
+      });
+    }
+    return moving;
   }
 
   // The chart as it shows right now: its curve and dot, partway through a glide.
@@ -879,7 +932,7 @@ function intro(experience) {
     const need = (lab.m.needs * 1000).toFixed(1);
     const line = lab.m.limited ? `${v.watts.toFixed(1)} mW, its limiter holds 3.3 V` : `${v.watts.toFixed(1)} mW, needs ${need} mW`;
     if (watts.textContent !== line) watts.textContent = line;
-    const sliding = paintSliders(dt);
+    const sliding = paintSliders(dt) | paintZoneMotion(dt);
     // The chart's entrance (or a new tab's), and its glide, at the same time.
     if (lab.reveal) {
       paintPlot();
