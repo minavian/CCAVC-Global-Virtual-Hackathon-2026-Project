@@ -66,7 +66,7 @@ function intro(experience) {
     dotList: $('.readout-dots'), dots: [],
     // The parts named on screen, each with a thin line to its part (paintLabels in paintFilm).
     labels: Object.fromEntries([...experience.querySelectorAll('.cine-label')].map(label => [label.dataset.part, label])),
-    leaders: $('.cine-leaders'), auto: $('.cine-auto'), autoText: $('.cine-auto-text'),
+    leaders: $('.cine-leaders'), auto: $('.cine-auto'), autoText: $('.cine-auto-text'), xray: $('.cine-xray'),
     check: $('.cine-check'), explain: $('.cine-explain'), replay: $('.replay'),
     backdrop: $('.cine-backdrop'), hint: $('.cine-hint'), nextLabel: 'Next',
     // The message's label: which way, what it says, and its signal as the receiver feels it.
@@ -169,6 +169,9 @@ function intro(experience) {
   // is never played over again. Scrolled back up above the drop, the card leaves the reader for
   // the intro's own animations, and `resumeAt` keeps the step it was on, to go straight back to.
   let completed = false, resumeAt = null;
+  // The X-ray switch (top right, on at first): off, the card's face and the reader's body (or the
+  // phone's) stay solid through the close-up and the lab, instead of being seen through.
+  let xray = true;
   // The note that says why the page won't scroll on yet (`nudge`).
   const holdNote = document.createElement('p');
   holdNote.className = 'hold-note';
@@ -524,8 +527,11 @@ function intro(experience) {
 
   // The autoplay button: shown once the card can be dropped, until the close-up is over.
   function paintAuto() {
-    const shown = (canDrop || detected) && step < LAST && !reduce.matches && !(layout?.compact && step === LAB);
+    const around = (canDrop || detected) && step < LAST && !(layout?.compact && step === LAB);
+    const shown = around && !reduce.matches;
     if (film.auto.hidden === shown) film.auto.hidden = !shown;
+    // The X-ray switch shows with it, with reduced motion too.
+    if (film.xray.hidden === around) film.xray.hidden = !around;
     const label = auto.on ? 'Pause' : 'Play';
     if (film.autoText.textContent !== label) {
       film.autoText.textContent = label;
@@ -1808,6 +1814,8 @@ function intro(experience) {
       // (Not in the lab, whose own still frame above already keeps it: this used to set it back to
       // the lab step's own level, none, so the lab's answer never showed with reduced motion.)
       if (said && reduce.matches && said.dir < 0 && !plan.lab) goal = { ...goal, reply: plan.levels.reply };
+      // X-ray off: the card's face and the reader's body solid (they glide there, as every level).
+      if (!xray) goal = { ...goal, xray: 0, shell: 1 };
       // Aim where the card is going, so the camera and the card arrive together.
       look = view(plan.shot, goal.gap, rest, layout.compact);
       if (plan.lab) look.zoom *= 1 - .1 * shown.phone.value;
@@ -1827,6 +1835,7 @@ function intro(experience) {
       }
     } else if (canDrop) {
       goal = approach(cm);
+      if (!xray) goal = { ...goal, xray: 0, shell: 1 };
       look = approachView(cm, rest, layout.compact);
     } else {
       goal = IDLE;
@@ -2107,6 +2116,11 @@ function intro(experience) {
     auto.on = true;
     go(0);
     film.next.focus({ preventScroll: true });
+  });
+  film.xray.addEventListener('click', () => {
+    xray = !xray;
+    film.xray.setAttribute('aria-pressed', String(xray));
+    invalidate();
   });
   film.auto.addEventListener('click', () => {
     auto.on = !auto.on;

@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
-  <link rel="stylesheet" href="styles.css?v=57">
+  <link rel="stylesheet" href="styles.css?v=58">
   <link rel="stylesheet" href="take-apart/style.css?v=part-two-wave-1">
   <script type="importmap">
     {"imports": {
@@ -45,7 +45,7 @@
   <script src="js/landing.js?v=9" defer></script>
   <script src="js/present.js?v=5" defer></script>
   <script type="module" src="js/taps.js"></script>
-  <script type="module" src="js/intro/main.js?v=112"></script>
+  <script type="module" src="js/intro/main.js?v=113"></script>
 </head>
 <body>
   <main class="hero">
@@ -243,8 +243,12 @@
             <button class="try-reset" type="button">Reset</button>
           </div>
         </section>
-        <!-- It plays by itself until the visitor steps in; this pauses or plays it again. -->
-        <button class="cine-auto is-on" type="button" aria-pressed="true" hidden><i aria-hidden="true"></i><span class="cine-auto-text">Pause</span></button>
+        <!-- Top right: X-ray on or off (on at first: the card and the reader seen through, so their
+             coils and chip show), and Pause / Play: it plays by itself until the visitor steps in. -->
+        <div class="cine-tools">
+          <button class="cine-xray" type="button" aria-pressed="true" title="See inside the card and the reader" hidden><i aria-hidden="true"></i>X-ray</button>
+          <button class="cine-auto is-on" type="button" aria-pressed="true" hidden><i aria-hidden="true"></i><span class="cine-auto-text">Pause</span></button>
+        </div>
         <div class="talk-tag" aria-hidden="true">
           <small class="talk-note"></small>
           <b class="talk-words"></b>
