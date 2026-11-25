@@ -138,6 +138,25 @@ test('the map of where it wakes has exact edges', () => {
   }
 });
 
+test('the numbers behind it agree with the physics', () => {
+  const P = globalThis.RFID.physics;
+  for (const reader of ['pad', 'phone']) for (const distance of [1, 3, 6]) {
+    const s = L.clampSetting({ ...L.startFor(reader), distance }), n = L.behind(s), at = `${reader} ${distance} cm`;
+    // A link between two coils is never more than total (k ≤ 1), and weakens with distance.
+    assert.ok(n.k > 0 && n.k < 1, `k ${n.k} at ${at}`);
+    assert.ok(n.k < L.behind({ ...s, distance: distance / 2 }).k, `k does not fall with distance at ${at}`);
+    // Faraday: the induced voltage is ω M I.
+    assert.ok(Math.abs(n.emf - 2 * Math.PI * 13.56e6 * n.mutual * n.current) < 1e-9, `emf at ${at}`);
+    // A card tuned to 13.56 MHz resonates there, with nothing behind it.
+    assert.ok(Math.abs(n.resonance / 1e6 - 13.56) < .01, `resonance ${n.resonance} at ${at}`);
+    assert.equal(n.current, P.READERS[reader].current);
+  }
+  // Metal right behind the card lowers its coil's inductance (its own mirror image), so it
+  // resonates higher: the detuning "On metal" shows.
+  const metal = L.behind(L.clampSetting({ ...L.startFor('pad'), metal: 4 }));
+  assert.ok(metal.resonance > 14e6 && metal.tagInductance < L.behind(L.startFor('pad')).tagInductance);
+});
+
 test('an ID that can not be a card’s says why', () => {
   assert.equal(L.idProblem('04 7B 21 9E'), null);
   assert.equal(L.idProblem('047b219e'), null);

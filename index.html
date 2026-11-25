@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
-  <link rel="stylesheet" href="styles.css?v=37">
+  <link rel="stylesheet" href="styles.css?v=38">
   <script type="importmap">
     {"imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -43,7 +43,7 @@
   <script src="js/landing.js?v=7" defer></script>
   <script src="js/present.js?v=5" defer></script>
   <script type="module" src="js/taps.js"></script>
-  <script type="module" src="js/intro/main.js?v=82"></script>
+  <script type="module" src="js/intro/main.js?v=83"></script>
 </head>
 <body>
   <main class="hero">
@@ -218,6 +218,18 @@
             <p class="try-id-note" id="try-id-note" role="status"></p>
           </div>
           <div class="try-presets" role="group" aria-label="Try a situation"></div>
+          <details class="try-behind">
+            <summary>The numbers behind it</summary>
+            <dl>
+              <div><dt>Coupling, k</dt><dd data-behind="k"></dd></div>
+              <div><dt>Mutual inductance</dt><dd data-behind="mutual"></dd></div>
+              <div><dt>Induced in the card’s coil</dt><dd data-behind="emf"></dd></div>
+              <div><dt>Card’s circuit resonates at</dt><dd data-behind="resonance"></dd></div>
+              <div><dt>Reader’s coil current</dt><dd data-behind="current"></dd></div>
+              <div><dt>Coils (reader, card)</dt><dd data-behind="coils"></dd></div>
+              <div><dt>Answer changes that current by</dt><dd data-behind="dip"></dd></div>
+            </dl>
+          </details>
           <!-- Last, and pinned to the panel's bottom edge, so they never scroll out of reach. -->
           <div class="try-actions">
             <button class="try-ask" type="button" aria-label="Ask the card">Ask<span class="try-long"> the card</span></button>

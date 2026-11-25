@@ -10,7 +10,7 @@ import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose
 import { renderSignals } from './signals.js?v=2';
 import { ANSWER_AFTER, APPROACH_DETAIL, APPROACH_TEXT, ASK, SAMPLES_PER_BIT, CARD_ID, IDLE, LAB, LAST, NEAREST, REAL_MS, SHOTS, STEPS, TALK, approach, approachBand, approachView, centimetres,
   checkByte, chipShare, hex, message, proofSeconds, proofTalk, setCardId, talkLevels, view } from './cinema.js';
-import { LAB_START, PRESETS, READERS, clampSetting, curve, labLevels, measure as measureLab, parseId, idProblem, proofCode, startFor, status as labStatus, wakes, chipPower, wakeMap } from './lab-model.js';
+import { LAB_START, PRESETS, READERS, clampSetting, curve, labLevels, measure as measureLab, parseId, idProblem, proofCode, startFor, status as labStatus, wakes, chipPower, wakeMap, behind } from './lab-model.js';
 
 // Resolves once the landing's opening is over (js/landing.js), the visitor scrolls, or
 // `fallback` ms pass, whichever is first: the moment to load 3D without stuttering it.
@@ -80,7 +80,7 @@ function intro(experience) {
     readings: Object.fromEntries([...experience.querySelectorAll('.try-reading')].map(node => [node.dataset.reading, node])),
     inputs: Object.fromEntries([...experience.querySelectorAll('.try-controls input')].map(input => [input.name, input])),
     outputs: Object.fromEntries([...experience.querySelectorAll('.try-controls output')].map(output => [output.dataset.for, output])),
-    id: $('.try-id input'), idNote: $('.try-id-note'), check: $('.try-check b'), ask: $('.try-ask'), prove: $('.try-prove'), reset: $('.try-reset'), presets: $('.try-presets'),
+    id: $('.try-id input'), idNote: $('.try-id-note'), behind: $('.try-behind'), check: $('.try-check b'), ask: $('.try-ask'), prove: $('.try-prove'), reset: $('.try-reset'), presets: $('.try-presets'),
     // (Only the buttons that name a reader: the tag's switch shares the reader switch's look.)
     readers: [...experience.querySelectorAll('.try-reader button[data-reader]')], driveLabel: $('.try-control-drive span'),
     tags: [...experience.querySelectorAll('.try-tag button')],
@@ -675,7 +675,29 @@ function intro(experience) {
     inputs.tune.value = tuneToSlider(lab.set.tune);
   }
 
+  // The numbers behind it (`behind` in lab-model.js), when that list is open. Units chosen so
+  // every value reads at a glance: nH, µH, V, MHz, mA, %.
+  function paintBehind() {
+    if (!labUi.behind?.open) return;
+    const n = behind(lab.set);
+    if (!n) return;
+    const text = {
+      k: n.k.toFixed(n.k < .01 ? 4 : 3),
+      mutual: `${(n.mutual * 1e9).toFixed(n.mutual < 1e-8 ? 2 : 1)} nH`,
+      emf: `${n.emf.toFixed(2)} V`,
+      resonance: `${(n.resonance / 1e6).toFixed(2)} MHz`,
+      current: `${Math.round(n.current * 1000)} mA`,
+      coils: `${(n.readerInductance * 1e6).toFixed(2)} µH, ${(n.tagInductance * 1e6).toFixed(2)} µH`,
+      dip: n.dip ? `${(n.dip * 100).toFixed(1)}%` : 'no answer',
+    };
+    for (const dd of labUi.behind.querySelectorAll('dd')) {
+      const value = text[dd.dataset.behind];
+      if (dd.textContent !== value) dd.textContent = value;
+    }
+  }
+
   function paintLabOutputs() {
+    paintBehind();
     const { outputs, inputs } = labUi, s = lab.set;
     outputs.distance.textContent = s.distance.toFixed(1) + ' cm';
     outputs.angle.textContent = Math.round(s.angle) + '°';
@@ -1673,6 +1695,8 @@ function intro(experience) {
       chooseReader(button.dataset.reader);
     });
   }
+  // Opened, the numbers behind it are filled in at once (and kept up while it stays open).
+  labUi.behind?.addEventListener('toggle', paintBehind);
   // The card's ID: four bytes in hex. Its check byte follows as it is typed, and its answer
   // carries the new ID. One that can't be a card's says why under the field: at once for an ID
   // starting with 88 (the cascade tag), and for one that isn't four bytes only once the field is

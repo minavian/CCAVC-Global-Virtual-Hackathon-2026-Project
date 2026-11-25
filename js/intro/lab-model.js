@@ -371,6 +371,23 @@ export function proofCode(key, challenge) {
 }
 
 // The card's ID typed by the visitor: four bytes in hex ("04 7B 21 9E"), or null.
+// The numbers behind the lab, for whoever wants them (the panel's "The numbers behind it"), all
+// from the same solve as everything else: how tightly the two coils are linked (the coupling k,
+// the share of one coil's field that threads the other, and the mutual inductance M), the voltage
+// the field induces in the card's coil (peak), where the card's own circuit resonates, the
+// reader's coil current (peak), the two coils' inductances, and how much the answer changes the
+// reader's current.
+export function behind(s) {
+  const P = physics();
+  if (!P) return null;
+  const r = P.solve(options(s)), reader = P.READERS[readerOf(s)];
+  return {
+    k: Math.abs(r.mutual) / Math.sqrt(reader.inductance * r.inductance), mutual: Math.abs(r.mutual),
+    emf: r.emf, resonance: r.resonance, current: r.readerCurrent,
+    tagInductance: r.inductance, readerInductance: reader.inductance, dip: r.dip,
+  };
+}
+
 // Why a typed ID can't be a card's, or null if it can be: four bytes in hex, and not starting
 // with 88, the cascade tag (CT) that tells the reader a longer ID follows (ISO/IEC 14443-3).
 export function idProblem(text) {
