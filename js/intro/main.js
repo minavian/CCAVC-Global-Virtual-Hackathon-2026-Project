@@ -10,7 +10,7 @@ import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose
 import { renderSignals } from './signals.js?v=2';
 import { ANSWER_AFTER, APPROACH_DETAIL, APPROACH_TEXT, ASK, SAMPLES_PER_BIT, CARD_ID, IDLE, LAB, LAST, NEAREST, REAL_MS, SHOTS, STEPS, TALK, approach, approachBand, approachView, centimetres,
   checkByte, chipShare, hex, message, proofSeconds, proofTalk, setCardId, talkLevels, view } from './cinema.js';
-import { LAB_START, PRESETS, READERS, clampSetting, curve, labLevels, measure as measureLab, parseId, idProblem, proofCode, startFor, status as labStatus, wakes, chipPower, wakeMap, behind } from './lab-model.js';
+import { LAB_START, PRESETS, READERS, clampSetting, curve, labLevels, measure as measureLab, parseId, idProblem, proofCode, startFor, status as labStatus, wakes, chipPower, wakeMap, behind, nearestFor } from './lab-model.js';
 
 // Resolves once the landing's opening is over (js/landing.js), the visitor scrolls, or
 // `fallback` ms pass, whichever is first: the moment to load 3D without stuttering it.
@@ -1079,11 +1079,20 @@ function intro(experience) {
       g.fillText('wakes', W - right, Y(2) - 4);
       g.textAlign = 'left';
     }
+    const nearest = tuning ? 0 : nearestFor(lab.set);
     if (tuning) {
       // The reader's frequency.
       g.strokeStyle = 'rgba(74,147,255,.7)';
       g.beginPath(); g.moveTo(X(13.56), top); g.lineTo(X(13.56), H - bottom); g.stroke();
-    } else paintTerminalRule(g, X, top, bottom, H);
+    } else {
+      // Closer than the card can come (a phone's camera island, or a turned card's edge resting
+      // on the reader), shaded as the Map's grey corner is: the curve there is where no card is.
+      if (nearest > x0 + .05) {
+        g.fillStyle = 'rgba(244,241,234,.06)';
+        g.fillRect(X(x0), top, X(nearest) - X(x0), H - top - bottom);
+      }
+      paintTerminalRule(g, X, top, bottom, H);
+    }
     // The other reader's curve, faint and dashed, named at its near end, just under its line,
     // where the curve in use never is (the label used to land on the dot of the setting).
     if (lab.other && lab.other.points.length) {
@@ -1107,8 +1116,11 @@ function intro(experience) {
     g.lineWidth = 2;
     for (let i = 1; i < shownTo; i++) {
       const [a, va] = points[i - 1], [b, vb] = points[i];
-      // The answer in blue, its colour in the close-up; nothing where the chip sleeps.
-      g.strokeStyle = answer ? (va > 0 && vb > 0 ? '#4a93ff' : 'rgba(74,147,255,.25)') : (va + vb) / 2 >= 2 ? '#ffb52e' : 'rgba(255,181,46,.35)';
+      // The answer in blue, its colour in the close-up; nothing where the chip sleeps. Faint too
+      // where no card can be (closer than its nearest).
+      const reachable = (a + b) / 2 >= nearest - .05;
+      g.strokeStyle = answer ? (va > 0 && vb > 0 && reachable ? '#4a93ff' : 'rgba(74,147,255,.25)')
+        : (va + vb) / 2 >= 2 && reachable ? '#ffb52e' : 'rgba(255,181,46,.35)';
       g.beginPath(); g.moveTo(X(a), Y(va)); g.lineTo(X(b), Y(vb)); g.stroke();
     }
     // Where the setting is now (once the curve is in, growing to its size).
