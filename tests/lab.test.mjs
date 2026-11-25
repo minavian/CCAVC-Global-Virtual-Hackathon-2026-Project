@@ -98,6 +98,25 @@ test('every tag size: what is drawn and said agrees with the physics', () => {
   assert.match(L.status(sticker, L.measure(sticker)).text, /small a coil/);
 });
 
+test('turned up, the power it would take to wake the card', () => {
+  // Far off the field falls steeply, so a reader turned up still wakes it only a little further.
+  const at = cm => L.clampSetting({ ...L.startFor('pad'), distance: cm, drive: 150 });
+  for (const cm of [6.5, 8, 10]) {
+    const s = at(cm), m = L.measure(s), st = L.status(s, m), k = L.powerToWake(s);
+    assert.ok(!m.awake && k > 2.25, `asleep at ${cm} cm, needing more than 150% (${k})`);
+    assert.match(st.text, /even turned up/);
+    assert.ok(st.detail.includes(L.timesText(k) + '×'), st.detail);
+    // Just that much power wakes it; a little less doesn't.
+    const drive = Math.sqrt(k) * 100;
+    assert.ok(L.wakes({ ...s, drive: drive * 1.001 }) && !L.wakes({ ...s, drive: drive * .99 }), `at ${cm} cm`);
+  }
+  // (20 cm is past the slider's end; the physics answers all the same.)
+  const k10 = L.powerToWake(at(10)), k20 = L.powerToWake({ ...L.startFor('pad'), distance: 20, drive: 150 });
+  assert.ok(k10 > 15 && k10 < 30 && k20 > 500, `10 cm ${k10}, 20 cm ${k20}`);
+  assert.equal(L.timesText(22.4), '22');
+  assert.equal(L.timesText(9149), '9,100');
+});
+
 test('a copy has the ID but not the key', () => {
   const key = Array.from({ length: 16 }, (_, i) => i * 17 & 255), copy = key.map(b => b ^ 1);
   const challenge = [0x5a, 0x13, 0xc2, 0x7e];

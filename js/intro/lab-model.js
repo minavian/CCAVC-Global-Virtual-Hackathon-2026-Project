@@ -237,6 +237,22 @@ export function wakes(s) {
   return Boolean(P && P.solve(options(s)).awake);
 }
 
+// How many times a normal reader's power it would take to wake the chip as set, or null if no
+// power would (beyond a million times). The reader's power goes as its current squared, and the
+// chip needs a set field, which falls steeply with distance: on the card reader, 2 times the power
+// wakes it at 6 cm, 22 times at 10 cm, about 890 times at 20 cm. That is why a thief's reader
+// can't read a card in a pocket across the room. Bisection on the current (40 solves).
+export function powerToWake(s) {
+  const at = drive => wakes({ ...s, drive });
+  let lo = Math.max(s.drive, READER_ON), hi = lo;
+  if (at(lo)) return (lo / 100) ** 2;
+  while (!at(hi)) { hi *= 2; if (hi > 1e5) return null; }
+  for (let i = 0; i < 40; i++) { const mid = Math.sqrt(lo * hi); if (at(mid)) hi = mid; else lo = mid; }
+  return (hi / 100) ** 2;
+}
+// "22", "1.6", "890", "9,100": a power factor, to two significant figures.
+export const timesText = k => (k < 10 ? k.toFixed(1) : Number(k.toPrecision(2)).toLocaleString('en-US'));
+
 // Why the chip is asleep, found by asking the physics rather than guessing: each control,
 // put back to normal on its own, in order of how much it usually matters. The first that
 // would wake the chip by itself is the reason. Null if none would on its own.
@@ -281,7 +297,12 @@ export function status(s, m) {
     case 'metal': return { text: 'Asleep: the metal blocks the field.', detail: 'Metal makes currents that cancel the field.' };
     case 'tune': return { text: 'Asleep: the card is tuned wrong.', detail: 'Its coil must be tuned to 13.56 MHz.' };
     case 'tag': return { text: 'Asleep: too far for so small a coil.', detail: `${reach} A bank card’s coil would wake.` };
-    case 'distance': return { text: `Asleep: too far from the ${noun}.`, detail: phone ? `${reach} A phone reaches less than a reader.` : reach };
+    case 'distance': {
+      // Turned up past normal and still too far: how much more power waking it here would take.
+      const k = s.drive > 100 ? powerToWake(s) : null;
+      if (k) return { text: 'Asleep: too far, even turned up.', detail: `Here it would need ${timesText(k)}× normal power.` };
+      return { text: `Asleep: too far from the ${noun}.`, detail: phone ? `${reach} A phone reaches less than a reader.` : reach };
+    }
     default: return { text: 'Asleep: not enough power.', detail: 'Several things are working against it.' };
   }
 }
