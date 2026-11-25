@@ -1150,18 +1150,22 @@ function intro(experience) {
         || Math.abs(box[0] - other[0]) > (box[2] + other[2]) / 2 + 3 || Math.abs(box[1] - other[1]) > 10);
       const spots = [[fit(px), Math.max(top + 6, py - 9)], [fit(px), Math.min(H - bottom - 6, py + 12)],
         [fit(px + width / 2 + 10), Math.max(top + 6, py - 4)], [fit(px - width / 2 - 10), Math.max(top + 6, py - 4)]];
-      const [x, middle] = spots.find(([sx, sy]) => clear([sx, sy, width])) ?? spots[0];
-      const y = middle + 4;
-      g.strokeStyle = 'rgba(244,241,234,.45)';
-      g.lineWidth = 1;
-      g.beginPath(); g.moveTo(px, py - 1); g.lineTo(px, py - 4); g.stroke();
-      g.textAlign = 'center';
-      g.lineJoin = 'round';
-      g.strokeStyle = 'rgba(20,18,16,.75)';
-      g.lineWidth = 3;
-      g.strokeText(words, x, y);
-      g.fillStyle = 'rgba(244,241,234,.7)';
-      g.fillText(words, x, y);
+      // None clear (a short chart, crowded): left out; the chart's label for screen readers and
+      // the readings still say it.
+      const spot = spots.find(([sx, sy]) => clear([sx, sy, width]));
+      if (spot) {
+        const [x, middle] = spot, y = middle + 4;
+        g.strokeStyle = 'rgba(244,241,234,.45)';
+        g.lineWidth = 1;
+        g.beginPath(); g.moveTo(px, py - 1); g.lineTo(px, py - 4); g.stroke();
+        g.textAlign = 'center';
+        g.lineJoin = 'round';
+        g.strokeStyle = 'rgba(20,18,16,.75)';
+        g.lineWidth = 3;
+        g.strokeText(words, x, y);
+        g.fillStyle = 'rgba(244,241,234,.7)';
+        g.fillText(words, x, y);
+      }
       g.restore();
     }
     // Where the setting is now (once the curve is in, growing to its size).
@@ -1177,7 +1181,7 @@ function intro(experience) {
       g.textAlign = 'left';
     }
     canvas.setAttribute('aria-label', answer
-      ? `The answer's strength against distance: it rises as the card comes in, then falls very close. At ${lab.set.distance.toFixed(1)} cm it is ${(lab.m.dip * 100).toFixed(1)}%.`
+      ? `The answer's strength against distance: it rises as the card comes in, then falls very close. At ${lab.set.distance.toFixed(1)} cm it is ${(lab.m.dip * 100).toFixed(1)}%.${peak[1] > 0 ? ` It is strongest at ${peak[0].toFixed(1)} cm.` : ''}`
       : tuning
       ? `Voltage at the chip against the ${READERS[lab.set.reader].noun}'s frequency, with the card tuned to ${lab.set.tune.toFixed(2)} MHz. At 13.56 MHz it gets ${lab.m.raw.toFixed(1)} volts; it needs 2. Its circuit peaks at ${points.reduce((best, p) => (p[1] > best[1] ? p : best), points[0])[0].toFixed(1)} MHz.`
       : `Voltage at the chip against distance. At ${lab.set.distance.toFixed(1)} cm it gets ${lab.m.raw.toFixed(1)} volts; it needs 2. It works up to ${lab.m.reach.toFixed(1)} cm.`
