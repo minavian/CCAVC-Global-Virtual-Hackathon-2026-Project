@@ -699,6 +699,9 @@ html[data-intro] .stage-light { opacity: 0; }
   transition: inset .25s ease-out;
 }
 .intro .readout-power i::after { background: #f26a0c; }
+/* In the lab, power short of what the chip needs to wake: red, as the lab's own low readings. */
+.intro .readout-power.is-short b { color: #ff8f7a; }
+.intro .readout-power.is-short i::after { background: #ff8f7a; }
 /* The frequency's bar is a wave that keeps running. */
 .intro .readout-frequency i.readout-wave {
   height: 6px;

@@ -60,7 +60,7 @@ function intro(experience) {
   const film = {
     readout: $('.readout'), words: $('.readout-words'), text: $('.readout-text'), detail: $('.readout-detail'),
     middleLabel: $('.readout-middle small'), middleValue: $('.readout-middle b'), middleBar: $('.readout-middle i'),
-    powerValue: $('.readout-power b'), powerBar: $('.readout-power i'),
+    power: $('.readout-power'), powerValue: $('.readout-power b'), powerBar: $('.readout-power i'),
     frequency: $('.readout-frequency'), frequencyValue: $('.readout-frequency b'),
     nav: $('.readout-nav'), back: $('.readout-back'), next: $('.readout-next'), count: $('.readout-count'),
     dotList: $('.readout-dots'), dots: [],
@@ -977,6 +977,9 @@ function intro(experience) {
       const charge = plan.lab && lab.m ? chipPower(lab.m) : b.charge;
       film.powerValue.textContent = Math.round(charge * 100) + '%';
       film.powerBar.style.setProperty('--to', charge);
+      // In the lab, power short of what the chip needs is shown as short (red): "68%" with the
+      // chip asleep is 68% of what it needs, not 68% working.
+      film.power.classList.toggle('is-short', Boolean(plan.lab && lab.m && !lab.m.awake));
       // The radio frequency: off with the lab's reader, and its wave stops.
       const off = Boolean(plan.lab && lab.m && !lab.m.on);
       if (film.frequency.classList.contains('is-off') !== off) {
@@ -997,6 +1000,7 @@ function intro(experience) {
       const share = chipShare(cm);
       film.powerValue.textContent = Math.round(share * 100) + '%';
       film.powerBar.style.setProperty('--to', share);
+      film.power.classList.remove('is-short');
     }
 
     // The arrows and where you are, after the drop. In the ask step the right arrow is Ask.
