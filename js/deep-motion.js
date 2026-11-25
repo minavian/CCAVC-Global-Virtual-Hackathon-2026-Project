@@ -3905,12 +3905,9 @@ function createChapterDeck(stops, transitions) {
     return true;
   }
 
-  addEventListener('wheel', event => {
-    if (event.defaultPrevented || event.ctrlKey || Math.abs(event.deltaY) <= Math.abs(event.deltaX) || !canPage()) return;
-    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
-    const dy = event.deltaY * unit;
+  function pageWithWheel(event, dy, overChat) {
+    if (!canPage()) return;
     const dir = Math.sign(dy);
-    if (!dir) return;
     noteEntryGesture(dir);
     if (entryY !== undefined) {
       if (event.cancelable) event.preventDefault();
@@ -3924,7 +3921,7 @@ function createChapterDeck(stops, transitions) {
       if (current.reversal >= 24) changeDirection(current, dir);
       return;
     }
-    if (canChildScroll(event.target, dir)) return;
+    if (!overChat && canChildScroll(event.target, dir)) return;
     if (event.cancelable && enterChapter(dir, Math.abs(dy))) {
       event.preventDefault();
       return;
@@ -3946,6 +3943,19 @@ function createChapterDeck(stops, transitions) {
       accum = 0;
       accumDir = 0;
       trigger(dir);
+    }
+  }
+
+  addEventListener('wheel', event => {
+    if (event.defaultPrevented || event.ctrlKey || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
+    const dy = event.deltaY * unit;
+    const overChat = !!event.target.closest?.('#s15 .chat');
+    pageWithWheel(event, dy, overChat);
+    // When the pager leaves the wheel to the browser, scroll the document past the chat.
+    if (overChat && event.cancelable && !event.defaultPrevented) {
+      event.preventDefault();
+      scrollBy({ top: dy, behavior: 'instant' });
     }
   }, { passive: false });
 

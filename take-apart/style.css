@@ -1731,10 +1731,8 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   block-size: clamp(260px, 44vh, 360px);
   overflow-y: auto;
   overflow-x: hidden;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  scrollbar-width: thin;
 }
-.chat::-webkit-scrollbar { display: none; }
 .chat.has-scroll-top {
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 100%);
   mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 100%);
