@@ -944,13 +944,16 @@ html[data-intro] .stage-light { opacity: 0; }
   transition: opacity .45s ease;
 }
 .intro .cine-label.is-shown { opacity: 1; transition-delay: .15s; }
+/* The lab keeps the lights up (cinema.js): its labels and their lines in ink on the paper. */
+.intro .intro-stage.is-lab .cine-leaders line { stroke: rgba(13, 13, 12, .45); }
+.intro .intro-stage.is-lab .cine-label { color: var(--ink); text-shadow: 0 0 6px rgba(245, 242, 236, .95), 0 0 2px rgba(245, 242, 236, .9); }
 @media (prefers-reduced-motion: reduce) {
   .intro .cine-leaders line { stroke-dasharray: none; stroke-dashoffset: 0; transition: opacity .45s ease; }
   .intro .cine-label.is-shown { transition-delay: 0s; }
 }
 
 /* ---- The lab, "Try it yourself" (cinema.js `lab` step, lab-model.js) ----
-   A white panel on the right, over the close-up's dark, in black and white only: readings, a
+   A white panel on the right, on the page's paper (the lab keeps the lights up), in black and white only: readings, a
    chart, the switches, the sliders, the card's ID, situations to try, and Ask. Everything in it
    moves softly: it rises in part by part, a black pill slides under each switch's choice, the
    sliders' thumbs glide on a spring (main.js `paintSliders`), and a chart draws itself in. On a
@@ -981,7 +984,8 @@ html[data-intro] .stage-light { opacity: 0; }
   color: var(--try-ink);
   background: #fff;
   border-radius: 1.25rem;
-  box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, .45), 0 .2rem .8rem rgba(0, 0, 0, .2);
+  /* On the white paper: a hairline edge and a soft shadow lift it off the page. */
+  box-shadow: 0 1rem 3rem rgba(13, 13, 12, .1), 0 0 0 1px rgba(13, 13, 12, .08);
   opacity: 0;
   transform: translateX(1.5rem) scale(.97);
   transform-origin: 100% 50%;
@@ -1247,6 +1251,8 @@ html[data-intro] .stage-light { opacity: 0; }
   pointer-events: none;
 }
 .intro .cine-hint.is-shown { opacity: 1; transition-delay: 1.4s; }
+/* On the paper (the lab), the hint in the page's muted ink. */
+.intro .readout:not(.is-dark) .cine-hint { color: var(--muted); }
 /* After the drop, the stage itself can be dragged to turn the camera (sideways on a phone,
    so the page still scrolls up and down). */
 .intro .intro-stage.is-docked { cursor: grab; touch-action: pan-y; user-select: none; -webkit-user-select: none; }

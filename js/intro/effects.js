@@ -382,7 +382,9 @@ export function buildEffects() {
     // As far over the coil as the card's coil can be and still wake it.
     reachLine.position.set(HOVER.x, HOVER.y, COIL_Z + (b.reachZ || 0));
     reachLine.scale.setScalar(b.tagScale ?? 1);
-    reachLine.material.opacity = .55 * show;
+    // Light on the dark close-up, ink on the paper (the lab keeps the lights up).
+    reachLine.material.color.setHex(b.dark > .5 ? 0xf4f1ea : 0x0d0d0c);
+    reachLine.material.opacity = (b.dark > .5 ? .55 : .45) * show;
   }
 
   return { table, onCard, update: updateAll, WARM, COOL, reach: () => reachLine.position };

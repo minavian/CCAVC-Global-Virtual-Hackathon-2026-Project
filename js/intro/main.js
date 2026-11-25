@@ -1595,7 +1595,8 @@ function intro(experience) {
     const hint = inLab ? (cardMoved ? 'Drag on the chart too.' : 'Drag the card to move it.') : 'Drag to look around';
     if (film.hint.textContent !== hint) film.hint.textContent = hint;
     // (Not without 3D: neither the card nor the view can be dragged then.)
-    film.hint.classList.toggle('is-shown', available && docked && b.dark > .6 && !auto.on && (inLab ? !(cardMoved && chartPressed) : !orbited));
+    // (The lab keeps the lights up, so there it shows on the paper.)
+    film.hint.classList.toggle('is-shown', available && docked && (inLab || b.dark > .6) && !auto.on && (inLab ? !(cardMoved && chartPressed) : !orbited));
 
     // The check mark, drawn over the reader, and the explanation at the end.
     const top = available ? scene.anchor('readerTop') : { x: layout.reader.x, y: layout.reader.y - layout.reader.height * .3 };

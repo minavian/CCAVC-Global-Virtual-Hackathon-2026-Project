@@ -336,10 +336,11 @@ export const STEPS = [
     levels: { gap: .0016, xray: 0, shell: 1, check: 1, charge: 1, dark: 0 } },
   // The lab: the visitor changes the tap (distance, angle, metal, the reader's power, the
   // card's tuning, its ID) and watches it respond, worked out live (lab-model.js). Its
-  // levels come from there; these are only where it starts.
+  // levels come from there; these are only where it starts. The lights stay up (`dark: 0`):
+  // the lab is on the page's white paper, beside its white panel.
   { text: 'Now you try. Change anything.', detail: 'Everything here is worked out live.',
     ms: [0, 5], shot: 'lab', lab: true, labels: ['chip'], hold: 43.5,
-    levels: { falloff: 1, emit: 1, field: 1, receive: 1, power: 1, charge: 1 } },
+    levels: { falloff: 1, emit: 1, field: 1, receive: 1, power: 1, charge: 1, dark: 0 } },
   { text: '', ms: [5, 5], shot: 'rest', explain: true,
     levels: { gap: .0016, xray: 0, shell: 1, check: 1, page: 1, panel: 0, explain: 1, charge: 1, dark: 0 } },
 ].map(step => ({ ...step, levels: { ...IDLE, dock: 1, gap: TALK_GAP, page: DIM, panel: 1, xray: 1, shell: .14, dark: 1, ...step.levels } }));
