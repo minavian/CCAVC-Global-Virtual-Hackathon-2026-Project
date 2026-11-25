@@ -58,7 +58,7 @@ function intro(experience) {
   // print, with the radio frequency, the distance or the real time, and the chip's power),
   // the check mark and the explanation at the end.
   const film = {
-    readout: $('.readout'), words: $('.readout-words'), text: $('.readout-text'), detail: $('.readout-detail'),
+    readout: $('.readout'), words: $('.readout-words'), text: $('.readout-text'), detail: $('.readout-detail'), said: $('.readout-say'),
     middleLabel: $('.readout-middle small'), middleValue: $('.readout-middle b'), middleBar: $('.readout-middle i'),
     power: $('.readout-power'), powerValue: $('.readout-power b'), powerBar: $('.readout-power i'),
     frequency: $('.readout-frequency'), frequencyValue: $('.readout-frequency b'),
@@ -363,6 +363,9 @@ function intro(experience) {
     shownText = text;
     film.text.textContent = text;
     film.detail.textContent = detail;
+    // Spoken only for a new sentence (with its small print as it is then): a screen reader heard
+    // every step of a number in the small print as a slider moved.
+    if (fresh) film.said.textContent = detail ? `${text} ${detail}` : text;
     if (fresh && !reduce.matches && text) {
       film.words.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }],
         { duration: 420, easing: 'cubic-bezier(.2, .7, .2, 1)' });

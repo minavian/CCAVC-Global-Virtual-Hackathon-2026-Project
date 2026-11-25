@@ -43,7 +43,7 @@
   <script src="js/landing.js?v=7" defer></script>
   <script src="js/present.js?v=5" defer></script>
   <script type="module" src="js/taps.js"></script>
-  <script type="module" src="js/intro/main.js?v=97"></script>
+  <script type="module" src="js/intro/main.js?v=98"></script>
 </head>
 <body>
   <main class="hero">
@@ -139,10 +139,13 @@
            feels it (js/intro/effects.js draws the field as rings that carry it). -->
       <div class="cine">
         <section class="readout" aria-label="What is happening now">
-          <div class="readout-words" aria-live="polite">
+          <div class="readout-words">
             <p class="readout-text"></p>
             <p class="readout-detail"></p>
           </div>
+          <!-- What a screen reader hears: each new sentence with its small print, not every change
+               of a number in the small print while a slider moves. -->
+          <p class="visually-hidden readout-say" aria-live="polite"></p>
           <div class="readout-meters" aria-hidden="true">
             <p class="readout-meter readout-frequency"><small>Radio frequency</small><b>13.56 MHz</b><i class="readout-wave"></i></p>
             <p class="readout-meter readout-middle"><small>Distance</small><b>10.0 cm</b><i></i></p>
