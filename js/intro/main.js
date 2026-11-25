@@ -825,7 +825,8 @@ function intro(experience) {
       paintPlot();
       if (performance.now() - lab.mapFade.start > MAP_FADE) { lab.mapFade = null; paintPlot(); }
     }
-    return moving || Boolean(lab.morph) || Boolean(lab.reveal) || Boolean(lab.mapFade);
+    if (lab.tabFade) paintPlot();
+    return moving || Boolean(lab.morph) || Boolean(lab.reveal) || Boolean(lab.mapFade) || Boolean(lab.tabFade);
   }
 
   const MAP_FADE = 260, MAP_EVERY = 50;
@@ -1045,8 +1046,30 @@ function intro(experience) {
   }
 
   // The chart: the voltage at the chip across distance or across tuning, everything else as
-  // set, with the chip's need (2 V) and where the setting is now.
+  // set, with the chip's need (2 V) and where the setting is now. While a tab has just been
+  // switched, the last chart fades out as the new one fades in (`lab.tabFade`, TAB_FADE).
+  const TAB_FADE = 220;
+  const copyOf = canvas => {
+    const copy = document.createElement('canvas');
+    copy.width = canvas.width; copy.height = canvas.height;
+    if (canvas.width && canvas.height) copy.getContext('2d').drawImage(canvas, 0, 0);
+    return copy;
+  };
   function paintPlot() {
+    drawPlot();
+    const fade = lab.tabFade, canvas = labUi.plot;
+    if (!fade) return;
+    const k = smoother(0, 1, (performance.now() - fade.start) / TAB_FADE);
+    if (k >= 1 || fade.image.width !== canvas.width || fade.image.height !== canvas.height) { lab.tabFade = null; return; }
+    const fresh = copyOf(canvas), g = canvas.getContext('2d');
+    g.save();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, canvas.width, canvas.height);
+    g.globalAlpha = 1 - k; g.drawImage(fade.image, 0, 0);
+    g.globalAlpha = k; g.drawImage(fresh, 0, 0);
+    g.restore();
+  }
+  function drawPlot() {
     const canvas = labUi.plot, box = canvas.getBoundingClientRect();
     if (!box.width) return;
     const ratio = Math.min(devicePixelRatio || 1, 2);
@@ -1773,6 +1796,7 @@ function intro(experience) {
   }
   for (const tab of labUi.tabs) {
     tab.addEventListener('click', () => {
+      if (tab.dataset.chart !== lab.chart && !reduce.matches) lab.tabFade = { image: copyOf(labUi.plot), start: performance.now() };
       lab.chart = tab.dataset.chart;
       for (const other of labUi.tabs) other.setAttribute('aria-pressed', String(other === tab));
       paintPlotPress();
