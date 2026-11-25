@@ -13,6 +13,10 @@
 // Below the last stop ("Here's how"), the page scrolls as usual, and the intro's own autoplay
 // (main.js `auto`) carries the card to the reader. Off with reduced motion, and in presenter
 // mode (js/present.js), which plays the page its own way.
+// - But not before the visitor has reached the tap's last step (`done`, main.js): until then the
+//   page holds at "Here's how", whatever scrolls it (the wheel, a swipe, the keys, the scroll bar,
+//   a link), and `nudge` shows what to do next. Even with reduced motion; not in presenter mode,
+//   nor for a visitor who came in below (a link to a later section) until they come up into it.
 import { PACE, SCROLL_SCREENS } from './timeline.js?v=3';
 
 // The card intro's stops: where its picture holds still (from, to), in screens of its scroll at
@@ -41,7 +45,7 @@ const UP_KEYS = new Set(['ArrowUp', 'PageUp']);          // and shift + space
 // The glide's pace: full speed on the very first frame, softly to a stop at the end.
 const ease = k => Math.sin(Math.min(1, k) * Math.PI / 2);
 
-export function autoplay({ experience, stage, reduce }) {
+export function autoplay({ experience, stage, reduce, done = () => true, nudge = () => {} }) {
   const taps = document.getElementById('taps');
   let rests = [];           // where the page can stop: { from, to, time }, on the page, top down
   let skips = [];           // still stretches inside an animation, on the page
@@ -56,6 +60,12 @@ export function autoplay({ experience, stage, reduce }) {
   let touch = null;
 
   const on = () => !reduce.matches && !window.__presenting;
+  // Whether the page holds at the last stop: until the tap's last step, once the visitor has been
+  // in the intro (`seen`), and not in presenter mode.
+  let seen = false;
+  const holding = () => seen && !window.__presenting && !done();
+  // At (or past) the last stop, where a scroll down would leave.
+  const atEnd = () => { if (stale) stops(); return scrollY >= lastStop - 4; };
 
   addEventListener('scroll', onScroll, { passive: true });
   addEventListener('resize', () => { stale = true; arm(); }, { passive: true });
@@ -65,11 +75,12 @@ export function autoplay({ experience, stage, reduce }) {
   addEventListener('touchend', () => { touch = null; }, { passive: true, capture: true });
   addEventListener('touchcancel', () => { touch = null; }, { passive: true, capture: true });
   arm();
+  seen = scrollY <= endY + 4;
 
   // A scroll is caught before the page moves, so it can go to the next animation instead. That
   // needs listeners that may cancel it; below the last stop they come off, so the page scrolls
   // as usual.
-  function inside() { return scrollY <= endY + 4; }
+  function inside() { return scrollY <= endY + 4 || holding(); }
   function arm() {
     if (stale) stops();
     const want = inside();
@@ -203,15 +214,22 @@ export function autoplay({ experience, stage, reduce }) {
     // The glide lands within a pixel or two of where it put the page. Anything else is the
     // visitor (a link, find in page, the scroll bar): let them.
     if (glide && Math.abs(scrollY - glide.y) > 3) settle();
+    if (stale) stops();
+    if (scrollY <= endY + 4) seen = true;
+    // Held: whatever took the page past "Here's how" (the scroll bar, a key, a link), it goes back.
+    if (holding() && scrollY > endY + 4) { settle(); scrollTo(0, endY); nudge(); }
     arm();
   }
 
   function onWheel(event) {
     if (event.defaultPrevented || !event.cancelable || event.ctrlKey ||
-      Math.abs(event.deltaY) <= Math.abs(event.deltaX) || !on()) return;
+      Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
     const dir = Math.sign(event.deltaY), now = performance.now();
     const panel = event.target.closest?.('.intro .try');
     if (panel && (dir < 0 ? panel.scrollTop > 1 : panel.scrollTop + panel.clientHeight < panel.scrollHeight - 1)) return;
+    // Held at "Here's how": a scroll down there goes nowhere.
+    if (dir > 0 && !glide && holding() && atEnd()) { event.preventDefault(); nudge(); return; }
+    if (!on()) return;
     // Up: the browser's own scroll. A glide under way stops, so the page goes where the visitor
     // takes it.
     if (dir < 0) {
@@ -239,9 +257,16 @@ export function autoplay({ experience, stage, reduce }) {
   }
 
   function onTouchMove(event) {
-    if (!touch || event.touches.length !== 1 || !on() || !inside()) return;
+    if (!touch || event.touches.length !== 1 || !inside()) return;
     const dx = event.touches[0].clientX - touch.x, dy = event.touches[0].clientY - touch.y;
     const vertical = Math.abs(dy) > Math.abs(dx);
+    // Held at "Here's how": a swipe up (scrolling down) there goes nowhere.
+    if (vertical && dy < 0 && !glide && holding() && atEnd()) {
+      if (event.cancelable) event.preventDefault();
+      if (dy < -12) nudge();
+      return;
+    }
+    if (!on()) return;
     // At the last stop, a swipe up (scrolling down) leaves for the rest of the page as usual.
     const leaving = dy < 0 && !glide && scrollY >= lastStop - 4;
     if (!touch.dir) {
@@ -259,10 +284,13 @@ export function autoplay({ experience, stage, reduce }) {
   }
 
   function onKey(event) {
-    if (event.altKey || event.ctrlKey || event.metaKey || !on()) return;
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.target.closest?.('a, button, input, textarea, select, [contenteditable], [tabindex]')) return;
     const down = DOWN_KEYS.has(event.key) || (event.key === ' ' && !event.shiftKey);
     const up = UP_KEYS.has(event.key) || (event.key === ' ' && event.shiftKey);
+    // Held at "Here's how": the keys that scroll down (and End) go nowhere there.
+    if ((down || event.key === 'End') && !glide && holding() && atEnd()) { event.preventDefault(); nudge(); return; }
+    if (!on()) return;
     if (!down && !up) {
       if (event.key === 'Home' || event.key === 'End') settle();
       return;

@@ -822,8 +822,8 @@ html[data-intro] .stage-light { opacity: 0; }
   margin: 0;
   font: 600 clamp(.92rem, 1.3vw, 1.1rem)/1.1 "JetBrains Mono", ui-monospace, monospace;
   white-space: nowrap;
-  color: #fff;
-  text-shadow: 0 1px 14px rgba(0, 0, 0, .65);
+  color: var(--ink);
+  text-shadow: 0 0 10px rgba(245, 242, 236, .95);
   opacity: 0;
   /* It comes in with a small rise in size as it fades in (the `scale` property, so it never
      fights the translate that places it), and shrinks back as it fades out. */
@@ -838,14 +838,14 @@ html[data-intro] .stage-light { opacity: 0; }
   font: 650 .6rem/1 "Inter Tight", "Helvetica Neue", Helvetica, Arial, sans-serif;
   letter-spacing: .14em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, .56);
+  color: var(--muted);
 }
 .intro .talk-note:empty { display: none; }
 .intro .talk-words { font-weight: inherit; }
 .intro .talk-signal { position: relative; width: min(18rem, 76vw); height: 1.45rem; }
 .intro .talk-trace { display: block; width: 100%; height: 100%; }
 .intro :is(.talk-track, .talk-line) { fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
-.intro .talk-track { stroke: rgba(255, 255, 255, .13); stroke-width: 1; }
+.intro .talk-track { stroke: rgba(13, 13, 12, .15); stroke-width: 1; }
 .intro .talk-line { stroke: #ff8a3d; stroke-width: 1.3; }
 .intro .talk-dot {
   position: absolute;
@@ -859,10 +859,22 @@ html[data-intro] .stage-light { opacity: 0; }
 }
 .intro .talk-tag[data-kind="answer"] .talk-line { stroke: #5aa7ff; }
 .intro .talk-tag[data-kind="answer"] .talk-dot { background: #d6e8ff; box-shadow: 0 0 9px 2px rgba(90, 167, 255, .85); }
-.intro .talk-bytes { position: relative; width: min(18rem, 76vw); height: 1em; font-size: .64rem; color: rgba(255, 255, 255, .72); }
+.intro .talk-bytes { position: relative; width: min(18rem, 76vw); height: 1em; font-size: .64rem; color: rgba(13, 13, 12, .7); }
 .intro .talk-bytes span { position: absolute; top: 0; translate: -50% 0; opacity: 0; transition: opacity .45s ease; }
 .intro .talk-bytes span.is-in { opacity: 1; }
-.intro .talk-bytes span.is-check { color: rgba(255, 255, 255, .4); }
+.intro .talk-bytes span.is-check { color: rgba(13, 13, 12, .4); }
+/* Held at "Here's how" (autoplay.js): what to do next gives a small shake, and a short note in a
+   black pill at the top says why the page won't scroll on yet (main.js `nudge`). */
+.intro .is-nudged { animation: nudge .5s cubic-bezier(.36, .07, .19, .97); }
+@keyframes nudge { 20%, 60% { translate: -6px 0; } 40%, 80% { translate: 6px 0; } }
+.intro .hold-note {
+  position: absolute; z-index: 9; left: 50%; top: clamp(1rem, 4dvh, 2rem); translate: -50% 0;
+  margin: 0; padding: .5rem 1rem; border-radius: 999px; white-space: nowrap; pointer-events: none;
+  font-size: .85rem; font-weight: 650; color: #fff; background: var(--ink);
+  opacity: 0; filter: blur(4px); transition: opacity .3s ease, filter .3s ease;
+}
+.intro .hold-note.is-shown { opacity: 1; filter: blur(0); }
+@media (prefers-reduced-motion: reduce) { .intro .is-nudged { animation: none; } .intro .hold-note { filter: none; } }
 .intro .talk-tag:is([data-kind="ask"], [data-kind="answer"]) { left: 50%; top: clamp(1rem, 6dvh, 3.5rem); translate: -50% 0; }
 /* While the reader checks: the ID alone, just above the reader's chip. */
 .intro .talk-tag[data-kind="check"] { translate: -50% calc(-100% - 14px); font-size: .9rem; transform-origin: 50% 100%; }
@@ -922,7 +934,7 @@ html[data-intro] .stage-light { opacity: 0; }
 /* A leader line draws itself out from the part it points at (its first end), and its label
    fades in just behind; going, the line draws back in. */
 .intro .cine-leaders line {
-  stroke: rgba(255, 226, 196, .55);
+  stroke: rgba(13, 13, 12, .45);
   stroke-width: 1;
   stroke-dasharray: 100;
   stroke-dashoffset: 100;
@@ -938,17 +950,14 @@ html[data-intro] .stage-light { opacity: 0; }
   font-weight: 650;
   letter-spacing: .02em;
   white-space: nowrap;
-  color: #fff1e2;
-  text-shadow: 0 1px 10px rgba(0, 0, 0, .9), 0 0 3px rgba(0, 0, 0, .8);
+  color: var(--ink);
+  text-shadow: 0 0 6px rgba(245, 242, 236, .95), 0 0 2px rgba(245, 242, 236, .9);
   opacity: 0;
   filter: blur(6px);
   transition: opacity .5s ease, filter .6s cubic-bezier(.2, .8, .2, 1);
 }
 /* Shown, it comes into focus as it fades in (a label used to appear with only a quick fade). */
 .intro .cine-label.is-shown { opacity: 1; filter: blur(0); transition-delay: .15s; }
-/* The lab keeps the lights up (cinema.js): its labels and their lines in ink on the paper. */
-.intro .intro-stage.is-lab .cine-leaders line { stroke: rgba(13, 13, 12, .45); }
-.intro .intro-stage.is-lab .cine-label { color: var(--ink); text-shadow: 0 0 6px rgba(245, 242, 236, .95), 0 0 2px rgba(245, 242, 236, .9); }
 @media (prefers-reduced-motion: reduce) {
   .intro .cine-leaders line { stroke-dasharray: none; stroke-dashoffset: 0; transition: opacity .45s ease; }
   .intro .cine-label { filter: none; }

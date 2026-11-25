@@ -343,7 +343,9 @@ export const STEPS = [
     levels: { falloff: 1, emit: 1, field: 1, receive: 1, power: 1, charge: 1, dark: 0 } },
   { text: '', ms: [5, 5], shot: 'rest', explain: true,
     levels: { gap: .0016, xray: 0, shell: 1, check: 1, page: 1, panel: 0, explain: 1, charge: 1, dark: 0 } },
-].map(step => ({ ...step, levels: { ...IDLE, dock: 1, gap: TALK_GAP, page: DIM, panel: 1, xray: 1, shell: .14, dark: 1, ...step.levels } }));
+// The lights stay up through all of it (`dark: 0`): the whole close-up is on the page's white
+// paper. (It used to dim to dark after the drop, so the current would glow.)
+].map(step => ({ ...step, levels: { ...IDLE, dock: 1, gap: TALK_GAP, page: DIM, panel: 1, xray: 1, shell: .14, dark: 0, ...step.levels } }));
 // Every drop starts at step 1. The drag shows how distance changes the power; the steps
 // are the tap itself, slowed down, so they always begin with the reader's signal.
 export const LAST = STEPS.length - 1;

@@ -5,7 +5,7 @@
 // distance; dropping it lets the visitor step through the tap, ask the card for its ID and
 // watch the answer flow back, and drag to turn the camera. See EXPLAINED.md.
 import { follow, settle, smoother, spring } from './easing.js';
-import { autoplay } from './autoplay.js?v=16';
+import { autoplay } from './autoplay.js?v=17';
 import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose, clamp, ease, mix, measureStage, restingFrame, scrollTime } from './timeline.js?v=3';
 import { renderSignals } from './signals.js?v=2';
 import { ANSWER_AFTER, APPROACH_DETAIL, APPROACH_TEXT, ASK, SAMPLES_PER_BIT, CARD_ID, IDLE, LAB, LAST, NEAREST, REAL_MS, SHOTS, STEPS, TALK, approach, approachBand, approachView, centimetres,
@@ -164,6 +164,16 @@ function intro(experience) {
   // `band` the sentence shown while dragging. Every level and the camera glide toward their
   // targets on springs too, so moving the card, or pressing Next or Back, never jumps.
   let step = -1, band = -1, clock = 0, cm = 10, shownText = null;
+  // `completed` once the visitor has reached the tap's last step (the lab, step 9 of 9): from then
+  // the page may scroll on past "Here's how" (autoplay.js holds it until then), and the close-up
+  // is never played over again. Scrolled back up above the drop, the card leaves the reader for
+  // the intro's own animations, and `resumeAt` keeps the step it was on, to go straight back to.
+  let completed = false, resumeAt = null;
+  // The note that says why the page won't scroll on yet (`nudge`).
+  const holdNote = document.createElement('p');
+  holdNote.className = 'hold-note';
+  holdNote.setAttribute('role', 'status');
+  stage.append(holdNote);
   // The conversation (cinema.js TALK): which message is flowing and since when (on `clock`),
   // or null. In the ask step it stays null until the visitor presses Ask.
   let talk = null;
@@ -1659,8 +1669,8 @@ function intro(experience) {
     const hint = inLab ? (cardMoved ? 'Drag on the chart too.' : 'Drag the card to move it.') : 'Drag to look around';
     if (film.hint.textContent !== hint) film.hint.textContent = hint;
     // (Not without 3D: neither the card nor the view can be dragged then.)
-    // (The lab keeps the lights up, so there it shows on the paper.)
-    film.hint.classList.toggle('is-shown', available && docked && (inLab || b.dark > .6) && !auto.on && (inLab ? !(cardMoved && chartPressed) : !orbited));
+    // (Once the card has settled on the reader: the close-up keeps the lights up now.)
+    film.hint.classList.toggle('is-shown', available && docked && b.dock > .9 && !auto.on && (inLab ? !(cardMoved && chartPressed) : !orbited));
 
     // The check mark, drawn over the reader, and the explanation at the end.
     const top = available ? scene.anchor('readerTop') : { x: layout.reader.x, y: layout.reader.y - layout.reader.height * .3 };
@@ -1714,7 +1724,18 @@ function intro(experience) {
     const readyChanged = ready !== canDrop;
     if (readyChanged) {
       canDrop = ready;
-      if (!ready) resetDrop();
+      if (!ready) {
+        // Once completed, where it was is kept for when the visitor comes back down.
+        if (completed && detected && step >= 0) resumeAt = step;
+        resetDrop();
+      } else if (resumeAt !== null && !detected) {
+        // Back at "Here's how" after finishing: straight to that step, no drop and no replay.
+        const at = resumeAt;
+        resumeAt = null;
+        auto.on = false;
+        detected = true;
+        go(at);
+      }
       dropButton.hidden = !ready || detected;
     }
 
@@ -1904,6 +1925,7 @@ function intro(experience) {
     if (!detected) return;
     const leaving = stage.contains(document.activeElement) && document.activeElement !== dropButton;
     step = clamp(index, 0, LAST);
+    if (step >= LAB && !completed) { completed = true; holdNote.classList.remove('is-shown'); }
     auto.held = auto.after = 0;
     // A conversation started in the lab ends when it is left.
     if (lab.talk) endTalk();
@@ -1920,6 +1942,26 @@ function intro(experience) {
     film.nav.hidden = step >= LAST;
     if (step < LAST - 1) status.textContent = '';
     invalidate();
+  }
+
+  // A scroll that tries to leave "Here's how" before the tap's last step (autoplay.js): what to do
+  // next gives a small shake (the instruction before the drop, the readout's Next after), and a
+  // short note says so for two seconds. At most once every 0.7 s, however the scroll repeats.
+  let nudgedAt = 0, holdTimer = 0;
+  function nudge() {
+    const now = performance.now();
+    if (now - nudgedAt < 700 || completed) return;
+    nudgedAt = now;
+    const target = detected ? film.next : $('#drag-instruction');
+    if (target && !reduce.matches) {
+      target.classList.remove('is-nudged');
+      void target.offsetWidth;
+      target.classList.add('is-nudged');
+    }
+    holdNote.textContent = detected ? 'Go to the last step to scroll on.' : 'Drag the card to the reader first.';
+    holdNote.classList.add('is-shown');
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(() => holdNote.classList.remove('is-shown'), 2000);
   }
 
   // The visitor plays the reader: Ask makes the reader send its question.
@@ -2303,8 +2345,10 @@ function intro(experience) {
   experience.classList.add('enhanced');
   window.addEventListener('scroll', wake, { passive: true });
   // Each scroll plays the next animation, from the top to the card's drop (autoplay.js); from
-  // there `auto` above carries the card to the reader and plays the close-up.
-  autoplay({ experience, stage, reduce });
+  // there `auto` above carries the card to the reader and plays the close-up. The page stays at
+  // "Here's how" until the visitor has reached the tap's last step (`completed`); a scroll that
+  // tries to leave before then is answered by `nudge`.
+  autoplay({ experience, stage, reduce, done: () => completed, nudge });
   window.addEventListener('resize', remeasure, { passive: true });
   // The sections above can change height (fonts, a phone's toolbar), which moves this one.
   new ResizeObserver(remeasure).observe(stage);
