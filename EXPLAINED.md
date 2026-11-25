@@ -31,6 +31,7 @@ Written by <who> · <date> · Issue #<n>
 ## Contents
 
 - [Landing page layout and style](#landing-page-layout-and-style-indexhtml-stylescss)
+- [Full motion for everyone](#full-motion-for-everyone-jsfull-motionjs)
 - [Opening animation and carousel](#opening-animation-and-carousel-jslandingjs)
 - [3D rendering pipeline](#3d-rendering-pipeline-jslandingjs-createscene)
 - [The three 3D objects](#the-three-3d-objects-jsmodelsjs-models)
@@ -71,6 +72,22 @@ Owner: Mina Vian · 2026-11-20, updated 2026-11-21 · Issues #3, #5, #9
 - Q: Why Google Fonts with `display=block`? A: The headline is measured for the animation; swapping fonts mid-animation would make it jump, so the page waits up to 3 seconds for the real font.
 
 ---
+
+### Full motion for everyone (`js/full-motion.js`)
+Owner: Mina Vian · 2026-11-26
+
+**What it does.** The whole site plays every animation, whatever the visitor's "reduce motion" setting in their system. Many entries in this file describe what happens "with reduced motion"; since 2026-11-26 none of that runs for visitors, because of this file.
+
+**How it works.** The site asks about that setting in many places: `matchMedia('(prefers-reduced-motion: reduce)')` in ten scripts (the intro, the landing, the taps, the story, the lab, the deep dive and the bit river among them) and 24 `@media (prefers-reduced-motion: …)` rules in the stylesheets (7 in `styles.css`, 17 in the deep dive's `take-apart/style.css`; more in `bit-river/` and `rfid/`). `js/full-motion.js` is loaded first in the `<head>` of every page (`index.html`, `take-apart/`, `bit-river/`, `rfid/`), before anything else runs:
+- It wraps `window.matchMedia`: a query about reduced motion is rewritten before the browser answers it, "reduce" into a condition that is never true and "no-preference" into one that always is, so every script sees a visitor with no preference. Other queries pass through untouched.
+- It rewrites the same way the media condition of every `@media` rule about reduced motion in the page's stylesheets, as each stylesheet arrives (on each `<link>`'s load, and again when the page has loaded). A rule kept for reduced motion never applies; a rule kept for "no preference" always does.
+
+**Why it is built this way.** The team chose full motion for everyone. Taking out every reduced-motion path by hand would have meant editing dozens of places in code several people wrote, the deep dive's included; one small file does it for the whole site and leaves that code as it is, so the choice can be undone by taking the file's `<script>` tag out of a page. The `?debug&calm` test switch in the intro (`main.js`) doesn't ask the browser, so it still works.
+
+**How to check it.** Turn on "reduce motion" in the system settings (Windows: Settings, Accessibility, Visual effects, Animation effects off) and open the site: everything still animates. In the browser's console, `matchMedia('(prefers-reduced-motion: reduce)').matches` is `false`.
+
+**Likely questions.**
+- Q: Isn't reduced motion an accessibility setting? A: Yes; ignoring it is a deliberate choice for this project, and it can be reversed in one line per page.
 
 ### Opening animation and carousel (`js/landing.js`)
 Owner: Mina Vian · 2026-11-20 · Issues #3, #5
