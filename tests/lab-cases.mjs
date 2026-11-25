@@ -1,7 +1,8 @@
 // The checks on the close-up's lab (js/intro/lab-model.js): that what it draws and says always
 // agrees with the physics it is worked out from. Shared by Node (tests/lab.test.mjs, with
 // node:assert) and the browser (tests/index.html, with a small assert of its own), so the same
-// checks run in both. `assert`: equal, ok, match, deepEqual, notDeepEqual; `L`: the lab's module.
+// checks run in both. `assert`: equal, ok, match, doesNotMatch, deepEqual, notDeepEqual (only these:
+// the browser's assert has no others); `L`: the lab's module.
 export function labCases(assert, L) {
   // Every combination of these, on both readers, genuine and copied.
   function* settings() {
@@ -149,6 +150,20 @@ export function labCases(assert, L) {
       // resonates higher: the detuning "On metal" shows.
       const metal = L.behind(L.clampSetting({ ...L.startFor('pad'), metal: 4 }));
       assert.ok(metal.resonance > 14e6 && metal.tagInductance < L.behind(L.startFor('pad')).tagInductance);
+    }],
+
+    ['a field over the standard’s ceiling is called too strong', () => {
+      for (const s of settings()) {
+        const m = L.measure(s), st = L.status(s, m), at = JSON.stringify(s);
+        if (/too strong/.test(st.text)) assert.ok(m.awake && m.field > m.H_MAX, `"too strong" at ${m.field} A/m, ${at}`);
+      }
+      // Turned up, right on the card reader: 11 A/m, over the standard's 7.5.
+      const s = L.clampSetting({ ...L.startFor('pad'), distance: .5, drive: 150 }), m = L.measure(s);
+      assert.ok(m.field > 7.5);
+      assert.match(L.status(s, m).text, /too strong/);
+      // A normal tap is well inside it.
+      const tap = L.startFor('pad');
+      assert.doesNotMatch(L.status(tap, L.measure(tap)).text, /too strong/);
     }],
 
     ['an ID that can not be a card’s says why', () => {

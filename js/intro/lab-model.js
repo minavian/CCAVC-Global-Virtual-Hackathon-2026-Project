@@ -310,6 +310,9 @@ export function status(s, m) {
     if (s.metal > 0) return { text: 'Awake, but metal soaks up the field.', detail: reach };
     if (s.drive < 70) return { text: 'Awake, on a weak field.', detail: reach };
     if (Math.abs(s.tune - 13.56) > 3) return { text: 'Awake, though its tuning is off.', detail: reach };
+    // More field than the standard lets a reader make (7.5 A/m): a reader turned up, or a phone
+    // right at its camera island. The chip copes, but only because its limiter burns the extra.
+    if (m.field > m.H_MAX) return { text: 'Awake, in too strong a field.', detail: `Over the standard’s ${m.H_MAX} A/m. Its limiter burns the extra.` };
     // Awake, but answering faintly: very close its limiter soaks up the field, so its switch
     // changes the field less (the Answer chart shows the peak in between); far off it barely
     // changes it at all.

@@ -54,6 +54,7 @@
       ok: (value, message) => value || fail(message, 'expected a true value'),
       equal: (a, b, message) => Object.is(a, b) || fail(message, `${a} is not ${b}`),
       match: (text, pattern, message) => pattern.test(text) || fail(message, `"${text}" does not match ${pattern}`),
+      doesNotMatch: (text, pattern, message) => !pattern.test(text) || fail(message, `"${text}" matches ${pattern}`),
       deepEqual: (a, b, message) => same(a, b) || fail(message, 'expected the same values'),
       notDeepEqual: (a, b, message) => !same(a, b) || fail(message, 'expected different values'),
     };
