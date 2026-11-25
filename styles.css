@@ -1103,6 +1103,18 @@ html[data-intro] .stage-light { opacity: 0; }
 .intro .try-behind dl div { display: flex; justify-content: space-between; gap: .75rem; }
 .intro .try-behind dt { margin: 0; }
 .intro .try-behind-proof { margin: .45rem 0 0; color: rgba(244, 241, 234, .6); }
+/* Opening, the list slides down (and the panel with it) rather than jumping in, where the
+   browser can animate a <details> (interpolate-size, ::details-content); elsewhere it just opens. */
+.intro .try-behind { interpolate-size: allow-keywords; }
+.intro .try-behind::details-content {
+  height: 0;
+  overflow: clip;
+  opacity: 0;
+  transition: height .32s cubic-bezier(.2, .7, .2, 1), opacity .25s ease, content-visibility .32s allow-discrete;
+}
+.intro .try-behind[open]::details-content { height: auto; opacity: 1; }
+.intro .try-behind summary { transition: color .2s ease; }
+@media (prefers-reduced-motion: reduce) { .intro .try-behind::details-content { transition: none; } }
 .intro .try-behind-proof a { color: #ffc56b; }
 .intro .try-behind dd {
   margin: 0; color: #f4f1ea; white-space: nowrap;
