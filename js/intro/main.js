@@ -433,6 +433,8 @@ function intro(experience) {
       let line = leaderLines.get(part);
       if (!line) {
         line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        // Measured as 100 whatever its length, so styles.css can draw it out from the part.
+        line.setAttribute('pathLength', '100');
         film.leaders.append(line);
         leaderLines.set(part, line);
       }
