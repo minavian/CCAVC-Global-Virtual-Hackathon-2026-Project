@@ -245,37 +245,45 @@
 
   // ---------- 7. It has to keep flipping ----------
   const s7VoltageFormat = new Intl.NumberFormat('en', { maximumSignificantDigits: 2 });
+  const s7Coil = { tag: 'card', reader: 'phone', distance: .02 };
+  const s7MaxEmf = physics.solve(s7Coil).emf;
   plate('s7', p => {
     const speed = p.input('speed'), v = speed.valueAsNumber;
-    const f = v === 0 ? 0 : 10 * (13.56e6 / 10) ** (v / 100);
-    const emf = f > 0 ? physics.solve({ tag: 'card', reader: 'phone', distance: .02, frequency: f }).emf : 0;
-    const frequency = v === 100 ? '13.56 MHz' : f === 0 ? '0 Hz' : si(f, 'Hz', 3);
-    const speedText = f === 0 ? '0 Hz (still field)' : frequency + (v === 100 ? ' (reader speed)' : '');
-    if (speed.getAttribute('aria-valuetext') !== speedText) {
+    if (v !== p.waveSetting) {
+      p.waveSetting = v;
+      const f = v === 0 ? 0 : 10 * (13.56e6 / 10) ** (v / 100);
+      const emf = f > 0 ? physics.solve({ ...s7Coil, frequency: f }).emf : 0;
+      const frequency = v === 100 ? '13.56 MHz' : f === 0 ? '0 Hz' : si(f, 'Hz', 3);
       p.out('speed', frequency);
-      speed.setAttribute('aria-valuetext', speedText);
+      speed.setAttribute('aria-valuetext', f === 0 ? '0 Hz (still field)' : frequency + (v === 100 ? ' (reader speed)' : ''));
       const [scale, unit] = emf === 0 || emf >= 1 ? [1, 'V'] : emf >= .001 ? [1e3, 'mV'] : [1e6, 'µV'];
       p.say(`${s7VoltageFormat.format(emf * scale)} ${unit}`);
-      p.el.querySelector('.s7-threshold').textContent = f === 0 ? 'A still field induces no voltage.'
+      p.el.querySelector('.s7-threshold').textContent = f === 0 ? 'The field stays steady. The coil makes no voltage.'
         : emf >= 3 ? 'Plenty for the chip.' : 'The chip needs about 2 V.';
+      p.waveTarget = [Number(f > 0), clamp(Math.log10(1 + emf / s7MaxEmf * 1e4) / 4, 0, 1),
+        f === 0 ? 0 : .25 + Math.log10(f) / Math.log10(13.56e6) * 1.6];
     }
+    // Keep the phase and continue from the trace already on screen when the slider moves again.
+    const dt = Math.min(p.dt, 1 / 30);
+    const ease = 1 - Math.exp(-20 * dt);
+    p.waveShown = !p.waveShown || reduced.matches ? p.waveTarget : p.waveTarget.map((target, i) => {
+      const gap = target - p.waveShown[i];
+      return Math.abs(gap) < .001 ? target : p.waveShown[i] + gap * ease;
+    });
+    const [flip, vAmp, shown] = p.waveShown;
     const ctx = fit(p);
-    // The waves are slowed for the eye: their speed on screen follows the log of the real speed.
-    const shown = f === 0 ? 0 : .25 + Math.log10(f) / Math.log10(13.56e6) * 1.6;
-    if (!reduced.matches) p.phase = (p.phase || 0) + shown * p.dt * Math.PI * 2;
+    if (!reduced.matches) p.phase = (p.phase || 0) + shown * dt * Math.PI * 2;
     const ph = p.phase || 0;
     const inset = p.w < 500 ? 14 : 28;
     const laneHeight = (p.h - 70) / 2;
     const B = { x: inset, y: 28, w: p.w - 2 * inset, h: laneHeight };
     const V = { ...B, y: B.y + laneHeight + 28 };
-    const emfMax = physics.solve({ tag: 'card', reader: 'phone', distance: .02 }).emf;
-    const vAmp = f === 0 ? 0 : clamp(Math.log10(1 + emf / emfMax * 1e4) / 4, 0, 1);
     const handoffPlots = [];
     const divider = (B.y + B.h + V.y) / 2 - 6;
     hline(ctx, divider, B.x, B.x + B.w, '#d3cabe', '', []);
     for (const [bx, label, fn, color] of [
-      [B, 'Magnetic field through the coil', t => f === 0 ? .7 : Math.sin(t), INK],
-      [V, 'Induced voltage', t => f === 0 ? 0 : vAmp * Math.cos(t), COPPER]]) {
+      [B, 'Magnetic field through the coil', t => .7 * (1 - flip) + Math.sin(t) * flip, INK],
+      [V, 'Induced voltage', t => vAmp * Math.cos(t), COPPER]]) {
       const yAt = u => .5 - fn(ph - u * Math.PI * 4) * .45;
       ctx.strokeStyle = '#ded7cc'; ctx.lineWidth = 1; ctx.beginPath();
       for (let i = 0; i <= 8; i++) {
