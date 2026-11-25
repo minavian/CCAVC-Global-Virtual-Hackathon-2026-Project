@@ -658,6 +658,12 @@ function intro(experience) {
     const reader = lab.set.reader, info = READERS[reader];
     for (const button of labUi.readers) button.setAttribute('aria-pressed', String(button.dataset.reader === reader));
     for (const button of labUi.tags) button.setAttribute('aria-pressed', String(button.dataset.tag === lab.set.tag));
+    // Where each switch's sliding highlight sits (styles.css): which of its buttons is pressed.
+    for (const buttons of [labUi.readers, labUi.tags]) {
+      const at = buttons.findIndex(button => button.getAttribute('aria-pressed') === 'true');
+      buttons[0]?.parentElement.style.setProperty('--at', Math.max(0, at));
+      buttons[0]?.parentElement.style.setProperty('--count', buttons.length);
+    }
     labUi.inputs.distance.min = info.nearest;
     labUi.driveLabel.textContent = reader === 'phone' ? 'Phone’s power' : 'Reader’s power';
     labUi.presets.replaceChildren(...Object.values(PRESETS[reader]).map(preset => {
