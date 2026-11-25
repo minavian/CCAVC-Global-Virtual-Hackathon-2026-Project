@@ -945,6 +945,9 @@ function intro(experience) {
         }
       }
       if (text) say(text, detail);
+      // The closing explanation has no line of its own: the readout empties as it fades, so a
+      // screen reader never finds the last thing it said (a copy "Rejected", say) still there.
+      else if (plan.explain) say('', '');
       film.middleLabel.textContent = plan.lab ? 'Distance' : 'Real time';
       const said = b.message?.started && !b.message.done ? b.message : null;
       // While a message is on the air, the real time it has taken so far (in µs steps), so
