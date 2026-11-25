@@ -47,6 +47,7 @@ export function autoplay({ experience, stage, reduce }) {
   let skips = [];           // still stretches inside an animation, on the page
   let glide = null;         // { pieces, total, to, y, t, length, dir }
   let ticking = false, then = 0;
+  let restedAt = -Infinity;
   // Below the last stop the page is the browser's own. Read again whenever the page's size
   // changes.
   let endY = -Infinity, lastStop = -Infinity, stale = true;
@@ -187,7 +188,10 @@ export function autoplay({ experience, stage, reduce }) {
       const k = Math.min(1, glide.t / glide.length);
       glide.y = along(glide.pieces, glide.total * ease(k));
       scrollTo(0, glide.y);
-      if (k >= 1) glide = null;                                 // there: stop, and stay
+      if (k >= 1) {
+        glide = null;
+        restedAt = now;
+      }
     }
     if (glide) {
       ticking = true;
@@ -203,8 +207,11 @@ export function autoplay({ experience, stage, reduce }) {
   }
 
   function onWheel(event) {
-    if (event.ctrlKey || !event.deltaY || !on()) return;      // pinch zoom, or sideways
+    if (event.defaultPrevented || !event.cancelable || event.ctrlKey ||
+      Math.abs(event.deltaY) <= Math.abs(event.deltaX) || !on()) return;
     const dir = Math.sign(event.deltaY), now = performance.now();
+    const panel = event.target.closest?.('.intro .try');
+    if (panel && (dir < 0 ? panel.scrollTop > 1 : panel.scrollTop + panel.clientHeight < panel.scrollHeight - 1)) return;
     // Up: the browser's own scroll. A glide under way stops, so the page goes where the visitor
     // takes it.
     if (dir < 0) {
@@ -217,6 +224,7 @@ export function autoplay({ experience, stage, reduce }) {
     // swipe while the last one still coasts). The rest of the same scroll only rides along: swallowed,
     // never another animation.
     const fresh = now - burst.at > BURST || dir !== burst.dir ||
+      (!glide && restedAt >= burst.start && now - restedAt >= BURST) ||
       (now - burst.start > BURST && size >= 12 && size > burst.size * 3);
     if (fresh) burst = { dir, start: now, handled: step(dir) };
     burst.at = now;

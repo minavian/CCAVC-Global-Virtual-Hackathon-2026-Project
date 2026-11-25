@@ -367,7 +367,18 @@ function intro(experience) {
     const grow = Math.min(b.view.zoom, 1.3);
     const faceWidth = pose.width * Math.cos(pose.yaw) * grow;
     const faceHeight = pose.width * .63 * Math.cos(pose.pitch) * grow;
-    place(poster, pose.x, pose.y, faceWidth, faceHeight, -pose.roll);
+    // Without 3D, once the card is down, its picture stands in for the close-up. It was drawn at
+    // the 3D shot's size and ran under the readout; it keeps its top and shrinks to end just
+    // above the readout instead.
+    // (Measured by its tilted outline, which is taller than the picture itself.)
+    let fit = 1;
+    const tall = faceWidth * Math.abs(Math.sin(pose.roll)) + faceHeight * Math.abs(Math.cos(pose.roll));
+    if (!available && b.dock > .5) {
+      const top = pose.y - tall / 2;
+      const room = film.readout.getBoundingClientRect().top - stage.getBoundingClientRect().top - 20 - top;
+      fit = clamp(room / tall, .35, 1);
+    }
+    place(poster, pose.x, pose.y - tall * (1 - fit) / 2, faceWidth * fit, faceHeight * fit, -pose.roll);
     poster.style.setProperty('--xray', Math.max(pose.xray, b.xray));
     poster.style.opacity = b.card;
     place(shadow, pose.x + 10, pose.y + pose.width * .33 * grow, pose.width * .87 * grow, pose.width * .15 * grow);
@@ -882,7 +893,8 @@ function intro(experience) {
       paintPlot();
       if (performance.now() - lab.mapFade.start > MAP_FADE) { lab.mapFade = null; paintPlot(); }
     }
-    return moving || sliding || Boolean(lab.morph) || Boolean(lab.reveal) || Boolean(lab.mapFade);
+    if (lab.tabFade) paintPlot();
+    return moving || sliding || Boolean(lab.morph) || Boolean(lab.reveal) || Boolean(lab.mapFade) || Boolean(lab.tabFade);
   }
 
   // How long the chart takes to draw itself in: 0.8 s on the panel's entrance, quicker on a new tab.
@@ -1109,8 +1121,30 @@ function intro(experience) {
   }
 
   // The chart: the voltage at the chip across distance or across tuning, everything else as
-  // set, with the chip's need (2 V) and where the setting is now.
+  // set, with the chip's need (2 V) and where the setting is now. While a tab has just been
+  // switched, the last chart fades out as the new one fades in (`lab.tabFade`, TAB_FADE).
+  const TAB_FADE = 220;
+  const copyOf = canvas => {
+    const copy = document.createElement('canvas');
+    copy.width = canvas.width; copy.height = canvas.height;
+    if (canvas.width && canvas.height) copy.getContext('2d').drawImage(canvas, 0, 0);
+    return copy;
+  };
   function paintPlot() {
+    drawPlot();
+    const fade = lab.tabFade, canvas = labUi.plot;
+    if (!fade) return;
+    const k = smoother(0, 1, (performance.now() - fade.start) / TAB_FADE);
+    if (k >= 1 || fade.image.width !== canvas.width || fade.image.height !== canvas.height) { lab.tabFade = null; return; }
+    const fresh = copyOf(canvas), g = canvas.getContext('2d');
+    g.save();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, canvas.width, canvas.height);
+    g.globalAlpha = 1 - k; g.drawImage(fade.image, 0, 0);
+    g.globalAlpha = k; g.drawImage(fresh, 0, 0);
+    g.restore();
+  }
+  function drawPlot() {
     const canvas = labUi.plot, box = canvas.getBoundingClientRect();
     if (!box.width) return;
     const ratio = Math.min(devicePixelRatio || 1, 2);
@@ -1560,7 +1594,8 @@ function intro(experience) {
     // elsewhere, that the view can be turned.
     const hint = inLab ? (cardMoved ? 'Drag on the chart too.' : 'Drag the card to move it.') : 'Drag to look around';
     if (film.hint.textContent !== hint) film.hint.textContent = hint;
-    film.hint.classList.toggle('is-shown', docked && b.dark > .6 && !auto.on && (inLab ? !(cardMoved && chartPressed) : !orbited));
+    // (Not without 3D: neither the card nor the view can be dragged then.)
+    film.hint.classList.toggle('is-shown', available && docked && b.dark > .6 && !auto.on && (inLab ? !(cardMoved && chartPressed) : !orbited));
 
     // The check mark, drawn over the reader, and the explanation at the end.
     const top = available ? scene.anchor('readerTop') : { x: layout.reader.x, y: layout.reader.y - layout.reader.height * .3 };
@@ -1847,11 +1882,13 @@ function intro(experience) {
   for (const tab of labUi.tabs) {
     tab.addEventListener('click', () => {
       if (lab.chart === tab.dataset.chart) return;
+      // The last chart fades out (`lab.tabFade`) as the new one draws itself in from the left,
+      // quicker than on the panel's entrance.
+      if (!reduce.matches) lab.tabFade = { image: copyOf(labUi.plot), start: performance.now() };
       lab.chart = tab.dataset.chart;
       for (const other of labUi.tabs) other.setAttribute('aria-pressed', String(other === tab));
       paintPlotPress();
-      // The new chart rises in and draws itself from the left, quicker than on the entrance.
-      if (!reduce.matches) { lab.reveal = performance.now(); lab.revealMs = 520; pulse(labUi.plot); }
+      if (!reduce.matches) { lab.reveal = performance.now(); lab.revealMs = 520; }
       setLab({}, true);
     });
   }
@@ -1871,6 +1908,7 @@ function intro(experience) {
   }
   // What a press on the chart does, said on it, and how a touch on it moves: the Map takes every
   // direction; the others only across, so a swipe up or down still scrolls the panel.
+  // (The tabs' sliding pill places itself: see `.try-pill` where the panel is set up.)
   function paintPlotPress() {
     labUi.plot.title = { tuning: 'Press or drag to tune the card', map: 'Press or drag to move and turn the card' }[lab.chart]
       ?? 'Press or drag to move the card';

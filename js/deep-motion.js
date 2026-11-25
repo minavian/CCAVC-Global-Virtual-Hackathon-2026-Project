@@ -1,130 +1,6 @@
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const viewportWidth = () => document.body.clientWidth;
 
-function watchPartOne(word, part) {
-  const chapter = part.closest('.deep');
-  const opener = word.closest('.deep-head');
-  const root = document.documentElement;
-  const cover = document.createElement('span');
-  cover.className = 'deep-blink-cover';
-  cover.setAttribute('aria-hidden', 'true');
-  const motionAllowed = () => !reducedMotion.matches && !document.hidden;
-  const normal = { color: 'var(--ink)', backgroundColor: 'transparent' };
-  const inverted = { color: 'var(--paper)', backgroundColor: 'var(--ink)' };
-  const sceneHold = 1000;
-  let partTop = bounds(part, scrollY).y;
-  let animation, holdTimer;
-  const active = () => !!animation || holdTimer !== undefined;
-
-  function releaseHold() {
-    clearTimeout(holdTimer);
-    holdTimer = undefined;
-    root.classList.remove('deep-blink-hold', 'deep-reverse-hold');
-    scheduleMotion();
-  }
-
-  function interrupt() {
-    if (!active()) return;
-    animation?.cancel();
-    cover.remove();
-    releaseHold();
-  }
-
-  async function blink() {
-    try {
-      sanitizeChapter();
-      root.classList.add('deep-blink-hold');
-      animation = word.animate([
-        normal, { ...normal, offset: .10 }, { ...inverted, offset: .14 },
-        { ...inverted, offset: .27 }, { ...normal, offset: .32 },
-        { ...normal, offset: .48 }, { ...inverted, offset: .53 },
-        { ...inverted, offset: .66 }, { ...normal, offset: .72 }, normal,
-      ], { duration: sceneHold });
-      await animation.finished;
-      if (!motionAllowed()) return;
-
-      chapter.append(cover);
-      const close = cover.animate({ opacity: [0, 1] }, { duration: 135, easing: 'ease-in', fill: 'forwards' });
-      animation = close;
-      await close.finished;
-      if (!motionAllowed()) return;
-
-      // Move to the existing title while the viewport is fully covered.
-      part.scrollIntoView({ block: 'start', behavior: 'instant' });
-      animation = cover.animate([
-        { opacity: 1 }, { opacity: 1, offset: .16, easing: 'ease-out' }, { opacity: 0 },
-      ], { duration: 265, fill: 'both' });
-      close.cancel();
-      await animation.finished;
-      holdTimer = setTimeout(releaseHold, sceneHold);
-    } catch (error) {
-      if (error.name !== 'AbortError') throw error;
-    } finally {
-      animation?.cancel();
-      cover.remove();
-      animation = null;
-      if (holdTimer === undefined) releaseHold();
-    }
-  }
-
-  async function reverseBlink() {
-    try {
-      sanitizeChapter();
-      root.classList.add('deep-reverse-hold');
-      chapter.append(cover);
-      const close = cover.animate({ opacity: [0, 1] }, { duration: 130, easing: 'ease-in', fill: 'forwards' });
-      animation = close;
-      await close.finished;
-      if (!motionAllowed()) return;
-
-      opener.scrollIntoView({ block: 'start', behavior: 'instant' });
-      animation = cover.animate([
-        { opacity: 1 }, { opacity: 1, offset: .14, easing: 'ease-out' }, { opacity: 0 },
-      ], { duration: 250, fill: 'both' });
-      close.cancel();
-      await animation.finished;
-      if (!motionAllowed()) return;
-
-      animation = word.animate([
-        normal, { ...inverted, offset: .24 }, { ...normal, offset: .52 }, normal,
-      ], { duration: 420 });
-      await animation.finished;
-      holdTimer = setTimeout(releaseHold, 320);
-    } catch (error) {
-      if (error.name !== 'AbortError') throw error;
-    } finally {
-      animation?.cancel();
-      cover.remove();
-      animation = null;
-      if (holdTimer === undefined) releaseHold();
-    }
-  }
-
-  watchScrollMotion((top, height, needsMeasure) => {
-    if (needsMeasure) partTop = bounds(part, top).y;
-    if (active() && !motionAllowed()) interrupt();
-  });
-  addEventListener('hashchange', interrupt);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) interrupt(); });
-  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) interrupt(); });
-
-  return {
-    forward() {
-      if (!motionAllowed() || active()) return;
-      partTop = bounds(part, scrollY).y;
-      const openEnd = Math.max(0, partTop - innerHeight);
-      if (Math.abs(scrollY - openEnd) > 2) scrollTo({ top: openEnd, behavior: 'instant' });
-      void blink();
-    },
-    reverse() {
-      if (!motionAllowed() || active()) return;
-      void reverseBlink();
-    },
-    cancel: interrupt,
-    active,
-  };
-}
-
 const scrollMotions = [];
 const arrivalEase = 'cubic-bezier(.16, 1, .3, 1)';
 const clamp = n => Math.min(1, Math.max(0, n));
@@ -166,18 +42,18 @@ export function watchScrollMotion(update) {
 }
 
 const ALL_HOLD_CLASSES = [
-  'deep-blink-hold', 'deep-closer-hold', 'deep-flipping-hold', 'deep-tuning-hold',
+  'deep-closer-hold', 'deep-flipping-hold', 'deep-tuning-hold',
   'deep-metal-hold', 'deep-pauses-hold', 'deep-part-two-hold', 'deep-soaking-hold',
   'deep-whispering-hold', 'deep-counting-hold', 'deep-mistakes-hold', 'deep-conversation-hold',
   'deep-twocards-hold', 'deep-carkey-hold', 'deep-finale-hold', 'deep-reverse-hold',
 ];
 const ALL_STAGED_CLASSES = [
   's8-awaiting', 's9-entering',
-  's10-awaiting', 's10-entering', 's12-staged', 's12-title-in-flight',
+  's10-awaiting', 's10-entering', 'part-two-active', 's12-staged', 's12-title-in-flight',
   's15-staged', 's16-staged', 's17-staged', 'deep-end-staged', 'deep-rev-staged',
 ];
 const STRAY_OVERLAY_SELECTOR = [
-  '.deep-rev-copy', '.deep-blink-cover', '.s7-trace-handoff', '.s9-plot-copy', '.part-two-reveal', '.part-two-reverse-cover',
+  '.deep-rev-copy', '.deep-blink-cover', '.s7-trace-handoff', '.s9-plot-copy', '.part-two-reveal', '.part-two-wave', '.part-two-reverse-cover',
   '.s12-vortex', '.s13-spectrum-copy', '.s14-timing-copy',
   '.s15-handoff-copy', '.s16-handoff-copy', '.s16-title-morph', '.s17-handoff-copy', '.s17-portal-wallet',
 ].join(', ');
@@ -209,6 +85,16 @@ function sanitizeChapter() {
     el.style.removeProperty('--s15-source-opacity');
     el.style.removeProperty('--s16-source-opacity');
   }
+  const s10 = document.getElementById('s10');
+  if (s10) {
+    s10.style.removeProperty('--s10-recede');
+    s10.style.removeProperty('--ripple-origin');
+  }
+  const pausesWord = document.querySelector('#s10-pauses > span');
+  if (pausesWord) {
+    pausesWord.style.removeProperty('transform');
+    pausesWord.style.removeProperty('color');
+  }
   for (const el of document.querySelectorAll('.plate-words, .plate-words > *, .s16-desk, #s14-replies > *, #deep-end > *')) {
     el.style.removeProperty('opacity');
     el.style.removeProperty('transform');
@@ -216,9 +102,10 @@ function sanitizeChapter() {
   }
 }
 
-function runReverseCanvasMorph(fromEl, toEl, { mode = 'default', cut = 430, arrivalEnd = 1040, readHold = 360, onDone } = {}) {
+function runReverseCanvasMorph(fromEl, toEl, { mode = 'default', cut = 430, arrivalEnd = 1040, readHold = 360, onDone, arrivalCopy } = {}) {
   const root = document.documentElement, chapter = fromEl.closest('.deep');
-  const fromWords = fromEl.querySelector('.plate-words'), toWords = toEl.querySelector('.plate-words');
+  const fromWords = fromEl.querySelector('.plate-words')?.children;
+  const toWords = arrivalCopy ?? toEl.querySelector('.plate-words')?.children;
   const fromCanvas = fromEl.querySelector('canvas'), toCanvas = toEl.querySelector('canvas');
   if (!chapter || !fromWords || !toWords) {
     toEl.scrollIntoView({ block: 'start', behavior: 'instant' });
@@ -292,7 +179,7 @@ function runReverseCanvasMorph(fromEl, toEl, { mode = 'default', cut = 430, arri
   chapter.append(copy);
 
   const textBlur = 'blur(3px)';
-  for (const [i, node] of Array.from(fromWords.children).entries()) {
+  for (const [i, node] of Array.from(fromWords).entries()) {
     animations.push(node.animate([
       { opacity: 1, transform: 'none', filter: 'blur(0px)' },
       { opacity: 0, transform: 'translateY(11px)', filter: textBlur },
@@ -320,7 +207,7 @@ function runReverseCanvasMorph(fromEl, toEl, { mode = 'default', cut = 430, arri
     scrollTo({ top: destination, behavior: 'instant' });
     topPin = scrollY;
     toEl.classList.remove('deep-rev-staged');
-    for (const [i, node] of Array.from(toWords.children).entries()) {
+    for (const [i, node] of Array.from(toWords).entries()) {
       if (mode === 'whispering' && i === 1) continue;
       animations.push(node.animate([
         { opacity: 0, transform: 'translateY(-10px)', filter: textBlur },
@@ -410,6 +297,8 @@ function runReverseCanvasMorph(fromEl, toEl, { mode = 'default', cut = 430, arri
 
 function watchCloser(source, plate) {
   const part = source.closest('.deep-part');
+  const stop = source.closest('.deep-head') ?? part;
+  const headWords = stop.querySelector('.deep-head-words');
   const chapter = plate.closest('.deep');
   const root = document.documentElement;
   const title = plate.querySelector('#s6-title');
@@ -458,14 +347,15 @@ function watchCloser(source, plate) {
   function playCloser(goingBack) {
     sanitizeChapter();
     settle();
-    partTop = bounds(part, scrollY).y;
+    partTop = bounds(stop, scrollY).y;
     plateTop = bounds(plate, scrollY).y;
     scrollTo({ top: goingBack ? plateTop : partTop, behavior: 'instant' });
     const from = source.getBoundingClientRect(), to = title.getBoundingClientRect();
-    const lineHeight = parseFloat(getComputedStyle(source).lineHeight);
+    const sourceStyle = getComputedStyle(source);
+    const lineHeight = parseFloat(sourceStyle.lineHeight);
     const fromTop = from.top + (from.height - lineHeight) / 2 + (goingBack ? scrollY - partTop : 0);
     const toTop = to.top + (goingBack ? 0 : scrollY - plateTop);
-    const ratio = parseFloat(getComputedStyle(title).fontSize) / parseFloat(getComputedStyle(source).fontSize);
+    const ratio = parseFloat(getComputedStyle(title).fontSize) / parseFloat(sourceStyle.fontSize);
     const gathered = `translate(${to.left - from.left}px, ${toTop - fromTop}px) scale(${ratio})`;
     const chartFits = chart.getBoundingClientRect().bottom + scrollY - plateTop <= innerHeight + 2;
     const started = performance.now();
@@ -480,6 +370,9 @@ function watchCloser(source, plate) {
     root.classList.add('deep-closer-hold');
     traveledTitle.style.left = `${from.left}px`;
     traveledTitle.style.top = `${fromTop}px`;
+    traveledTitle.style.fontSize = sourceStyle.fontSize;
+    traveledTitle.style.lineHeight = sourceStyle.lineHeight;
+    traveledTitle.style.letterSpacing = sourceStyle.letterSpacing;
     chapter.append(traveledTitle);
     if (goingBack) motions.push(chart.animate({ opacity: [1, 0] }, { duration: 420, fill: 'both', easing: 'ease-in-out' }));
     else chart.setReveal?.(0);
@@ -497,8 +390,9 @@ function watchCloser(source, plate) {
       { transform: gathered, opacity: 1, offset: .80 },
       { transform: `${gathered} perspective(280px) rotateX(70deg) scaleY(.74)`, opacity: 0 },
     ], 720, 40, 'linear');
-    for (const node of [part.firstElementChild, source.parentElement]) {
-      animate(node, [{ opacity: 1 }, { opacity: 0 }], titleSwap, 0, 'ease-in-out');
+    const outgoing = headWords ? [headWords, part] : [part.firstElementChild, source.parentElement];
+    for (const node of outgoing) {
+      if (node) animate(node, [{ opacity: 1 }, { opacity: 0 }], titleSwap, 0, 'ease-in-out');
     }
     animate(source, [{ opacity: 0 }, { opacity: 0 }], titleSwap);
 
@@ -519,7 +413,7 @@ function watchCloser(source, plate) {
       const elapsed = now - started;
       if (!seated && elapsed >= seatAt) {
         seated = true;
-        const destination = goingBack ? part : plate;
+        const destination = goingBack ? stop : plate;
         destination.scrollIntoView({ block: 'start', behavior: 'instant' });
         lockedAt = scrollY;
       }
@@ -536,7 +430,7 @@ function watchCloser(source, plate) {
 
   watchScrollMotion((top, height, needsMeasure) => {
     if (needsMeasure || partTop === undefined) {
-      partTop = bounds(part, top).y;
+      partTop = bounds(stop, top).y;
       plateTop = bounds(plate, top).y;
     }
 
@@ -684,7 +578,11 @@ function watchFlipping(previous, plate) {
   });
 
   for (const scene of [previous, plate]) {
-    for (const event of ['pointerdown', 'focusin', 'input']) scene.addEventListener(event, cancel);
+    scene.addEventListener('focusin', cancel);
+    scene.addEventListener('input', cancel);
+    scene.addEventListener('pointerdown', event => {
+      if (event.target.closest('.plate-controls, .s6-distance-demo')) cancel();
+    });
   }
   for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, cancel);
   document.addEventListener('visibilitychange', () => { if (document.hidden) cancel(); });
@@ -932,7 +830,8 @@ function watchTuning(previous, plate) {
     },
     reverse() {
       if (!canPlay() || active()) return;
-      revCtrl = runReverseCanvasMorph(plate, previous, { mode: 'tuning' });
+      const arrivalCopy = previous.querySelectorAll('.s7-heading, .s7-scope figcaption, .s7-console, .s7-formula');
+      revCtrl = runReverseCanvasMorph(plate, previous, { mode: 'tuning', arrivalCopy });
     },
     cancel: skip,
     active,
@@ -1318,128 +1217,253 @@ function watchPartTwo(source, part) {
   heading.removeAttribute('id');
   heading.removeAttribute('tabindex');
   for (const child of heading.querySelectorAll('[id]')) child.removeAttribute('id');
+  const cloneLabel = heading.querySelector('span:first-child');
+  const cloneTitle = heading.querySelector('.deep-part-title');
   reveal.append(heading);
 
-  const sweepStart = 210, sweepEnd = 1540, readHold = 1000;
-  let transition, frame, revCover, revFrame, revActive = false;
-  const canPlay = () => !reducedMotion.matches && !document.hidden &&
-    CSS.supports('mask-image', 'radial-gradient(black, transparent)');
+  const waveCanvas = document.createElement('canvas');
+  waveCanvas.className = 'part-two-wave';
+  waveCanvas.setAttribute('aria-hidden', 'true');
+  const waveCtx = waveCanvas.getContext('2d');
 
-  function land() {
-    if (transition.followLink && location.hash !== source.hash) {
+  const smoother = t => t * t * t * (t * (6 * t - 15) + 10);
+  const FORWARD_DUR = 1650, REVERSE_DUR = 1150, READ_HOLD = 1000, REVERSE_HOLD = 240;
+  let run, frame;
+  const canPlay = () => !reducedMotion.matches && !document.hidden &&
+    (CSS.supports('mask-image', 'radial-gradient(black, transparent)') ||
+      CSS.supports('-webkit-mask-image', 'radial-gradient(black, transparent)'));
+
+  function sizeWaveCanvas(vw, vh) {
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    waveCanvas.width = Math.round(vw * dpr);
+    waveCanvas.height = Math.round(vh * dpr);
+    waveCtx?.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function strokeOrganicRing(ctx, cx, cy, rBase, amp, lobesA, lobesB, phase, width, alpha) {
+    if (rBase <= 1 || alpha <= 0.004) return;
+    const steps = 128;
+    ctx.beginPath();
+    for (let i = 0; i <= steps; i++) {
+      const a = (i / steps) * Math.PI * 2;
+      const r = rBase + amp * (0.65 * Math.sin(lobesA * a + phase) + 0.35 * Math.cos(lobesB * a - phase * 1.35));
+      const px = cx + Math.cos(a) * Math.max(0, r);
+      const py = cy + Math.sin(a) * Math.max(0, r);
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const [wMul, aMul] of [[5, 0.2], [2.2, 0.42], [1, 1]]) {
+      ctx.lineWidth = width * wMul;
+      ctx.strokeStyle = `rgba(184, 101, 42, ${(alpha * aMul).toFixed(4)})`;
+      ctx.stroke();
+    }
+  }
+
+  function renderFrame(u) {
+    if (!run) return;
+    const p = smoother(stage(0.08, 0.96, u));
+    const feather = run.maxFeather * Math.min(1, p * 2.5);
+    const outer = (run.reach + run.maxFeather) * p;
+    const inner = Math.max(0, outer - feather);
+    reveal.style.setProperty('--ripple-inner', `${inner.toFixed(1)}px`);
+    reveal.style.setProperty('--ripple-feather', `${feather.toFixed(1)}px`);
+
+    const press = smoother(stage(0, 0.11, u)) * (1 - smoother(stage(0.11, 0.27, u)));
+    if (press > 0.002) {
+      word.style.transform = `translateY(${(press * .1).toFixed(4)}em) scale(${(1 - press * .045).toFixed(4)}, ${(1 - press * .15).toFixed(4)})`;
+    } else {
+      word.style.removeProperty('transform');
+    }
+    if (press > 0.01) {
+      word.style.color = `color-mix(in srgb, var(--copper) ${Math.round(press * 75)}%, var(--ink))`;
+    } else {
+      word.style.removeProperty('color');
+    }
+
+    const recede = smoother(stage(0.08, 0.72, u));
+    plate.style.setProperty('--s10-recede', recede.toFixed(4));
+
+    if (cloneLabel) {
+      const kLabel = smoother(stage(0.32, 0.78, u));
+      cloneLabel.style.opacity = kLabel.toFixed(4);
+      cloneLabel.style.transform = kLabel < 0.999 ? `translate3d(0, ${((1 - kLabel) * 14).toFixed(2)}px, 0)` : 'none';
+      cloneLabel.style.filter = kLabel < 0.995 ? `blur(${((1 - kLabel) * 5).toFixed(2)}px)` : 'none';
+      cloneLabel.style.letterSpacing = `${(0.16 + (1 - kLabel) * 0.09).toFixed(4)}em`;
+    }
+    if (cloneTitle) {
+      const kTitle = smoother(stage(0.38, 0.88, u));
+      cloneTitle.style.opacity = kTitle.toFixed(4);
+      cloneTitle.style.transform = kTitle < 0.999
+        ? `translate3d(0, ${((1 - kTitle) * 24).toFixed(2)}px, 0) scale(${(0.962 + 0.038 * kTitle).toFixed(4)})`
+        : 'none';
+      cloneTitle.style.filter = kTitle < 0.995 ? `blur(${((1 - kTitle) * 9).toFixed(2)}px)` : 'none';
+    }
+
+    if (!waveCtx) return;
+    const { cx, cy, vw, vh } = run;
+    waveCtx.clearRect(0, 0, vw, vh);
+    const crest = smoother(stage(0.02, 0.22, u)) * (1 - smoother(stage(0.78, 0.98, u)));
+    const originGlow = smoother(stage(0, 0.14, u)) * (1 - smoother(stage(0.16, 0.46, u)));
+    if (originGlow > 0.005) {
+      const sparkR = 18 + 92 * smoother(stage(0, 0.44, u));
+      const sparkGrad = waveCtx.createRadialGradient(cx, cy, 0, cx, cy, sparkR);
+      sparkGrad.addColorStop(0, `rgba(184, 101, 42, ${(0.18 * originGlow).toFixed(4)})`);
+      sparkGrad.addColorStop(1, 'rgba(184, 101, 42, 0)');
+      waveCtx.fillStyle = sparkGrad;
+      waveCtx.beginPath();
+      waveCtx.arc(cx, cy, sparkR, 0, Math.PI * 2);
+      waveCtx.fill();
+    }
+
+    if (crest > 0.004 && outer > 4) {
+      const r0 = Math.max(0, inner - feather * 0.25);
+      const r1 = outer + feather * 0.3;
+      const mist = waveCtx.createRadialGradient(cx, cy, r0, cx, cy, r1);
+      mist.addColorStop(0, 'rgba(184, 101, 42, 0)');
+      mist.addColorStop(0.36, `rgba(184, 101, 42, ${(0.065 * crest).toFixed(4)})`);
+      mist.addColorStop(0.56, `rgba(214, 146, 86, ${(0.115 * crest).toFixed(4)})`);
+      mist.addColorStop(0.78, `rgba(184, 101, 42, ${(0.045 * crest).toFixed(4)})`);
+      mist.addColorStop(1, 'rgba(184, 101, 42, 0)');
+      waveCtx.fillStyle = mist;
+      waveCtx.beginPath();
+      waveCtx.arc(cx, cy, r1, 0, Math.PI * 2);
+      waveCtx.fill();
+
+      const waveCenter = inner + feather * 0.56;
+      const amp = (3.5 + 7.5 * Math.sin(Math.PI * p)) * crest;
+      strokeOrganicRing(waveCtx, cx, cy, waveCenter, amp, 6, 10, u * 4.2, 1.35, 0.36 * crest);
+      strokeOrganicRing(waveCtx, cx, cy, Math.max(0, waveCenter - feather * 0.36), amp * 0.72, 5, 9, -u * 3.1 + 1.2, 0.95, 0.19 * crest);
+      const whisperAlpha = 0.13 * crest * (1 - stage(0.72, 0.92, p));
+      strokeOrganicRing(waveCtx, cx, cy, waveCenter + feather * 0.16, amp * 0.55, 7, 11, u * 2.4 + 0.6, 0.85, whisperAlpha);
+    }
+  }
+
+  function clearOverlayNodes() {
+    reveal.remove();
+    waveCanvas.remove();
+    plate.classList.remove('part-two-active');
+    plate.style.removeProperty('--s10-recede');
+    plate.style.removeProperty('--ripple-origin');
+    word.style.removeProperty('transform');
+    word.style.removeProperty('color');
+  }
+
+  function landForward() {
+    if (!run) return;
+    if (run.followLink && location.hash !== source.hash) {
       history.pushState(history.state, '', source.hash);
     }
     part.scrollIntoView({ block: 'start', behavior: 'instant' });
-    transition.top = scrollY;
-    transition.arrived = true;
-    reveal.remove();
-    word.style.removeProperty('transform');
-    if (transition.followLink) part.focus({ preventScroll: true });
+    run.top = scrollY;
+    run.arrived = true;
+    run.arrivedAt = performance.now();
+    clearOverlayNodes();
+    if (run.followLink) part.focus({ preventScroll: true });
   }
 
-  function cancelReverse() {
-    if (!revActive) return;
-    revActive = false;
-    cancelAnimationFrame(revFrame);
-    revCover?.remove();
-    revCover = null;
-    word.style.removeProperty('transform');
-    root.classList.remove('deep-reverse-hold');
-    scheduleMotion();
+  function landReverse() {
+    if (!run) return;
+    run.arrived = true;
+    run.arrivedAt = performance.now();
+    clearOverlayNodes();
   }
 
   function release(followLink = false) {
-    cancelReverse();
-    if (!transition) return;
-    if (followLink && transition.followLink && !transition.arrived) land();
+    if (!run) return;
+    if (followLink && run.followLink && run.dir > 0 && !run.arrived) landForward();
     cancelAnimationFrame(frame);
-    transition = undefined;
-    reveal.remove();
-    word.style.removeProperty('transform');
-    root.classList.remove('deep-part-two-hold');
+    clearOverlayNodes();
+    root.classList.remove('deep-part-two-hold', 'deep-reverse-hold');
+    run = undefined;
     scheduleMotion();
   }
 
-  function playReverse() {
-    if (!canPlay() || revActive || transition) return;
-    sanitizeChapter();
-    part.scrollIntoView({ block: 'start', behavior: 'instant' });
-    const { cue } = approach(scrollY, innerHeight);
-    scrollTo({ top: cue, behavior: 'instant' });
-    const lockedTop = scrollY;
-    const { x, y, w, h } = bounds(word, lockedTop);
-    const centerX = x + w / 2, centerY = y + h * .69 - lockedTop;
-    const reach = Math.hypot(Math.max(centerX, viewportWidth() - centerX), Math.max(centerY, innerHeight - centerY)) + 20;
-
-    revCover = document.createElement('div');
-    revCover.className = 'part-two-reveal part-two-reverse-cover';
-    revCover.setAttribute('aria-hidden', 'true');
-    const clone = part.cloneNode(true);
-    clone.removeAttribute('id');
-    clone.removeAttribute('tabindex');
-    for (const c of clone.querySelectorAll('[id]')) c.removeAttribute('id');
-    revCover.append(clone);
-    revCover.style.setProperty('--ripple-center', `${centerX}px ${centerY}px`);
-    revCover.style.setProperty('--ripple-radius', `${reach}px`);
-    revCover.style.setProperty('--ripple-crest', '0');
-
-    revActive = true;
-    root.classList.add('deep-reverse-hold');
-    chapter.append(revCover);
-
-    const started = performance.now(), dur = 980, hold = 340;
-    function tick(now) {
-      if (!revActive) return;
-      if (Math.abs(scrollY - lockedTop) > 1 && Math.abs(scrollY - lockedTop) < innerHeight * .95) {
-        scrollTo({ top: lockedTop, behavior: 'instant' });
-      }
-      const elapsed = now - started;
-      if (elapsed < dur) {
-        const shrink = stage(0, dur, elapsed);
-        const radius = reach * (1 - shrink) ** 1.8;
-        revCover.style.setProperty('--ripple-radius', `${radius}px`);
-        revCover.style.setProperty('--ripple-crest', ease(40, 220, elapsed) * (1 - ease(dur - 180, dur, elapsed)));
-        const press = ease(dur - 220, dur - 80, elapsed) * (1 - ease(dur - 80, dur, elapsed));
-        word.style.transform = `translateY(${press * .09}em) scale(${1 - press * .04}, ${1 - press * .16})`;
-      } else {
-        revCover.remove();
-        word.style.removeProperty('transform');
-      }
-      if (elapsed >= dur + hold) return cancelReverse();
-      revFrame = requestAnimationFrame(tick);
+  function tick(now) {
+    if (!run) return;
+    if (Math.abs(scrollY - run.top) > 1 && Math.abs(scrollY - run.top) < innerHeight * .95) {
+      scrollTo({ top: run.top, behavior: 'instant' });
     }
-    revFrame = requestAnimationFrame(tick);
-  }
-
-  function play(followLink) {
-    const wordBox = word.getBoundingClientRect();
-    if (wordBox.top < 0 || wordBox.bottom > innerHeight) {
-      source.scrollIntoView({ block: 'center', behavior: 'instant' });
-    }
-    const { x, y, w, h } = bounds(word, scrollY);
-    const centerX = x + w / 2, centerY = y + h * .69 - scrollY;
-    const reach = Math.hypot(Math.max(centerX, viewportWidth() - centerX), Math.max(centerY, innerHeight - centerY)) + 20;
-    transition = { top: scrollY, followLink, arrived: false };
-    root.classList.add('deep-part-two-hold');
-    reveal.style.setProperty('--ripple-center', `${centerX}px ${centerY}px`);
-    reveal.style.setProperty('--ripple-radius', '0px');
-    chapter.append(reveal);
-
-    const started = performance.now();
-    function tick(now) {
-      const elapsed = now - started;
-      if (elapsed < sweepEnd) {
-        const press = ease(0, 155, elapsed) * (1 - ease(sweepStart, 375, elapsed));
-        word.style.transform = `translateY(${press * .09}em) scale(${1 - press * .04}, ${1 - press * .16})`;
-        const spread = stage(sweepStart, sweepEnd, elapsed);
-        const radius = reach * (1 - (1 - spread) ** 2.2);
-        reveal.style.setProperty('--ripple-radius', `${radius}px`);
-        reveal.style.setProperty('--ripple-crest', ease(sweepStart, 360, elapsed) * (1 - ease(1310, sweepEnd, elapsed)));
-      } else if (!transition.arrived) land();
-      if (elapsed >= sweepEnd + readHold) return release();
-      frame = requestAnimationFrame(tick);
+    if (!run.arrived) {
+      const t = stage(0, run.dur, now - run.start);
+      run.u = run.dir > 0 ? mix(run.fromU, 1, t) : mix(run.fromU, 0, t);
+      renderFrame(run.u);
+      if (t >= 1) {
+        if (run.dir > 0) landForward();
+        else landReverse();
+      }
+    } else {
+      const hold = run.dir > 0 ? READ_HOLD : REVERSE_HOLD;
+      if (now - run.arrivedAt >= hold) return release();
     }
     frame = requestAnimationFrame(tick);
+  }
+
+  function start(dir, followLink = false) {
+    if (!canPlay() || run) return;
+    sanitizeChapter();
+    if (dir > 0) {
+      const wordBox = word.getBoundingClientRect();
+      if (wordBox.top < 0 || wordBox.bottom > innerHeight) {
+        source.scrollIntoView({ block: 'center', behavior: 'instant' });
+      }
+    } else {
+      part.scrollIntoView({ block: 'start', behavior: 'instant' });
+      const { cue } = approach(scrollY, innerHeight);
+      scrollTo({ top: cue, behavior: 'instant' });
+    }
+
+    const lockedTop = scrollY;
+    const vw = viewportWidth(), vh = innerHeight;
+    const { x, y, w, h } = bounds(word, lockedTop);
+    const plateBox = bounds(plate, lockedTop);
+    const cx = x + w / 2, cy = y + h * .69 - lockedTop;
+    const reach = Math.hypot(Math.max(cx, vw - cx), Math.max(cy, vh - cy)) + 24;
+    const maxFeather = Math.round(Math.min(280, Math.max(120, Math.min(vw, vh) * .3)));
+
+    sizeWaveCanvas(vw, vh);
+    reveal.style.setProperty('--ripple-center', `${cx.toFixed(1)}px ${cy.toFixed(1)}px`);
+    plate.classList.add('part-two-active');
+    plate.style.setProperty('--ripple-origin', `${(cx - plateBox.x).toFixed(1)}px ${(y + h * .69 - plateBox.y).toFixed(1)}px`);
+
+    const fromU = dir > 0 ? 0 : 1;
+    run = {
+      dir,
+      fromU,
+      u: fromU,
+      dur: dir > 0 ? FORWARD_DUR : REVERSE_DUR,
+      start: performance.now(),
+      top: lockedTop,
+      followLink,
+      arrived: false,
+      arrivedAt: 0,
+      cx,
+      cy,
+      vw,
+      vh,
+      reach,
+      maxFeather,
+    };
+
+    root.classList.add(dir > 0 ? 'deep-part-two-hold' : 'deep-reverse-hold');
+    renderFrame(fromU);
+    chapter.append(reveal, waveCanvas);
+    frame = requestAnimationFrame(tick);
+  }
+
+  function turn(dir) {
+    if (!run || run.arrived || run.dir === dir) return false;
+    run.dir = dir;
+    run.fromU = run.u;
+    run.start = performance.now();
+    run.dur = dir > 0
+      ? Math.max(320, (1 - run.u) * FORWARD_DUR)
+      : Math.max(260, run.u * REVERSE_DUR);
+    root.classList.toggle('deep-part-two-hold', dir > 0);
+    root.classList.toggle('deep-reverse-hold', dir < 0);
+    return true;
   }
 
   function approach(top, height) {
@@ -1451,19 +1475,20 @@ function watchPartTwo(source, part) {
 
   source.addEventListener('click', event => {
     if (!canPlay() || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-    if (!transition && ALL_HOLD_CLASSES.some(name => root.classList.contains(name))) return;
+    if (!run && ALL_HOLD_CLASSES.some(name => root.classList.contains(name))) return;
     event.preventDefault();
-    if (transition) transition.followLink = true;
-    else {
-      sanitizeChapter();
-      play(true);
+    if (run) {
+      run.followLink = true;
+      if (run.dir < 0) turn(1);
+    } else {
+      start(1, true);
     }
   });
   plate.addEventListener('focusin', event => { if (event.target !== source) release(); });
 
   watchScrollMotion((top, height) => {
-    if (transition && Math.abs(top - transition.top) > height * .95) release();
-    else if (transition && Math.abs(top - transition.top) > 1) scrollTo({ top: transition.top, behavior: 'instant' });
+    if (run && Math.abs(top - run.top) > height * .95) release();
+    else if (run && Math.abs(top - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
   });
   for (const event of ['hashchange', 'popstate', 'pagehide']) addEventListener(event, () => release());
   addEventListener('resize', () => release(true));
@@ -1472,15 +1497,18 @@ function watchPartTwo(source, part) {
 
   return {
     forward() {
-      if (!canPlay() || transition || revActive) return;
-      sanitizeChapter();
+      if (!canPlay() || run) return;
       const { cue } = approach(scrollY, innerHeight);
       if (Math.abs(scrollY - cue) > 2) scrollTo({ top: cue, behavior: 'instant' });
-      play(false);
+      start(1, false);
     },
-    reverse: playReverse,
+    reverse() {
+      if (!canPlay() || run) return;
+      start(-1, false);
+    },
+    turn,
     cancel: () => release(false),
-    active: () => !!transition || revActive,
+    active: () => !!run,
   };
 }
 
@@ -3567,17 +3595,27 @@ function watchCarKey(previous, scene) {
 
 function watchFinale(previous, end) {
   const root = document.documentElement, chapter = end.closest('.deep');
-  const whyWord = previous.querySelector('#s17-why-word'), endBlink = end.querySelector('#deep-end-blink');
-  if (!whyWord || !endBlink) return;
+  const readerPulse = previous.querySelector('#s17-reader-pulse'), endBlink = end.querySelector('#deep-end-blink');
+  if (!endBlink) return;
 
   const cover = document.createElement('span');
   cover.className = 'deep-blink-cover';
   cover.setAttribute('aria-hidden', 'true');
   const normal = { color: 'var(--ink)', backgroundColor: 'transparent' };
-  const inverted = { color: 'var(--paper)', backgroundColor: 'var(--ink)' };
-  const blinkEnd = 860, closeEnd = 995, openEnd = 1280, readHold = 1000;
+  const cueEnd = 760, closeEnd = 995, openEnd = 1280, readHold = 1000;
   let run, rev, frame, finaleBlinkedOnce = false;
   const canPlay = () => !reducedMotion.matches && !document.hidden;
+
+  function pulseReaderMarker(animations, duration, delay = 0) {
+    if (!readerPulse || readerPulse.hidden) return;
+    const { top, bottom } = readerPulse.getBoundingClientRect();
+    if (bottom <= 0 || top >= innerHeight) return;
+    animations.push(readerPulse.animate([
+      { opacity: 0, transform: 'scale(.8)' },
+      { opacity: .85, transform: 'scale(1)', offset: .2, easing: arrivalEase },
+      { opacity: 0, transform: 'scale(2.8)' },
+    ], { duration, delay }));
+  }
 
   function playFinaleBlinkOnce() {
     if (finaleBlinkedOnce || reducedMotion.matches || document.hidden) return;
@@ -3633,10 +3671,10 @@ function watchFinale(previous, end) {
 
   function animate(now) {
     const elapsed = now - run.start;
-    if (elapsed >= blinkEnd && !run.coverClosing) {
+    if (elapsed >= cueEnd && !run.coverClosing) {
       run.coverClosing = true;
       chapter.append(cover);
-      run.closeAnim = cover.animate([{ opacity: 0 }, { opacity: 1 }], { duration: closeEnd - blinkEnd, easing: 'ease-in', fill: 'forwards' });
+      run.closeAnim = cover.animate([{ opacity: 0 }, { opacity: 1 }], { duration: closeEnd - cueEnd, easing: 'ease-in', fill: 'forwards' });
       run.animations.push(run.closeAnim);
     }
     if (elapsed >= closeEnd && !run.landed) {
@@ -3669,12 +3707,7 @@ function watchFinale(previous, end) {
     run = { top, start: performance.now(), destination, animations: [] };
     root.classList.add('deep-finale-hold');
     end.classList.add('deep-end-staged');
-    run.animations.push(whyWord.animate([
-      normal, { ...normal, offset: .10 }, { ...inverted, offset: .14 },
-      { ...inverted, offset: .27 }, { ...normal, offset: .32 },
-      { ...normal, offset: .48 }, { ...inverted, offset: .53 },
-      { ...inverted, offset: .66 }, { ...normal, offset: .72 }, normal,
-    ], { duration: blinkEnd }));
+    pulseReaderMarker(run.animations, cueEnd);
     frame = requestAnimationFrame(animate);
   }
 
@@ -3712,9 +3745,7 @@ function watchFinale(previous, end) {
         rev.anims.push(cover.animate([
           { opacity: 1 }, { opacity: 1, offset: .14, easing: 'ease-out' }, { opacity: 0 },
         ], { duration: 250, fill: 'both' }));
-        rev.anims.push(whyWord.animate([
-          normal, { ...inverted, offset: .24 }, { ...normal, offset: .52 }, normal,
-        ], { duration: 420, delay: 140 }));
+        pulseReaderMarker(rev.anims, 420, 140);
       }
       if (Math.abs(scrollY - rev.top) > 1 && Math.abs(scrollY - rev.top) < innerHeight * .95) {
         scrollTo({ top: rev.top, behavior: 'instant' });
@@ -3755,11 +3786,23 @@ function watchFinale(previous, end) {
 
 function createChapterDeck(stops, transitions) {
   if (stops.length < 2 || stops.some(stop => !stop)) return;
-  const WHEEL_THRESHOLD = 75, TOUCH_THRESHOLD = 48;
-  let accum = 0, accumDir = 0, accumTimer = 0;
-  let active, cooldownUntil = 0, touchStart;
+  const WHEEL_THRESHOLD = 48, TOUCH_THRESHOLD = 32, KEY_EDGE_THRESHOLD = 75;
+  const ENTRY_HOLD = 850, NATIVE_SCROLL_GAP = 350;
+  const opener = stops[0], root = document.documentElement;
+  let accum = 0, accumDir = 0, accumStop = -1;
+  let active, cooldownUntil = 0, touchStart, jumpScroll;
+  let lastTop = scrollY, nativeEntryUntil = 0, entryHash;
+  let entryY, entryTimer;
 
+  const easeJump = t => t * t * t * (t * (6 * t - 15) + 10);
   const canPage = () => !reducedMotion.matches && !document.hidden;
+  const canLockEntry = () => canPage() && !window.__presenting;
+
+  function cancelJumpScroll() {
+    if (!jumpScroll) return;
+    cancelAnimationFrame(jumpScroll.frame);
+    jumpScroll = undefined;
+  }
 
   function canChildScroll(target, dir) {
     let el = target instanceof Element ? target : target?.parentElement;
@@ -3775,8 +3818,8 @@ function createChapterDeck(stops, transitions) {
     return false;
   }
 
-  function isInteractiveTarget(target) {
-    return !!target?.closest?.('.s6-card, .s9-metal, .s13-drift-track, .s16-pad-card, .s16-wallet, input[type="range"], [role="slider"]');
+  function ownsVerticalTouch(target) {
+    return !!target?.closest?.('.drag-card, .battery-handle, .lab-grab, .s9-metal, .s16-pad-card, .s16-wallet, input[type="range"][aria-orientation="vertical"]');
   }
 
   function currentStopIndex() {
@@ -3799,23 +3842,34 @@ function createChapterDeck(stops, transitions) {
     }
     // The Part Two link can start its own handoff.
     if (active) return active;
-    const transition = transitions.find(candidate => candidate?.active());
-    return transition && { transition, dir: 1 };
+    const index = transitions.findIndex(candidate => candidate?.active());
+    if (index >= 0) active = { transition: transitions[index], index, dir: 1, reversal: 0 };
+    return active;
   }
 
   function cancelActive() {
+    cancelJumpScroll();
+    releaseChapterEntry();
+    accum = 0;
+    accumDir = 0;
     const current = running();
     if (!current) return;
     current.transition.cancel();
     active = undefined;
-    accum = 0;
-    accumDir = 0;
     cooldownUntil = performance.now() + 180;
   }
 
   function changeDirection(current, dir) {
-    if (current.transition.turn?.(dir)) current.dir = dir;
-    else cancelActive();
+    current.reversal = 0;
+    if (current.transition.turn?.(dir)) {
+      current.dir = dir;
+      return;
+    }
+    cancelActive();
+    // If the scene already landed, replay its handoff in the new direction.
+    queueMicrotask(() => {
+      if (currentStopIndex() === current.index + (dir < 0 ? 1 : 0)) trigger(dir, true);
+    });
   }
 
   function trigger(dir, deliberate = false) {
@@ -3824,66 +3878,125 @@ function createChapterDeck(stops, transitions) {
     if (!deliberate && now < cooldownUntil) return true;
     const idx = currentStopIndex();
     if (idx < 0) return false;
-    const transition = transitions[dir > 0 ? idx : idx - 1];
+    const index = dir > 0 ? idx : idx - 1;
+    const transition = transitions[index];
     if (!transition) return false;
+    const top = scrollY;
     if (dir > 0) transition.forward();
     else transition.reverse();
     if (transition.active()) {
-      active = { transition, dir };
+      active = { transition, index, dir, reversal: 0 };
     } else {
+      if (scrollY === top) stops[idx + dir].scrollIntoView({ block: 'start', behavior: 'instant' });
       cooldownUntil = now + 180;
     }
     return true;
   }
 
-  function distanceToEdge(dir) {
-    const idx = currentStopIndex();
+  function distanceToEdge(dir, idx = currentStopIndex()) {
     if (idx < 0) return Infinity;
     if (!transitions[dir > 0 ? idx : idx - 1]) return Infinity;
     const { top, bottom } = stops[idx].getBoundingClientRect();
     return Math.max(0, dir > 0 ? bottom - innerHeight - 96 : -top - 96);
   }
 
-  function enterChapter(dir, distance) {
-    const top = stops[0].getBoundingClientRect().top;
-    if (dir < 0 || top <= 1 || top > innerHeight || distance < top) return false;
-    stops[0].scrollIntoView({ block: 'start', behavior: 'instant' });
-    cooldownUntil = performance.now() + 300;
+  function releaseChapterEntry() {
+    nativeEntryUntil = 0;
+    if (entryY === undefined) return;
+    clearTimeout(entryTimer);
+    entryY = undefined;
+    root.classList.remove('deep-entry-hold');
+  }
+
+  function lockChapterEntry() {
+    nativeEntryUntil = 0;
+    accum = 0;
+    if (touchStart) touchStart.landed = true;
+    root.classList.add('deep-entry-hold');
+    opener.scrollIntoView({ block: 'start', behavior: 'instant' });
+    entryY = scrollY;
+    entryTimer = setTimeout(releaseChapterEntry, ENTRY_HOLD);
+  }
+
+  function noteEntryGesture(dir) {
+    if (dir < 0) {
+      releaseChapterEntry();
+    } else if (canLockEntry()) {
+      const top = scrollY, entryTop = bounds(opener, top).y;
+      if (Math.min(top, lastTop) < Math.round(entryTop)) {
+        nativeEntryUntil = performance.now() + NATIVE_SCROLL_GAP;
+        entryHash = location.hash;
+      }
+    }
+  }
+
+  function approachChapter(event, dir, distance) {
+    if (dir < 0 || !event.cancelable || !canLockEntry()) return false;
+    const remaining = opener.getBoundingClientRect().top;
+    if (remaining <= .5 || remaining > Math.max(2 * innerHeight, distance)) return false;
+    // Take over before the browser can carry this gesture's momentum through the opener.
+    event.preventDefault();
+    const advance = Math.max(1, distance);
+    if (advance >= remaining - .5) lockChapterEntry();
+    else scrollBy({ top: advance, behavior: 'instant' });
     return true;
   }
 
-  addEventListener('wheel', event => {
-    if (event.defaultPrevented || event.ctrlKey || Math.abs(event.deltaY) <= Math.abs(event.deltaX) || !canPage()) return;
-    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
-    const dy = event.deltaY * unit;
+  function pageWithWheel(event, dy, overChat) {
+    if (!canPage()) return;
     const dir = Math.sign(dy);
-    if (!dir) return;
+    noteEntryGesture(dir);
+    if (entryY !== undefined) {
+      if (event.cancelable) event.preventDefault();
+      return;
+    }
+
+    if (jumpScroll) {
+      cancelJumpScroll();
+      cooldownUntil = performance.now() + 180;
+      return;
+    }
 
     const current = running();
     if (current) {
       if (event.cancelable) event.preventDefault();
-      if (dir !== current.dir && Math.abs(dy) >= 24) changeDirection(current, dir);
+      current.reversal = dir === current.dir ? 0 : current.reversal + Math.abs(dy);
+      if (current.reversal >= 24) changeDirection(current, dir);
       return;
     }
-    if (canChildScroll(event.target, dir) || isInteractiveTarget(event.target)) return;
-    if (event.cancelable && enterChapter(dir, Math.abs(dy))) {
-      event.preventDefault();
-      return;
-    }
-    const distance = distanceToEdge(dir);
+    if (!overChat && canChildScroll(event.target, dir)) return;
+    if (event.target.closest?.('.deep-index')) return;
+    if (approachChapter(event, dir, Math.abs(dy))) return;
+    const stop = currentStopIndex();
+    const distance = distanceToEdge(dir, stop);
     if (!event.cancelable || Math.abs(dy) <= distance) return;
     event.preventDefault();
     if (distance) scrollTo({ top: scrollY + dir * Math.ceil(distance), behavior: 'instant' });
 
-    if (event.timeStamp < cooldownUntil) return;
-    if (dir !== accumDir) { accum = 0; accumDir = dir; }
+    if (performance.now() < cooldownUntil) return;
+    if (dir !== accumDir || stop !== accumStop) {
+      accum = 0;
+      accumDir = dir;
+      accumStop = stop;
+    }
     accum += dy - dir * distance;
-    clearTimeout(accumTimer);
-    accumTimer = setTimeout(() => { accum = 0; accumDir = 0; }, 180);
     if (Math.abs(accum) >= WHEEL_THRESHOLD) {
       accum = 0;
       accumDir = 0;
       trigger(dir);
+    }
+  }
+
+  addEventListener('wheel', event => {
+    if (event.defaultPrevented || event.ctrlKey || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
+    const dy = event.deltaY * unit;
+    const overChat = !!event.target.closest?.('#s15 .chat');
+    pageWithWheel(event, dy, overChat);
+    // When the pager leaves the wheel to the browser, scroll the document past the chat.
+    if (overChat && event.cancelable && !event.defaultPrevented) {
+      event.preventDefault();
+      scrollBy({ top: dy, behavior: 'instant' });
     }
   }, { passive: false });
 
@@ -3891,11 +4004,21 @@ function createChapterDeck(stops, transitions) {
     if (!canPage() || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
     const { key } = event;
     if (['Home', 'End', 'Escape'].includes(key)) { cancelActive(); return; }
-    const pagesFromMistakes = ['PageUp', 'PageDown'].includes(key) && event.target.closest?.('#s14');
-    if (!pagesFromMistakes && event.target.closest?.('a, button, input, textarea, select, [role="slider"], [contenteditable]')) return;
+    const pagingKey = key === 'PageUp' || key === 'PageDown';
+    if (event.target.closest?.('input, textarea, select, [role="slider"], [contenteditable]')) return;
+    if (!pagingKey && event.target.closest?.('a, button')) return;
     const dir = (['ArrowUp', 'PageUp'].includes(key) || (key === ' ' && event.shiftKey)) ? -1
       : ['ArrowDown', 'PageDown', ' '].includes(key) ? 1 : 0;
-    if (!dir) return;
+    if (!dir || canChildScroll(event.target, dir)) return;
+    noteEntryGesture(dir);
+    if (entryY !== undefined) {
+      event.preventDefault();
+      return;
+    }
+    if (jumpScroll) {
+      cancelJumpScroll();
+      cooldownUntil = performance.now() + 180;
+    }
     const current = running();
     if (current) {
       event.preventDefault();
@@ -3903,57 +4026,244 @@ function createChapterDeck(stops, transitions) {
       return;
     }
     const step = key === 'ArrowUp' || key === 'ArrowDown' ? 40 : innerHeight * .875;
-    if (enterChapter(dir, step)) {
-      event.preventDefault();
-      return;
-    }
+    if (approachChapter(event, dir, step)) return;
     const distance = distanceToEdge(dir);
     if (distance < step) {
       event.preventDefault();
       if (distance) scrollTo({ top: scrollY + dir * Math.ceil(distance), behavior: 'instant' });
-      if (!distance || step - distance >= WHEEL_THRESHOLD) trigger(dir, !event.repeat);
+      if (!distance || step - distance >= KEY_EDGE_THRESHOLD) trigger(dir, !event.repeat);
     }
   });
 
   addEventListener('touchstart', ({ touches, target }) => {
+    cancelJumpScroll();
     const finger = touches[0];
-    touchStart = touches.length === 1 && !isInteractiveTarget(target) ? { y: finger.clientY, x: finger.clientX, target } : null;
+    touchStart = touches.length === 1 && !ownsVerticalTouch(target) ? { y: finger.clientY, x: finger.clientX, target } : null;
   }, { passive: true });
+
+  for (const event of ['touchend', 'touchcancel']) addEventListener(event, () => { touchStart = null; }, { passive: true });
 
   addEventListener('touchmove', event => {
     if (event.defaultPrevented || !touchStart || event.touches.length !== 1 || !canPage()) return;
-    if (touchStart.landed) {
-      if (event.cancelable) event.preventDefault();
-      return;
-    }
     const { clientX: x, clientY: y } = event.touches[0];
     const delta = touchStart.y - y;
     if (Math.abs(delta) <= Math.abs(x - touchStart.x)) return;
     const dir = Math.sign(delta);
+    touchStart.x = x;
+    touchStart.y = y;
+    noteEntryGesture(dir);
+    if (entryY !== undefined) {
+      if (event.cancelable) event.preventDefault();
+      return;
+    }
     const current = running();
     if (current) {
       if (event.cancelable) event.preventDefault();
-      if (dir !== current.dir && Math.abs(delta) >= 24) {
-        touchStart = null;
-        changeDirection(current, dir);
-      }
+      current.reversal = dir === current.dir ? 0 : current.reversal + Math.abs(delta);
+      if (current.reversal >= 24) changeDirection(current, dir);
+      return;
+    }
+    if (touchStart.landed) {
+      if (event.cancelable) event.preventDefault();
       return;
     }
     if (canChildScroll(touchStart.target, dir) || !event.cancelable) return;
-    if (enterChapter(dir, Math.abs(delta))) {
-      event.preventDefault();
-      touchStart.landed = true;
-      return;
-    }
-    if (distanceToEdge(dir) !== 0) return;
-    if (event.cancelable) event.preventDefault();
-    if (Math.abs(delta) >= TOUCH_THRESHOLD) {
-      touchStart = { x, y, target: touchStart.target };
-      trigger(dir);
+    if (approachChapter(event, dir, Math.abs(delta))) return;
+    const distance = distanceToEdge(dir);
+    if (!Number.isFinite(distance)) return;
+    event.preventDefault();
+    // Keep the first vertical move cancellable so a tall scene cannot fling past its handoff.
+    const advance = Math.min(Math.abs(delta), distance);
+    if (advance) scrollTo({ top: scrollY + dir * Math.ceil(advance), behavior: 'instant' });
+    if (touchStart.dir !== dir) touchStart.travel = 0;
+    touchStart.dir = dir;
+    touchStart.travel += Math.abs(delta) - advance;
+    if (touchStart.travel >= TOUCH_THRESHOLD) {
+      touchStart.travel = 0;
+      touchStart.landed = trigger(dir);
     }
   }, { passive: false });
 
-  watchScrollMotion(running);
+  addEventListener('scroll', () => {
+    const top = scrollY;
+    const previous = lastTop;
+    lastTop = top;
+    if (entryY !== undefined) {
+      if (!canLockEntry()) releaseChapterEntry();
+      else if (Math.abs(top - entryY) > 1) scrollTo({ top: entryY, behavior: 'instant' });
+      return;
+    }
+    if (!canLockEntry() || location.hash !== entryHash || performance.now() > nativeEntryUntil || top <= previous || running()) return;
+    // A native fling can cross the boundary after its last cancellable input event.
+    const entryTop = Math.round(bounds(opener, top).y);
+    if (previous < entryTop && top >= entryTop) lockChapterEntry();
+    else if (top < entryTop) nativeEntryUntil = performance.now() + NATIVE_SCROLL_GAP;
+  }, { passive: true });
+  function setupSectionIndex() {
+    const nav = document.getElementById('deep-index');
+    const chapter = opener.closest('.deep');
+    if (!nav || !chapter) return () => {};
+
+    const toggle = nav.querySelector('.deep-index-toggle');
+    const panel = nav.querySelector('.deep-index-panel');
+    const links = Array.from(nav.querySelectorAll('a[data-target]'));
+    const sections = links.map(link => document.getElementById(link.dataset.target)).filter(Boolean);
+    let hoverTimer = 0;
+
+    function layoutSlabs() {
+      if (!panel || !links.length) return;
+      const panelHeight = panel.offsetHeight;
+      if (!panelHeight) return;
+      const pitch = innerWidth <= 860 ? 8 : 9;
+      const groupGap = 8;
+      const stackH = (links.length - 1) * pitch + groupGap;
+      const startY = (panelHeight - stackH) / 2;
+      const center = (links.length - 1) / 2;
+      links.forEach((link, i) => {
+        let rowY = link.offsetHeight / 2;
+        let el = link;
+        while (el && el !== panel) {
+          rowY += el.offsetTop;
+          el = el.offsetParent;
+        }
+        const slabY = startY + i * pitch + (i >= 5 ? groupGap : 0);
+        link.style.setProperty('--slab-dy', `${(slabY - rowY).toFixed(1)}px`);
+        link.style.setProperty('--dist', Math.abs(i - center).toFixed(1));
+      });
+      const cardSy = Math.min(1, (stackH + 24) / panelHeight);
+      nav.style.setProperty('--card-sy', cardSy.toFixed(3));
+      nav.style.setProperty('--slab-hit-h', `${Math.round(stackH + 48)}px`);
+    }
+
+    function setHover(on) {
+      clearTimeout(hoverTimer);
+      hoverTimer = 0;
+      nav.classList.toggle('is-hover', on);
+    }
+
+    function setOpen(open) {
+      nav.classList.toggle('is-open', open);
+      toggle?.setAttribute('aria-expanded', String(open));
+    }
+
+    function updateIndex() {
+      const visible = !window.__presenting && chapter.getBoundingClientRect().top <= innerHeight * .35;
+      nav.classList.toggle('is-visible', visible);
+      if (!visible) {
+        setHover(false);
+        setOpen(false);
+        return;
+      }
+      let activeId = '';
+      for (const section of sections) {
+        const r = section.getBoundingClientRect();
+        if (r.top <= innerHeight * .45 && r.bottom >= innerHeight * .25) {
+          activeId = section.id;
+          break;
+        }
+      }
+      for (const link of links) {
+        if (link.dataset.target === activeId) link.setAttribute('aria-current', 'location');
+        else link.removeAttribute('aria-current');
+      }
+    }
+
+    function scrollToSection(target) {
+      cancelActive();
+      sanitizeChapter();
+      nativeEntryUntil = 0;
+      const from = scrollY;
+      const maxScroll = Math.max(0, root.scrollHeight - innerHeight);
+      const to = Math.min(maxScroll, Math.max(0, bounds(target, from).y));
+      const dist = Math.abs(to - from);
+
+      history.replaceState(null, '', `#${target.id}`);
+      target.focus({ preventScroll: true });
+
+      if (dist < 2 || reducedMotion.matches || document.hidden) {
+        scrollTo({ top: to, behavior: 'instant' });
+        lastTop = scrollY;
+        cooldownUntil = performance.now() + 220;
+        updateIndex();
+        return;
+      }
+
+      const screens = dist / Math.max(1, innerHeight);
+      const duration = Math.round(Math.min(1100, Math.max(460, 420 + Math.sqrt(screens) * 200)));
+      const start = performance.now();
+      const state = { frame: 0 };
+      jumpScroll = state;
+
+      function step(now) {
+        if (jumpScroll !== state) return;
+        nativeEntryUntil = 0;
+        const k = Math.min(1, (now - start) / duration);
+        if (k >= 1) {
+          jumpScroll = undefined;
+          const finalMax = Math.max(0, root.scrollHeight - innerHeight);
+          const finalTo = Math.min(finalMax, Math.max(0, bounds(target, scrollY).y));
+          scrollTo({ top: finalTo, behavior: 'instant' });
+          lastTop = scrollY;
+          cooldownUntil = performance.now() + 220;
+          updateIndex();
+          return;
+        }
+        scrollTo({ top: from + (to - from) * easeJump(k), behavior: 'instant' });
+        lastTop = scrollY;
+        state.frame = requestAnimationFrame(step);
+      }
+
+      state.frame = requestAnimationFrame(step);
+    }
+
+    for (const link of links) {
+      link.addEventListener('click', event => {
+        const target = document.getElementById(link.dataset.target);
+        if (!target) return;
+        event.preventDefault();
+        setHover(false);
+        setOpen(false);
+        if (nav.contains(document.activeElement)) document.activeElement.blur();
+        scrollToSection(target);
+      });
+    }
+
+    nav.addEventListener('pointerenter', event => {
+      if (event.pointerType === 'touch' || !nav.classList.contains('is-visible')) return;
+      setHover(true);
+    });
+    nav.addEventListener('pointerleave', event => {
+      if (event.pointerType === 'touch') return;
+      clearTimeout(hoverTimer);
+      hoverTimer = setTimeout(() => setHover(false), 80);
+    });
+    toggle?.addEventListener('click', () => {
+      setOpen(!nav.classList.contains('is-open'));
+    });
+    document.addEventListener('pointerdown', event => {
+      if (jumpScroll && !nav.contains(event.target)) cancelJumpScroll();
+      if (nav.classList.contains('is-open') && !nav.contains(event.target)) setOpen(false);
+    });
+    addEventListener('keydown', event => {
+      if (event.key === 'Escape' && (nav.classList.contains('is-open') || nav.classList.contains('is-hover') || nav.contains(document.activeElement))) {
+        setHover(false);
+        setOpen(false);
+        if (nav.contains(document.activeElement)) document.activeElement.blur();
+      }
+    });
+    addEventListener('resize', layoutSlabs, { passive: true });
+    document.fonts?.ready.then(layoutSlabs);
+    layoutSlabs();
+
+    return updateIndex;
+  }
+
+  const updateIndex = setupSectionIndex();
+  updateIndex();
+  watchScrollMotion(() => {
+    running();
+    updateIndex();
+  });
   for (const ev of ['resize', 'hashchange', 'pagehide']) addEventListener(ev, cancelActive);
   document.addEventListener('visibilitychange', () => { if (document.hidden) cancelActive(); });
   reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) cancelActive(); });
@@ -3961,7 +4271,6 @@ function createChapterDeck(stops, transitions) {
 
 const chapterStops = [
   document.querySelector('.deep-head'),
-  document.getElementById('part-one'),
   document.getElementById('s6'),
   document.getElementById('s7'),
   document.getElementById('s8'),
@@ -3978,8 +4287,6 @@ const chapterStops = [
   document.getElementById('deep-end'),
 ];
 
-const blink = document.getElementById('deep-blink-word');
-const partOne = document.getElementById('part-one');
 const power = document.getElementById('part-one-power');
 const closer = document.getElementById('s6');
 const flipping = document.getElementById('s7');
@@ -3997,7 +4304,6 @@ const twoCards = document.getElementById('s16');
 const carKey = document.getElementById('s17');
 const finale = document.getElementById('deep-end');
 
-const t0 = blink?.animate && partOne ? watchPartOne(blink, partOne) : null;
 const t1 = closer && power && typeof closer.animate === 'function' ? watchCloser(power, closer) : null;
 const t2 = closer && flipping && typeof closer.animate === 'function' ? watchFlipping(closer, flipping) : null;
 const t3 = flipping && tuning && typeof tuning.animate === 'function' ? watchTuning(flipping, tuning) : null;
@@ -4013,4 +4319,4 @@ const t12 = conversationScene && twoCards ? watchTwoCards(conversationScene, two
 const t13 = twoCards && carKey ? watchCarKey(twoCards, carKey) : null;
 const t14 = carKey && finale ? watchFinale(carKey, finale) : null;
 
-createChapterDeck(chapterStops, [t0, t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14]);
+createChapterDeck(chapterStops, [t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14]);
