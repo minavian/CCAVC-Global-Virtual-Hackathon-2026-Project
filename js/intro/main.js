@@ -365,18 +365,17 @@ function intro(experience) {
   // gap. The answer: the field at the reader, with a dip each time the card's switch closes
   // (drawn far deeper than the few percent it really is, and flickering with the 847.5 kHz
   // subcarrier). The line is laid out once per message and drawn up to now; each byte
-  // appears once the receiving chip has read it.
+  // appears once the receiving chip has read it. `strength`: in the lab, the answer's strength
+  // there as a share of a normal tap's (`answerScale`), so a faint answer dips less, as the 3D
+  // shows it; in steps of 5%, so the line is laid out again only when that visibly changes.
   const traceY = (dir, level) => 3 + (1 - level) * 18;
-  function paintTrace(said) {
+  function paintTrace(said, strength = 1) {
     const { length, dir } = said;
+    const depth = .6 * Math.round(Math.min(1, strength) * 20) / 20;
     if (film.traceFor !== said.name) {
       film.traceFor = said.name;
+      film.traceDepth = null;
       film.trace.setAttribute('viewBox', `0 0 ${length} 24`);
-      let d = '';
-      for (let n = 0; n < length; n++) {
-        d += `${n ? 'L' : 'M'}${n} ${traceY(dir, dir > 0 ? said.signal[n] : 1 - .6 * said.raw[n]).toFixed(2)}`;
-      }
-      film.traceLine.setAttribute('d', d);
       film.traceTrack.setAttribute('d', `M0 3H${length}`);
       // Each byte sits under its 8 bits (bit k is the frame's bit time k + 1; a byte's ninth
       // bit is its check bit).
@@ -388,9 +387,17 @@ function intro(experience) {
         return label;
       }));
     }
+    if (film.traceDepth !== depth) {
+      film.traceDepth = depth;
+      let d = '';
+      for (let n = 0; n < length; n++) {
+        d += `${n ? 'L' : 'M'}${n} ${traceY(dir, dir > 0 ? said.signal[n] : 1 - depth * said.raw[n]).toFixed(2)}`;
+      }
+      film.traceLine.setAttribute('d', d);
+    }
     const now = Math.min(length, Math.max(0, said.n));
     film.traceClip.setAttribute('width', now);
-    const level = dir > 0 ? said.exact : 1 - .6 * said.exact;
+    const level = dir > 0 ? said.exact : 1 - depth * said.exact;
     film.traceDot.style.left = `${now / length * 100}%`;
     film.traceDot.style.top = `${traceY(dir, level) / 24 * 100}%`;
     film.traceDot.style.opacity = said.n >= length ? 0 : 1;
@@ -1107,7 +1114,7 @@ function intro(experience) {
       }
       film.tag.dataset.kind = tag.kind;
       film.tag.style.transform = tag.at ? `translate3d(${tag.at.x}px, ${tag.at.y}px, 0)` : '';
-      if (tag.kind !== 'check') paintTrace(said);
+      if (tag.kind !== 'check') paintTrace(said, STEPS[step].lab ? b.answerScale ?? 1 : 1);
     }
     // Not while it plays by itself: then there is nothing to do but watch.
     // In the lab the hint says the card can be moved; elsewhere, that the view can be turned.
