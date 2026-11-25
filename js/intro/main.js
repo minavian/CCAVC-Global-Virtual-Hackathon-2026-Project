@@ -140,8 +140,9 @@ function intro(experience) {
   let shotTilt = 1;
   let orbitDrag = null, orbited = false;
   // In the lab the card itself can be dragged up or down, closer to the reader or away (`cardDrag`);
-  // `cardMoved` once it has been, so the hint that says so can go.
-  let cardDrag = null, cardMoved = false;
+  // `cardMoved` once it has been, so the hint that says so can go; then it says the chart can be
+  // pressed too, until it has been (`chartPressed`).
+  let cardDrag = null, cardMoved = false, chartPressed = false;
   // Autoplay. Until the visitor does anything, the close-up plays by itself: once the card is
   // ready it is carried to the reader, every step holds for its `hold` (cinema.js), and Ask
   // is pressed for them. The moment they touch, click, drag or press a key, it stops and
@@ -1419,10 +1420,11 @@ function intro(experience) {
       if (tag.kind !== 'check') paintTrace(said, STEPS[step].lab ? b.answerScale ?? 1 : 1);
     }
     // Not while it plays by itself: then there is nothing to do but watch.
-    // In the lab the hint says the card can be moved; elsewhere, that the view can be turned.
-    const hint = inLab ? 'Drag the card to move it.' : 'Drag to look around';
+    // In the lab the hint says the card can be moved, then that the chart can be dragged too;
+    // elsewhere, that the view can be turned.
+    const hint = inLab ? (cardMoved ? 'Drag on the chart too.' : 'Drag the card to move it.') : 'Drag to look around';
     if (film.hint.textContent !== hint) film.hint.textContent = hint;
-    film.hint.classList.toggle('is-shown', docked && b.dark > .6 && !auto.on && (inLab ? !cardMoved : !orbited));
+    film.hint.classList.toggle('is-shown', docked && b.dark > .6 && !auto.on && (inLab ? !(cardMoved && chartPressed) : !orbited));
 
     // The check mark, drawn over the reader, and the explanation at the end.
     const top = available ? scene.anchor('readerTop') : { x: layout.reader.x, y: layout.reader.y - layout.reader.height * .3 };
@@ -1735,6 +1737,7 @@ function intro(experience) {
   labUi.plot.addEventListener('pointerdown', event => {
     if (event.button !== 0 || step !== LAB) return;
     takeOver();
+    chartPressed = true;
     plotHeld = event.pointerId;
     labUi.plot.setPointerCapture(event.pointerId);
     labUi.plot.classList.add('is-held');
