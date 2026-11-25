@@ -799,6 +799,29 @@ function intro(experience) {
   }
 
   const MAP_FADE = 260;
+  // The rule a payment terminal is built to (EMV contactless): it must read a card anywhere up to
+  // 4 cm from its face. On the card reader's distance charts and Map, a dotted line there, named
+  // at its top, so its 4.9 cm reach can be seen to clear it (and metal, say, not to).
+  const TERMINAL_CM = 4;
+  function paintTerminalRule(g, X, top, bottom, H) {
+    if (lab.set.reader !== 'pad') return;
+    g.save();
+    const x = Math.round(X(TERMINAL_CM)) + .5;
+    g.strokeStyle = 'rgba(244,241,234,.35)';
+    g.lineWidth = 1;
+    g.setLineDash([1, 3]);
+    g.beginPath(); g.moveTo(x, top); g.lineTo(x, H - bottom); g.stroke();
+    g.setLineDash([]);
+    g.font = '600 9px "Inter Tight", system-ui, sans-serif';
+    g.textAlign = 'left';
+    g.lineJoin = 'round';
+    g.strokeStyle = 'rgba(20,18,16,.75)';
+    g.lineWidth = 3;
+    g.strokeText('must reach 4 cm', x + 3, top + 8);
+    g.fillStyle = 'rgba(244,241,234,.6)';
+    g.fillText('must reach 4 cm', x + 3, top + 8);
+    g.restore();
+  }
   // The charts' frame inside the canvas (px): room for the scale on the left and along the bottom.
   const PLOT = { left: 30, right: 8, top: 8, bottom: 18 };
   // One Map drawn (see `paintMap`): faint grey where no card can be (closer than a card turned
@@ -920,6 +943,7 @@ function intro(experience) {
       g.setLineDash([]);
     }
     g.restore();
+    if (drawn >= 1) paintTerminalRule(g, X, top, bottom, H);
     const dotX = X(lab.set.distance), dotY = Y(lab.set.angle), avoid = [[dotX, dotY]];
     if (outline && drawn >= 1) {
       // Named just over its peak (or beside it, at the chart's top), clear of the dot: light, with a
@@ -1030,7 +1054,7 @@ function intro(experience) {
       // The reader's frequency.
       g.strokeStyle = 'rgba(74,147,255,.7)';
       g.beginPath(); g.moveTo(X(13.56), top); g.lineTo(X(13.56), H - bottom); g.stroke();
-    }
+    } else paintTerminalRule(g, X, top, bottom, H);
     // The other reader's curve, faint and dashed, named at its near end, just under its line,
     // where the curve in use never is (the label used to land on the dot of the setting).
     if (lab.other && lab.other.points.length) {
@@ -1074,7 +1098,8 @@ function intro(experience) {
       ? `The answer's strength against distance: it rises as the card comes in, then falls very close. At ${lab.set.distance.toFixed(1)} cm it is ${(lab.m.dip * 100).toFixed(1)}%.`
       : tuning
       ? `Voltage at the chip against the ${READERS[lab.set.reader].noun}'s frequency, with the card tuned to ${lab.set.tune.toFixed(2)} MHz. At 13.56 MHz it gets ${lab.m.raw.toFixed(1)} volts; it needs 2.`
-      : `Voltage at the chip against distance. At ${lab.set.distance.toFixed(1)} cm it gets ${lab.m.raw.toFixed(1)} volts; it needs 2. It works up to ${lab.m.reach.toFixed(1)} cm.`);
+      : `Voltage at the chip against distance. At ${lab.set.distance.toFixed(1)} cm it gets ${lab.m.raw.toFixed(1)} volts; it needs 2. It works up to ${lab.m.reach.toFixed(1)} cm.`
+        + (lab.set.reader === 'pad' ? ` A payment terminal must read a card up to ${TERMINAL_CM} cm away.` : ''));
   }
 
   // Ask in the lab: the question goes out; the card answers only if its chip is awake.
