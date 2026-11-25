@@ -172,12 +172,12 @@ const ALL_HOLD_CLASSES = [
   'deep-twocards-hold', 'deep-carkey-hold', 'deep-finale-hold', 'deep-reverse-hold',
 ];
 const ALL_STAGED_CLASSES = [
-  's7-awaiting', 's7-entering', 's8-awaiting', 's9-awaiting', 's9-entering',
+  's8-awaiting', 's9-awaiting', 's9-entering',
   's10-awaiting', 's10-entering', 's12-staged', 's12-title-in-flight', 's13-staged',
   's15-staged', 's16-staged', 's17-staged', 'deep-end-staged', 'deep-rev-staged',
 ];
 const STRAY_OVERLAY_SELECTOR = [
-  '.deep-rev-copy', '.deep-blink-cover', '.part-two-reveal', '.part-two-reverse-cover',
+  '.deep-rev-copy', '.deep-blink-cover', '.s7-paper-fade', '.part-two-reveal', '.part-two-reverse-cover',
   '.s12-vortex', '.s13-spectrum-copy', '.s14-timing-copy',
   '.s15-handoff-copy', '.s16-handoff-copy', '.s16-title-morph', '.s17-handoff-copy', '.s17-portal-wallet',
 ].join(', ');
@@ -363,7 +363,7 @@ function runReverseCanvasMorph(fromEl, toEl, { mode = 'default', cut = 430, arri
         ctx.stroke();
         ctx.restore();
       }
-    } else if (mode === 'flipping' || mode === 'tuning' || mode === 'metal' || mode === 'pauses') {
+    } else if (mode === 'tuning' || mode === 'metal' || mode === 'pauses') {
       const waveFade = ease(120, 360, elapsed) * (1 - ease(cut + 180, arrivalEnd, elapsed));
       if (waveFade > 0) {
         ctx.save();
@@ -582,277 +582,97 @@ function watchCloser(source, plate) {
   };
 }
 
-function watchFlipping(previous, plate, settlePrevious) {
-  const chapter = plate.closest('.deep');
+function watchFlipping(previous, plate) {
   const root = document.documentElement;
-  const previousWords = previous.querySelector('.plate-words');
-  const previousTitle = previous.querySelector('#s6-title');
-  const words = plate.querySelector('.plate-words');
-  const wordTargets = [...plate.querySelectorAll('#s7-title > span')];
-  const controlText = plate.querySelector('.s7-control-text');
-  const speed = plate.querySelector('#s7-speed');
-  const coil = previous.querySelector('#s6-radius');
-  const sourceChart = previous.querySelector('#s6-chart');
-  const targetChart = plate.querySelector('#s7-chart');
-  const plot = document.createElement('canvas');
-  const track = document.createElement('input');
-  const ctx = plot.getContext('2d');
-  const theme = getComputedStyle(chapter);
-  const colors = ['--ink', '--copper'].map(name => theme.getPropertyValue(name).trim());
-  const motions = [];
-  const wordsInFlight = [];
-  const traceTime = 2180, guideTime = 2720, readHold = 1000;
+  const cover = document.createElement('span');
+  cover.className = 's7-paper-fade';
+  cover.setAttribute('aria-hidden', 'true');
+  const midpoint = 280, duration = 620, readHold = 1000;
+  let run, frame;
 
-  plot.className = 's7-plot-copy';
-  plot.setAttribute('aria-hidden', 'true');
-  Object.assign(track, { type: 'range', min: '0', max: '1', step: 'any', className: 's7-track-copy', inert: true });
-  track.setAttribute('aria-hidden', 'true');
-
-  let layout, previousTop, targetTop, lockedAt, waves, revCtrl;
-  let frame = 0;
-  const active = () => lockedAt !== undefined || !!revCtrl?.active();
   const canPlay = () => !reducedMotion.matches && !document.hidden;
 
-  function settle() {
-    revCtrl?.cancel();
-    plate.classList.remove('s7-awaiting', 's7-entering');
-    if (lockedAt === undefined) return;
+  function cancel() {
+    if (!run) return;
     cancelAnimationFrame(frame);
-    for (const motion of motions) motion.cancel();
-    motions.length = 0;
-    for (const { copy, target } of wordsInFlight) {
-      copy.remove();
-      target.style.removeProperty('opacity');
-    }
-    wordsInFlight.length = 0;
-    for (const node of [sourceChart, previousTitle, coil, speed]) node.style.removeProperty('opacity');
-    track.remove();
-    plot.remove();
-    delete targetChart.drawHandoff;
-    delete targetChart.flippingEntrance;
-    lockedAt = undefined;
+    run = undefined;
+    cover.remove();
     root.classList.remove('deep-flipping-hold');
     scheduleMotion();
   }
 
-  function skip() {
-    settle();
+  function render() {
+    const { position, before, after, dir } = run;
+    cover.style.opacity = position < midpoint ? ease(0, midpoint, position) : 1 - ease(midpoint, duration, position);
+    const showNext = position > midpoint || (position === midpoint && dir > 0);
+    const top = showNext ? after : before;
+    if (Math.abs(scrollY - top) > 1) scrollTo({ top, behavior: 'instant' });
+    run.top = scrollY;
   }
 
-  function viewportBox(node, top = scrollY) {
-    const box = bounds(node, scrollY);
-    return { ...box, y: box.y - top };
-  }
-
-  function collectWords() {
-    const text = previousTitle.firstChild;
-    const range = document.createRange();
-    const lineHeight = parseFloat(getComputedStyle(previousTitle).lineHeight);
-    const origins = [...text.data.matchAll(/\S+/g)].map(match => {
-      range.setStart(text, match.index);
-      range.setEnd(text, match.index + match[0].length);
-      const rect = range.getBoundingClientRect();
-      return { word: match[0], x: rect.left, y: rect.top + (rect.height - lineHeight) / 2 };
-    });
-
-    wordTargets.forEach((target, index) => {
-      const to = viewportBox(target, targetTop);
-      const from = origins[Math.min(index, origins.length - 1)];
-      const copy = document.createElement('span');
-      copy.className = 's7-flow-word';
-      copy.setAttribute('aria-hidden', 'true');
-      copy.textContent = from.word;
-      copy.style.left = `${from.x}px`;
-      copy.style.top = `${from.y}px`;
-      target.style.opacity = 0;
-      chapter.append(copy);
-      wordsInFlight.push({ copy, target, to, from, joins: index >= origins.length });
-    });
-    previousTitle.style.opacity = 0;
-  }
-
-  function flow(from, to, t, dip) {
-    return {
-      x: mix(from.x, to.x, t),
-      y: mix(from.y, to.y, t) + Math.sin(Math.PI * t) * dip,
-    };
-  }
-
-  function pour(elapsed) {
-    wordsInFlight.forEach(({ copy, target, to, from, joins }, i) => {
-      const start = 110 + i * 95;
-      const p = stage(start, start + 900, elapsed);
-      const position = flow(from, to, ease(0, 1, p), -32 - i * 12);
-      const earlier = wordsInFlight[i - 1]?.to;
-      if (earlier && Math.abs(earlier.y - to.y) < 2) {
-        const edge = earlier.x + earlier.w;
-        const above = ease(.46, .65, p) * (1 - ease(edge, Math.max(edge + 1, to.x), position.x));
-        const lane = i % 2 === 0 && to.y > 2 * to.h + 10 ? to.h + 5 : 0;
-        position.y = mix(position.y, Math.min(position.y, Math.max(4, to.y - to.h - 3 - lane)), above);
-      }
-      const swap = ease(.28, .48, p) * (1 - ease(.49, .70, p));
-      const content = p < .49 ? from.word : target.textContent;
-      if (copy.textContent !== content) copy.textContent = content;
-      const arrive = ease(.91, 1, p);
-      copy.style.transform = `translate(${position.x - from.x}px, ${position.y - from.y}px) skewX(${-7 * Math.sin(Math.PI * p)}deg)`;
-      copy.style.opacity = (joins ? ease(.37, .63, p) : 1 - .86 * swap) * (1 - arrive);
-      copy.style.filter = `blur(${swap * 3}px)`;
-      target.style.opacity = arrive;
-    });
-
-    const { fromTrack, toTrack, coilValue, speedValue } = layout;
-    const t = ease(360, 1500, elapsed);
-    const placed = ease(1400, 1530, elapsed);
-    const position = flow(fromTrack, toTrack, t, 47);
-    const pinch = 1 - Math.sin(Math.PI * t) * .43;
-    track.value = mix(coilValue, speedValue, ease(.34, .85, t));
-    track.style.transform = `translate(${position.x - fromTrack.x}px, ${position.y - fromTrack.y}px) scaleX(${mix(fromTrack.w, toTrack.w, t) * pinch / fromTrack.w})`;
-    track.style.opacity = 1 - placed;
-    speed.style.opacity = placed;
-  }
-
-  function drawPlot(elapsed) {
-    const { source, target, width, height, outgoing } = layout;
-    const p = stage(200, traceTime, elapsed);
-    const gather = ease(.03, .29, p);
-    const travel = ease(.32, .61, p);
-    const split = waves ? ease(.64, .78, p) : 0;
-    const bend = waves ? ease(.81, 1, p) : 0;
-    const merged = ease(.65, 1, gather) * (1 - ease(0, .55, split));
-    const alpha = ease(200, 410, elapsed) * (1 - targetChart.flippingEntrance.traces);
-    ctx.clearRect(0, 0, width, height);
-    if (alpha === 0) return;
-
-    const centerX = mix(source.x + source.w * .52, target.x + target.w * .53, travel);
-    const centerY = mix(source.y + source.h * .49, Math.min(target.y + target.h * .51, height * .84), travel);
-    const length = Math.min(width * .60, 284);
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = mix(2, 1.45, gather * (1 - bend));
-    outgoing.forEach(({ box, points }, index) => {
-      if (index === 0 && merged === 1) return;
-      const wave = waves?.[index];
-      ctx.globalAlpha = alpha * (index === 0 ? 1 - merged : 1);
-      ctx.strokeStyle = colors[index];
-      ctx.beginPath();
-      for (let i = 0; i <= 200; i++) {
-        const u = i / 200, sample = u * (points.length - 1), j = Math.floor(sample);
-        const [ax, ay] = points[j], [bx, by] = points[Math.min(j + 1, points.length - 1)];
-        const x = source.x + box.x + mix(ax, bx, sample - j) * box.w;
-        const y = source.y + box.y + mix(ay, by, sample - j) * box.h;
-        const mergeX = mix(x, centerX + (u - .5) * length, gather);
-        const mergeY = mix(y, centerY, gather);
-        // Open onto the two baselines first, then give the live waves their height.
-        const px = wave ? mix(mergeX, target.x + wave.box.x + wave.box.w * u, split) : mergeX;
-        const py = wave ? mix(mergeY, target.y + wave.box.y + wave.box.h * mix(.5, wave.yAt(u), bend), split) : mergeY;
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      }
-      ctx.stroke();
-    });
-    ctx.globalAlpha = 1;
-  }
-
-  function begin(event) {
-    if (!sourceChart.handoffPlots || !ctx) return;
-    event.preventDefault();
-    settlePrevious();
-    const fromTrack = viewportBox(coil), toTrack = viewportBox(speed, targetTop);
-    const fraction = input => (input.valueAsNumber - Number(input.min)) / (Number(input.max) - Number(input.min));
-    layout = {
-      source: viewportBox(sourceChart), target: viewportBox(targetChart, targetTop),
-      outgoing: sourceChart.handoffPlots, fromTrack, toTrack, width: viewportWidth(), height: innerHeight,
-      coilValue: fraction(coil), speedValue: fraction(speed),
-    };
-
-    lockedAt = scrollY;
-    waves = null;
-    root.classList.add('deep-flipping-hold');
-    plate.classList.add('s7-entering');
-    const dpr = Math.min(devicePixelRatio || 1, 2);
-    plot.width = Math.round(layout.width * dpr);
-    plot.height = Math.round(layout.height * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    Object.assign(track.style, { left: `${fromTrack.x}px`, top: `${fromTrack.y}px`, width: `${fromTrack.w}px` });
-    track.value = layout.coilValue;
-    chapter.append(plot, track);
-    collectWords();
-    coil.style.opacity = 0;
-    speed.style.opacity = 0;
-
-    const entrance = { labels: 0, traces: 0, guides: 0 };
-    targetChart.flippingEntrance = entrance;
-    targetChart.drawHandoff = live => { waves = live; };
-    motions.push(previousWords.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 530, fill: 'both' }));
-    const copy = [...words.children].filter(node => node.id !== 's7-title' && !node.contains(speed));
-    copy.splice(2, 0, controlText);
-    for (const [i, node] of copy.entries()) {
-      motions.push(node.animate([
-        { opacity: 0, transform: 'translate(-14px, -28px) skewX(-7deg)', filter: 'blur(2px)' },
-        { opacity: .83, transform: 'translate(3px, 6px) skewX(1deg)', offset: .7, filter: 'none' },
-        { opacity: 1, transform: 'none', filter: 'none' },
-      ], { duration: 550, delay: 750 + i * 91, easing: arrivalEase, fill: 'both' }));
+  function animate(now) {
+    const elapsed = Math.max(0, Math.min(48, now - run.last));
+    run.last = now;
+    const end = run.dir > 0 ? duration : 0;
+    let position = Math.max(0, Math.min(duration, run.position + run.dir * elapsed));
+    // Paint the fully covered frame even if a slow frame crosses the midpoint.
+    if ((run.position - midpoint) * (position - midpoint) < 0) position = midpoint;
+    if (run.position !== position) {
+      run.position = position;
+      render();
     }
-    plate.classList.remove('s7-awaiting');
-
-    const started = performance.now();
-    let seated = false;
-    function tick(now) {
-      const elapsed = now - started;
-      if (!seated && elapsed >= 620) {
-        seated = true;
-        plate.scrollIntoView({ block: 'start', behavior: 'instant' });
-        lockedAt = scrollY;
-      }
-      sourceChart.style.opacity = 1 - ease(200, 410, elapsed);
-      entrance.labels = ease(1990, 2270, elapsed);
-      entrance.traces = ease(2130, traceTime, elapsed);
-      entrance.guides = ease(2220, guideTime, elapsed);
-      if (track.isConnected) {
-        pour(elapsed);
-        if (elapsed >= 1530) track.remove();
-      }
-      if (entrance.traces < 1) drawPlot(elapsed);
-      else plot.remove();
-      if (elapsed >= guideTime + readHold) return skip();
-      frame = requestAnimationFrame(tick);
-    }
-    frame = requestAnimationFrame(tick);
-  }
-
-  watchScrollMotion((top, height, needsMeasure) => {
-    if (needsMeasure || targetTop === undefined) {
-      targetTop = bounds(plate, top).y;
-      previousTop = bounds(previous, top).y;
-    }
-    if (!canPlay() || (lockedAt !== undefined && Math.abs(top - lockedAt) > height * .95)) skip();
-    else if (lockedAt !== undefined && Math.abs(top - lockedAt) > 1) scrollTo({ top: lockedAt, behavior: 'instant' });
-  });
-
-  for (const event of ['pointerdown', 'focusin', 'input']) speed.addEventListener(event, skip);
-  for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, skip);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) skip(); });
-  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) skip(); });
-
-  return {
-    forward() {
-      if (!canPlay() || active()) return;
-      previousTop = bounds(previous, scrollY).y;
-      targetTop = bounds(plate, scrollY).y;
-      const cue = Math.max(previousTop, targetTop - innerHeight);
-      if (Math.abs(scrollY - cue) > 2) scrollTo({ top: cue, behavior: 'instant' });
-      if (!sourceChart.handoffPlots || !ctx) {
-        plate.scrollIntoView({ block: 'start', behavior: 'instant' });
+    if (position === end) {
+      run.hold ??= now + readHold;
+      if (now >= run.hold) {
+        const [departed, arrived] = run.dir > 0 ? [previous, plate] : [plate, previous];
+        cancel();
+        if (departed.contains(document.activeElement)) arrived.focus({ preventScroll: true });
         return;
       }
-      begin({ preventDefault() {}, cancelable: false });
+    }
+    frame = requestAnimationFrame(animate);
+  }
+
+  function start(dir) {
+    if (!canPlay() || run) return;
+    const beforeTop = bounds(previous, scrollY).y;
+    const afterTop = bounds(plate, scrollY).y;
+    // On a tall scene, reverse to the edge the visitor originally paged from.
+    const before = dir > 0 ? scrollY : Math.max(beforeTop, afterTop - innerHeight);
+    const after = dir > 0 ? afterTop : scrollY;
+    run = { before, after, dir, position: dir > 0 ? 0 : duration, last: performance.now() };
+    root.classList.add('deep-flipping-hold');
+    plate.closest('.deep').append(cover);
+    render();
+    frame = requestAnimationFrame(animate);
+  }
+
+  watchScrollMotion((top, height) => {
+    if (!run) return;
+    const drift = Math.abs(top - run.top);
+    if (!canPlay() || drift > height * .95) cancel();
+    else if (drift > 1) scrollTo({ top: run.top, behavior: 'instant' });
+  });
+
+  for (const scene of [previous, plate]) {
+    for (const event of ['pointerdown', 'focusin', 'input']) scene.addEventListener(event, cancel);
+  }
+  for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, cancel);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) cancel(); });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) cancel(); });
+
+  return {
+    forward: () => start(1),
+    reverse: () => start(-1),
+    turn(dir) {
+      if (!run) return false;
+      run.dir = dir;
+      run.last = performance.now();
+      run.hold = undefined;
+      return true;
     },
-    reverse() {
-      if (!canPlay() || active()) return;
-      revCtrl = runReverseCanvasMorph(plate, previous, { mode: 'flipping' });
-    },
-    cancel: skip,
-    active,
+    cancel,
+    active: () => !!run,
   };
 }
 
@@ -4231,7 +4051,7 @@ const finale = document.getElementById('deep-end');
 
 const t0 = blink?.animate && partOne ? watchPartOne(blink, partOne) : null;
 const t1 = closer && power && typeof closer.animate === 'function' ? watchCloser(power, closer) : null;
-const t2 = closer && flipping && typeof closer.animate === 'function' ? watchFlipping(closer, flipping, () => t1?.cancel?.()) : null;
+const t2 = closer && flipping && typeof closer.animate === 'function' ? watchFlipping(closer, flipping) : null;
 const t3 = flipping && tuning && typeof tuning.animate === 'function' ? watchTuning(flipping, tuning) : null;
 const t4 = tuning && metal ? watchMetal(tuning, metal) : null;
 const t5 = metal && pauses ? watchPauses(metal, pauses) : null;
