@@ -1013,7 +1013,25 @@ html[data-intro] .stage-light { opacity: 0; }
   padding: .25rem .7rem; border: 0; border-radius: 999px; font: inherit; font-size: .72rem; font-weight: 650;
   color: rgba(244, 241, 234, .7); background: transparent; cursor: pointer;
 }
-.intro .try-tabs button[aria-pressed="true"] { color: #141210; background: #f4f1ea; }
+.intro .try-tabs button[aria-pressed="true"] { color: #141210; }
+/* As the switches: one pill behind the tabs slides (and resizes) to the pressed one. Its place
+   and width are measured in main.js (--pill-x, --pill-w), as the tabs differ in width. */
+.intro .try-tabs { position: relative; isolation: isolate; }
+.intro .try-tabs::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: .15rem;
+  bottom: .15rem;
+  left: 0;
+  width: var(--pill-w, 0);
+  border-radius: 999px;
+  background: #f4f1ea;
+  transform: translateX(var(--pill-x, 0));
+  transition: transform .32s cubic-bezier(.2, .7, .2, 1), width .32s cubic-bezier(.2, .7, .2, 1);
+}
+.intro .try-tabs button { position: relative; transition: color .2s ease; }
+@media (prefers-reduced-motion: reduce) { .intro .try-tabs::before { transition: none; } }
 .intro .try-plot { width: 100%; height: 5.2rem; display: block; cursor: crosshair; }
 .intro .try-plot.is-held { cursor: grabbing; }
 .intro .try-controls { display: grid; gap: .35rem; }

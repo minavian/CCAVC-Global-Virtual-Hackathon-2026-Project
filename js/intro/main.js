@@ -219,7 +219,7 @@ function intro(experience) {
     place(reader, layout.reader.x, layout.reader.y, layout.reader.width, layout.reader.height);
     // The lab's chart is drawn to its own size: redrawn at the new one, or it stayed stretched
     // (or squeezed) from the old until the next change of setting.
-    if (!labUi.panel.hidden) paintPlot();
+    if (!labUi.panel.hidden) { paintPlot(); paintTabsPill(); }
     needsMeasure = false;
     return true;
   }
@@ -1462,7 +1462,7 @@ function intro(experience) {
         lab.tweens = { field: 0, volts: 0, reach: 0, answer: lab.targets?.answer === null ? null : 0, watts: 0 };
         lab.reveal = performance.now();
       }
-      requestAnimationFrame(() => { labUi.panel.classList.add('is-shown'); paintPlot(); });
+      requestAnimationFrame(() => { labUi.panel.classList.add('is-shown'); paintPlot(); paintTabsPill(); });
     } else if (!labShown && panelState === 'shown') {
       // Its exit: the same fade and slide as its entrance, backwards (.45 s), then hidden. A focus
       // left in it goes to the readout's Next (to the explanation, `focusWhenDone` sees to it).
@@ -1825,7 +1825,16 @@ function intro(experience) {
   }
   // What a press on the chart does, said on it, and how a touch on it moves: the Map takes every
   // direction; the others only across, so a swipe up or down still scrolls the panel.
+  // The chart tabs' sliding highlight (styles.css): the pressed tab's place and width, measured,
+  // as the tabs differ in width. Again whenever the layout may have changed (`measure`).
+  function paintTabsPill() {
+    const tab = labUi.tabs.find(button => button.getAttribute('aria-pressed') === 'true');
+    if (!tab || !tab.offsetWidth) return;
+    tab.parentElement.style.setProperty('--pill-x', tab.offsetLeft + 'px');
+    tab.parentElement.style.setProperty('--pill-w', tab.offsetWidth + 'px');
+  }
   function paintPlotPress() {
+    paintTabsPill();
     labUi.plot.title = { tuning: 'Press or drag to tune the card', map: 'Press or drag to move and turn the card' }[lab.chart]
       ?? 'Press or drag to move the card';
     labUi.plot.style.touchAction = lab.chart === 'map' ? 'none' : 'pan-y';
