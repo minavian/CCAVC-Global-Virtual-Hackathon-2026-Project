@@ -7,7 +7,7 @@
 // Started by main.js. See EXPLAINED.md.
 // (It replaced autoplay.js on 2026-11-26: the scroll assist that played one animation per scroll
 // from the top of the page to the card's drop. That file is in the git history, last at ec55bb0.)
-import { PACE, SCROLL_SCREENS } from './timeline.js?v=3';
+import { PACE, SCROLL_SCREENS } from './timeline.js?v=4';
 
 // Where "Here's how" holds still, in screens of the intro's scroll at the first pace (the
 // `scrollFrames` of timeline.js): the page may go to its end, no further.

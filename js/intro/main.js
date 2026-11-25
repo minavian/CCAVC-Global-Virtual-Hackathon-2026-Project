@@ -6,8 +6,8 @@
 // watch the answer flow back, and drag to turn the camera. See EXPLAINED.md.
 import { follow, settle, smoother, spring } from './easing.js';
 import { hold } from './hold.js?v=1';
-import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose, clamp, ease, mix, measureStage, restingFrame, scrollTime } from './timeline.js?v=3';
-import { renderSignals } from './signals.js?v=2';
+import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose, clamp, ease, mix, measureStage, restingFrame, scrollTime } from './timeline.js?v=4';
+import { renderSignals } from './signals.js?v=3';
 import { ANSWER_AFTER, APPROACH_DETAIL, APPROACH_TEXT, ASK, SAMPLES_PER_BIT, CARD_ID, IDLE, LAB, LAST, NEAREST, REAL_MS, SHOTS, STEPS, TALK, approach, approachBand, approachView, centimetres,
   checkByte, chipShare, hex, message, proofSeconds, proofTalk, setCardId, talkLevels, view } from './cinema.js';
 import { LAB_START, PRESETS, READERS, clampSetting, curve, labLevels, measure as measureLab, parseId, idProblem, proofCode, startFor, status as labStatus, wakes, chipPower, wakeMap, behind, nearestFor } from './lab-model.js';
