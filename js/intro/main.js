@@ -85,16 +85,46 @@ function intro(experience) {
     readers: [...experience.querySelectorAll('.try-reader button[data-reader]')], driveLabel: $('.try-control-drive span'),
     tags: [...experience.querySelectorAll('.try-tag button')],
   };
-  // Under each slider, a thin line: amber where along it the chip would wake, with everything
-  // else as set (`paintZones`).
-  labUi.zones = Object.fromEntries(Object.entries(labUi.inputs).map(([name, input]) => {
-    const bar = document.createElement('i');
-    bar.className = 'try-zone';
-    bar.setAttribute('aria-hidden', 'true');
-    bar.title = 'Amber: where the chip wakes, with everything else as set.';
-    input.after(bar);
-    return [name, bar];
+  // Each slider is drawn by the page (styles.css `.try-slider`): its track is a thin line, black
+  // where along it the chip would wake with everything else as set (`paintZones`), and its thumb
+  // glides after the slider's value on a spring (`paintSliders`), so it never jumps, whether it is
+  // moved by hand, by a situation, by the chart or by the demo. The real slider lies on top,
+  // unseen, so the mouse, touch and the keyboard work it as before.
+  const fraction = input => clamp((+input.value - +input.min) / ((+input.max - +input.min) || 1));
+  labUi.sliders = Object.fromEntries(Object.entries(labUi.inputs).map(([name, input]) => {
+    const box = document.createElement('span'), track = document.createElement('i'), thumb = document.createElement('i');
+    box.className = 'try-slider';
+    box.title = 'Black: where the chip wakes, with everything else as set.';
+    track.className = 'try-zone';
+    thumb.className = 'try-thumb';
+    track.setAttribute('aria-hidden', 'true');
+    thumb.setAttribute('aria-hidden', 'true');
+    input.replaceWith(box);
+    box.append(track, thumb, input);
+    return [name, { box, input, at: spring(fraction(input)) }];
   }));
+  labUi.zones = Object.fromEntries(Object.entries(labUi.sliders).map(([name, slider]) => [name, slider.box.firstChild]));
+  // The three switches (the chart's tabs, the reader, the tag): a black pill slides under the
+  // pressed button whenever it changes, however it changed (a click, a situation, the demo, Reset).
+  // Placed at once the first time it can be measured (the panel starts hidden), then it slides.
+  for (const group of experience.querySelectorAll('.try-tabs, .try-reader')) {
+    const pill = document.createElement('i');
+    pill.className = 'try-pill';
+    pill.setAttribute('aria-hidden', 'true');
+    group.prepend(pill);
+    let placed = false;
+    const place = () => {
+      const on = group.querySelector('button[aria-pressed="true"]');
+      if (!on || !on.offsetWidth) return;
+      if (!placed) pill.style.transition = 'none';
+      pill.style.width = on.offsetWidth + 'px';
+      pill.style.height = on.offsetHeight + 'px';
+      pill.style.transform = `translate3d(${on.offsetLeft}px, ${on.offsetTop}px, 0)`;
+      if (!placed) { void pill.offsetWidth; pill.style.transition = ''; placed = true; }
+    };
+    new MutationObserver(place).observe(group, { subtree: true, attributeFilter: ['aria-pressed'] });
+    new ResizeObserver(place).observe(group);
+  }
   // A dot for each step, as a button that jumps to it.
   film.dots = STEPS.slice(0, LAST).map((plan, i) => {
     const dot = document.createElement('li'), button = document.createElement('button');
@@ -611,7 +641,7 @@ function intro(experience) {
   }
 
   // Where along each slider the chip would wake, everything else as set: about 250 solves of
-  // the physics (well under a millisecond), drawn as amber stretches on a thin line under it.
+  // the physics (well under a millisecond), drawn as black stretches on the slider's track.
   function paintZones() {
     if (!labUi.zones) return;
     const s = lab.set;
@@ -621,7 +651,7 @@ function intro(experience) {
       for (let i = 0; i <= n; i++) {
         const at = min + (max - min) * i / n, value = name === 'tune' ? sliderToTune(at) : at;
         const real = clampSetting({ ...s, [name]: value });
-        // Closer than a turned card can come: neither amber nor dim, just the track.
+        // Closer than a turned card can come: neither black nor grey, no track at all.
         on.push(name === 'distance' && real.distance > value + .05 ? null : wakes(real));
       }
       // Each sample stands for the stretch of the track around it.
@@ -630,7 +660,7 @@ function intro(experience) {
       let from = 0;
       for (let i = 1; i <= n + 1; i++) {
         if (i <= n && on[i] === on[from]) continue;
-        const color = on[from] === null ? 'rgba(255, 255, 255, 0)' : on[from] ? 'rgba(255, 181, 46, .9)' : 'rgba(255, 255, 255, .09)';
+        const color = on[from] === null ? 'rgba(10, 10, 10, 0)' : on[from] ? 'rgba(10, 10, 10, .9)' : 'rgba(10, 10, 10, .1)';
         stops.push(`${color} ${edge(from).toFixed(2)}%`, `${color} ${edge(i).toFixed(2)}%`);
         from = i;
       }
@@ -728,17 +758,43 @@ function intro(experience) {
 
   function paintLabOutputs() {
     paintBehind();
-    const { outputs, inputs } = labUi, s = lab.set;
-    outputs.distance.textContent = s.distance.toFixed(1) + ' cm';
-    outputs.angle.textContent = Math.round(s.angle) + '°';
-    outputs.metal.textContent = METAL_TEXT[Math.round(s.metal)];
-    outputs.drive.textContent = Math.round(s.drive) + '%';
-    outputs.tune.textContent = s.tune.toFixed(2) + ' MHz';
-    inputs.distance.setAttribute('aria-valuetext', outputs.distance.textContent);
+    const { inputs } = labUi, s = lab.set;
+    inputs.distance.setAttribute('aria-valuetext', s.distance.toFixed(1) + ' cm');
     inputs.angle.setAttribute('aria-valuetext', Math.round(s.angle) + ' degrees');
-    inputs.metal.setAttribute('aria-valuetext', outputs.metal.textContent);
-    inputs.drive.setAttribute('aria-valuetext', outputs.drive.textContent);
-    inputs.tune.setAttribute('aria-valuetext', outputs.tune.textContent);
+    inputs.metal.setAttribute('aria-valuetext', METAL_TEXT[Math.round(s.metal)]);
+    inputs.drive.setAttribute('aria-valuetext', Math.round(s.drive) + '%');
+    inputs.tune.setAttribute('aria-valuetext', s.tune.toFixed(2) + ' MHz');
+    // The values beside the sliders: what their thumbs show now (they glide; see `paintSliders`).
+    paintSliders(0);
+  }
+
+  // The sliders' thumbs, each gliding after its slider's value on a critically damped spring
+  // (quick, and never overshooting), and the value beside each slider counting along with it.
+  // `--stretch` draws the thumb a little wider the faster it moves. On the panel's entrance the
+  // thumbs start at 0 and glide out to their values one after the other (`lab.slidersIn`), slower.
+  // With reduced motion `chase` puts them straight there. Returns whether any is still moving.
+  function paintSliders(dt) {
+    let moving = false;
+    const since = lab.slidersIn ? performance.now() - lab.slidersIn : Infinity;
+    if (since > 1400) lab.slidersIn = null;
+    Object.values(labUi.sliders).forEach((slider, i) => {
+      const { box, input, at } = slider, name = input.name;
+      const target = since < 150 + i * 70 ? 0 : fraction(input);
+      const p = chase(at, target, since < 1400 ? 8 : 18, dt, .0003);
+      moving ||= p !== target || at.velocity !== 0;
+      box.style.setProperty('--p', p.toFixed(4));
+      box.style.setProperty('--stretch', Math.min(.4, Math.abs(at.velocity) * .05).toFixed(3));
+      // At rest it says exactly what is set; on the way, the value the thumb is passing.
+      const rest = p === fraction(input), v = +input.min + (+input.max - +input.min) * p, s = lab.set;
+      const text = name === 'distance' ? (rest ? s.distance : v).toFixed(1) + ' cm'
+        : name === 'angle' ? Math.round(rest ? s.angle : v) + '°'
+        : name === 'metal' ? METAL_TEXT[Math.round(rest ? s.metal : v)]
+        : name === 'drive' ? Math.round(rest ? s.drive : v) + '%'
+        : (rest ? s.tune : sliderToTune(v)).toFixed(2) + ' MHz';
+      const output = labUi.outputs[name];
+      if (output.textContent !== text) output.textContent = text;
+    });
+    return moving;
   }
 
   // The readings and the chart.
@@ -812,10 +868,11 @@ function intro(experience) {
     const need = (lab.m.needs * 1000).toFixed(1);
     const line = lab.m.limited ? `${v.watts.toFixed(1)} mW, its limiter holds 3.3 V` : `${v.watts.toFixed(1)} mW, needs ${need} mW`;
     if (watts.textContent !== line) watts.textContent = line;
-    // The chart's entrance, and its glide, at the same time.
+    const sliding = paintSliders(dt);
+    // The chart's entrance (or a new tab's), and its glide, at the same time.
     if (lab.reveal) {
       paintPlot();
-      if (performance.now() - lab.reveal > 1000) { lab.reveal = null; paintPlot(); }
+      if (performance.now() - lab.reveal > revealMs() + 200) { lab.reveal = lab.revealMs = null; paintPlot(); }
     }
     if (lab.morph) {
       paintPlot();
@@ -825,9 +882,16 @@ function intro(experience) {
       paintPlot();
       if (performance.now() - lab.mapFade.start > MAP_FADE) { lab.mapFade = null; paintPlot(); }
     }
-    return moving || Boolean(lab.morph) || Boolean(lab.reveal) || Boolean(lab.mapFade);
+    return moving || sliding || Boolean(lab.morph) || Boolean(lab.reveal) || Boolean(lab.mapFade);
   }
 
+  // How long the chart takes to draw itself in: 0.8 s on the panel's entrance, quicker on a new tab.
+  const revealMs = () => lab.revealMs ?? 800;
+  // The charts' inks: black on the panel's white (styles.css `.try`), greys for what is secondary.
+  const INK = {
+    text: 'rgba(10,10,10,.45)', grid: 'rgba(10,10,10,.08)', halo: 'rgba(255,255,255,.92)',
+    line: '#0a0a0a', dim: 'rgba(10,10,10,.2)', note: 'rgba(10,10,10,.68)', faint: 'rgba(10,10,10,.3)',
+  };
   const MAP_FADE = 260, MAP_EVERY = 50;
   // The rule a payment terminal is built to (EMV contactless): it must read a card anywhere up to
   // 4 cm from its face. On the card reader's distance charts and Map, a dotted line there, named
@@ -837,7 +901,7 @@ function intro(experience) {
     if (lab.set.reader !== 'pad') return;
     g.save();
     const x = Math.round(X(TERMINAL_CM)) + .5;
-    g.strokeStyle = 'rgba(244,241,234,.35)';
+    g.strokeStyle = INK.faint;
     g.lineWidth = 1;
     g.setLineDash([1, 3]);
     g.beginPath(); g.moveTo(x, top); g.lineTo(x, H - bottom); g.stroke();
@@ -845,20 +909,20 @@ function intro(experience) {
     g.font = '600 9px "Inter Tight", system-ui, sans-serif';
     g.textAlign = 'left';
     g.lineJoin = 'round';
-    g.strokeStyle = 'rgba(20,18,16,.75)';
+    g.strokeStyle = INK.halo;
     g.lineWidth = 3;
     g.strokeText('must reach 4 cm', x + 3, top + 8);
-    g.fillStyle = 'rgba(244,241,234,.6)';
+    g.fillStyle = INK.note;
     g.fillText('must reach 4 cm', x + 3, top + 8);
     g.restore();
   }
   // The charts' frame inside the canvas (px): room for the scale on the left and along the bottom.
   const PLOT = { left: 30, right: 8, top: 8, bottom: 18 };
-  // One Map drawn (see `paintMap`): faint grey where no card can be (closer than a card turned
-  // that far can come), a faint amber wash where it can be but sleeps, amber where it wakes. Each
+  // One Map drawn (see `paintMap`): grey where no card can be (closer than a card turned that
+  // far can come), the faintest grey where it can be but sleeps, black where it wakes. Each
   // region is one shape through the bands' edges (one fill, so no seams between bands, and a
   // sloped edge rather than steps). Where metal splits a band's waking into two stretches, the
-  // amber is drawn band by band instead, each a strip as tall as its share of the angles.
+  // black is drawn band by band instead, each a strip as tall as its share of the angles.
   function drawMap(g, map, X, Y, alpha) {
     const bands = map.bands, last = bands.length - 1;
     g.globalAlpha = alpha;
@@ -871,15 +935,15 @@ function intro(experience) {
     };
     // Where no card can be, and where one can: either side of the line of the bands' starts.
     const starts = bands.map(band => [band.rest, band.angle]);
-    shape('rgba(244,241,234,.04)', [[map.near, 0], ...starts, [map.near, 90]]);
-    shape('rgba(255,181,46,.1)', [...starts, [map.far, 90], [map.far, 0]]);
+    shape('rgba(10,10,10,.1)', [[map.near, 0], ...starts, [map.near, 90]]);
+    shape('rgba(10,10,10,.03)', [...starts, [map.far, 90], [map.far, 0]]);
     // Where it wakes: one shape when it is one stretch in each band, from face-on up (closed half
     // a band above the last that wakes); else band by band.
     const outline = mapOutline(map);
-    if (outline) shape('rgba(255,181,46,.82)', outline);
+    if (outline) shape('rgba(10,10,10,.88)', outline);
     else if (bands.some(band => band.spans.length)) {
       const half = 45 / last;
-      g.fillStyle = 'rgba(255,181,46,.82)';
+      g.fillStyle = 'rgba(10,10,10,.88)';
       g.beginPath();
       for (const band of bands) {
         const y0 = Y(Math.min(90, band.angle + half)), y1 = Y(Math.max(0, band.angle - half));
@@ -903,7 +967,7 @@ function intro(experience) {
     ];
   }
 
-  // Where "wakes" can sit on the Map: in the amber, clear of the dot of the setting, and wide
+  // Where "wakes" can sit on the Map: in the black, clear of the dot of the setting, and wide
   // enough over the word's whole height (the waking region narrows as the card turns).
   function mapWordAt(map, X, Y, avoid, H, top, bottom) {
     const [dotX, dotY] = avoid[0];
@@ -939,8 +1003,8 @@ function intro(experience) {
     const X = d => left + (W - left - right) * (d - map.near) / (map.far - map.near);
     const Y = a => top + (H - top - bottom) * (1 - a / 90);
     g.font = '600 10px "Inter Tight", system-ui, sans-serif';
-    g.fillStyle = 'rgba(244,241,234,.5)';
-    g.strokeStyle = 'rgba(255,255,255,.1)';
+    g.fillStyle = INK.text;
+    g.strokeStyle = INK.grid;
     g.lineWidth = 1;
     for (const a of H < 90 ? [0, 90] : [0, 45, 90]) {
       g.beginPath(); g.moveTo(left, Y(a) + .5); g.lineTo(W - right, Y(a) + .5); g.stroke();
@@ -954,7 +1018,7 @@ function intro(experience) {
     }
     g.textAlign = 'left';
     // On the panel's entrance it sweeps in from the left, as the curves do.
-    const drawn = lab.reveal ? smoother(0, 1, (performance.now() - lab.reveal) / 800) : 1;
+    const drawn = lab.reveal ? smoother(0, 1, (performance.now() - lab.reveal) / revealMs()) : 1;
     g.save();
     g.beginPath(); g.rect(left, top, (W - left - right) * drawn, H - top - bottom); g.clip();
     const fade = lab.mapFade ? smoother(0, 1, (performance.now() - lab.mapFade.start) / MAP_FADE) : 1;
@@ -963,7 +1027,7 @@ function intro(experience) {
     // The other reader's waking region, as a faint dashed outline over it: the two compared.
     const outline = lab.otherMap && mapOutline(lab.otherMap.map);
     if (outline) {
-      g.strokeStyle = 'rgba(244,241,234,.5)';
+      g.strokeStyle = 'rgba(150,150,150,1)';
       g.lineWidth = 1.2;
       g.setLineDash([3, 3]);
       g.beginPath();
@@ -985,7 +1049,7 @@ function intro(experience) {
       const words = 'no room to turn', width = g.measureText(words).width;
       if (X(map.bands.at(-1).rest) - X(map.near) > width + 10) {
         corner = [X(map.near) + 4 + width / 2, top + 5, width];
-        g.fillStyle = 'rgba(244,241,234,.45)';
+        g.fillStyle = INK.text;
         g.textAlign = 'left';
         g.fillText(words, X(map.near) + 4, top + 9);
         avoid.push(corner);
@@ -993,7 +1057,7 @@ function intro(experience) {
     }
     if (outline && drawn >= 1) {
       // Named just over its peak (or beside it, at the chart's top), clear of the dot and of the
-      // grey corner's words: light, with a dark halo, so it reads on the amber and off it alike.
+      // grey corner's words: dark, with a white halo, so it reads on the black and off it alike.
       const name = lab.otherMap.reader === 'phone' ? 'phone' : 'card reader';
       g.font = '600 10px "Inter Tight", system-ui, sans-serif';
       const width = g.measureText(name).width, peak = outline[outline.length >> 1];
@@ -1004,28 +1068,28 @@ function intro(experience) {
       if (corner && overlaps([x, y - 4, width], corner)) x = fit(corner[0] + corner[2] / 2 + width / 2 + 8);
       g.textAlign = 'center';
       g.lineJoin = 'round';
-      g.strokeStyle = 'rgba(20,18,16,.75)';
+      g.strokeStyle = INK.halo;
       g.lineWidth = 3;
       g.strokeText(name, x, y);
-      g.fillStyle = 'rgba(244,241,234,.85)';
+      g.fillStyle = 'rgba(10,10,10,.8)';
       g.fillText(name, x, y);
       g.textAlign = 'left';
       avoid.push([x, y - 4, width]);
     }
-    // "wakes", in the amber, where the word fits and clear of the dot and the other's name.
+    // "wakes", in white on the black, where the word fits and clear of the dot and the other's name.
     const word = drawn >= 1 ? mapWordAt(map, X, Y, avoid, H, top, bottom) : null;
     if (word) {
       g.font = '650 10px "Inter Tight", system-ui, sans-serif';
       g.textAlign = 'center';
-      g.fillStyle = 'rgba(20,18,16,.8)';
+      g.fillStyle = 'rgba(255,255,255,.92)';
       g.fillText('wakes', word.x, word.y);
       g.textAlign = 'left';
     }
     // Where the setting is now.
     const dotSize = 4 * smoother(.85, 1, drawn);
     if (dotSize > .2) {
-      g.fillStyle = lab.m.awake ? '#ffffff' : '#ff8f7a';
-      g.strokeStyle = 'rgba(20,18,16,.85)';
+      g.fillStyle = lab.m.awake ? '#ffffff' : '#0a0a0a';
+      g.strokeStyle = lab.m.awake ? '#0a0a0a' : '#ffffff';
       g.lineWidth = 1.5;
       g.beginPath(); g.arc(dotX, dotY, dotSize, 0, Math.PI * 2); g.fill(); g.stroke();
     }
@@ -1068,8 +1132,8 @@ function intro(experience) {
     const X = v => tuning ? left + (W - left - right) * Math.log(v / x0) / Math.log(x1 / x0) : left + (W - left - right) * (v - x0) / (x1 - x0);
     const Y = v => top + (H - top - bottom) * (1 - Math.min(v, yMax) / yMax);
     g.font = '600 10px "Inter Tight", system-ui, sans-serif';
-    g.fillStyle = 'rgba(244,241,234,.5)';
-    g.strokeStyle = 'rgba(255,255,255,.1)';
+    g.fillStyle = INK.text;
+    g.strokeStyle = INK.grid;
     g.lineWidth = 1;
     // A short chart (a laptop screen) keeps every other line, so its labels never crowd.
     const short = H < 90;
@@ -1089,11 +1153,11 @@ function intro(experience) {
     g.textAlign = 'left';
     // What the chip needs to wake (not on the answer's chart).
     if (!answer) {
-      g.strokeStyle = 'rgba(244,241,234,.75)';
+      g.strokeStyle = 'rgba(10,10,10,.5)';
       g.setLineDash([3, 3]);
       g.beginPath(); g.moveTo(left, Y(2)); g.lineTo(W - right, Y(2)); g.stroke();
       g.setLineDash([]);
-      g.fillStyle = 'rgba(244,241,234,.8)';
+      g.fillStyle = INK.note;
       g.textAlign = 'right';
       g.fillText('wakes', W - right, Y(2) - 4);
       g.textAlign = 'left';
@@ -1101,13 +1165,13 @@ function intro(experience) {
     const nearest = tuning ? 0 : nearestFor(lab.set);
     if (tuning) {
       // The reader's frequency.
-      g.strokeStyle = 'rgba(74,147,255,.7)';
+      g.strokeStyle = INK.faint;
       g.beginPath(); g.moveTo(X(13.56), top); g.lineTo(X(13.56), H - bottom); g.stroke();
     } else {
       // Closer than the card can come (a phone's camera island, or a turned card's edge resting
       // on the reader), shaded as the Map's grey corner is: the curve there is where no card is.
       if (nearest > x0 + .05) {
-        g.fillStyle = 'rgba(244,241,234,.06)';
+        g.fillStyle = 'rgba(10,10,10,.06)';
         g.fillRect(X(x0), top, X(nearest) - X(x0), H - top - bottom);
       }
       paintTerminalRule(g, X, top, bottom, H);
@@ -1117,32 +1181,31 @@ function intro(experience) {
     let otherName = null;
     if (lab.other && lab.other.points.length) {
       const pts = lab.other.points;
-      g.strokeStyle = 'rgba(244,241,234,.3)';
+      g.strokeStyle = INK.faint;
       g.lineWidth = 1.2;
       g.setLineDash([3, 3]);
       g.beginPath();
-      pts.slice(0, Math.max(1, Math.ceil(pts.length * (lab.reveal ? smoother(0, 1, (performance.now() - lab.reveal) / 800) : 1))))
+      pts.slice(0, Math.max(1, Math.ceil(pts.length * (lab.reveal ? smoother(0, 1, (performance.now() - lab.reveal) / revealMs()) : 1))))
         .forEach(([x, v], i) => (i ? g.lineTo(X(x), Y(v)) : g.moveTo(X(x), Y(v))));
       g.stroke();
       g.setLineDash([]);
       const [x0, v0] = pts[0], name = lab.other.reader === 'phone' ? 'phone' : 'card reader';
       const nameY = Math.min(H - bottom - 3, Y(Math.min(v0, yMax)) + 11), nameWidth = g.measureText(name).width;
-      g.fillStyle = 'rgba(244,241,234,.6)';
+      g.fillStyle = INK.text;
       g.fillText(name, X(x0) + 3, nameY);
       otherName = [X(x0) + 3 + nameWidth / 2, nameY - 4, nameWidth];
     }
     // On the panel's entrance the curves draw in from the left over 0.8 s, then the dot appears.
-    const drawn = lab.reveal ? smoother(0, 1, (performance.now() - lab.reveal) / 800) : 1;
+    const drawn = lab.reveal ? smoother(0, 1, (performance.now() - lab.reveal) / revealMs()) : 1;
     const shownTo = Math.ceil(points.length * drawn);
-    // The curve: warm where the chip wakes, dim where it does not.
+    // The curve: black where the chip wakes, grey where it does not.
     g.lineWidth = 2;
     for (let i = 1; i < shownTo; i++) {
       const [a, va] = points[i - 1], [b, vb] = points[i];
-      // The answer in blue, its colour in the close-up; nothing where the chip sleeps. Faint too
-      // where no card can be (closer than its nearest).
+      // The answer likewise: black where it answers, grey where the chip sleeps. Grey too where no
+      // card can be (closer than its nearest).
       const reachable = (a + b) / 2 >= nearest - .05;
-      g.strokeStyle = answer ? (va > 0 && vb > 0 && reachable ? '#4a93ff' : 'rgba(74,147,255,.25)')
-        : (va + vb) / 2 >= 2 && reachable ? '#ffb52e' : 'rgba(255,181,46,.35)';
+      g.strokeStyle = (answer ? va > 0 && vb > 0 : (va + vb) / 2 >= 2) && reachable ? INK.line : INK.dim;
       g.beginPath(); g.moveTo(X(a), Y(va)); g.lineTo(X(b), Y(vb)); g.stroke();
     }
     // The peak named. On Tuning, where the card's own circuit resonates: metal behind the card
@@ -1173,23 +1236,31 @@ function intro(experience) {
       const spot = spots.find(([sx, sy]) => clear([sx, sy, width]));
       if (spot) {
         const [x, middle] = spot, y = middle + 4;
-        g.strokeStyle = 'rgba(244,241,234,.45)';
+        g.strokeStyle = INK.faint;
         g.lineWidth = 1;
         g.beginPath(); g.moveTo(px, py - 1); g.lineTo(px, py - 4); g.stroke();
         g.textAlign = 'center';
         g.lineJoin = 'round';
-        g.strokeStyle = 'rgba(20,18,16,.75)';
+        g.strokeStyle = INK.halo;
         g.lineWidth = 3;
         g.strokeText(words, x, y);
-        g.fillStyle = 'rgba(244,241,234,.7)';
+        g.fillStyle = INK.note;
         g.fillText(words, x, y);
       }
       g.restore();
     }
     // Where the setting is now (once the curve is in, growing to its size).
     const nowX = now.dot.x, nowV = now.dot.v, dotSize = 4 * smoother(.85, 1, drawn);
-    g.fillStyle = lab.m.awake ? '#ffffff' : '#ff8f7a';
-    if (dotSize > .2) { g.beginPath(); g.arc(X(nowX), Y(nowV), dotSize, 0, Math.PI * 2); g.fill(); }
+    // Black when the chip is awake, hollow when it sleeps.
+    if (dotSize > .2) {
+      g.beginPath(); g.arc(X(nowX), Y(nowV), dotSize, 0, Math.PI * 2);
+      g.fillStyle = lab.m.awake ? INK.line : '#ffffff';
+      g.fill();
+      g.lineWidth = 1.5;
+      g.strokeStyle = INK.line;
+      g.stroke();
+    }
+    g.fillStyle = INK.line;
     // Above the scale (very close, or a strong reader): a small peak over the dot, and the value.
     if (nowV > yMax) {
       const x = X(nowX);
@@ -1426,12 +1497,15 @@ function intro(experience) {
     if (labShown && panelState !== 'shown') {
       clearTimeout(lab.leaving);
       labUi.panel.hidden = labUi.panel.inert = false;
-      // Its entrance, from hidden: the readings count up from nothing, the chart's curves draw in
-      // from the left and then its dot appears, and the amber lines under the sliders sweep in
-      // (styles.css). Called back while leaving, it simply comes back as it is.
+      // Its entrance, from hidden: its parts rise in one after the other (styles.css), the
+      // readings count up from nothing, the chart's curves draw in from the left and then its dot
+      // appears, the sliders' tracks sweep in and their thumbs glide out from 0 to their values.
+      // Called back while leaving, it simply comes back as it is.
       if (panelState === 'hidden' && !reduce.matches) {
         lab.tweens = { field: 0, volts: 0, reach: 0, answer: lab.targets?.answer === null ? null : 0, watts: 0 };
-        lab.reveal = performance.now();
+        lab.reveal = lab.slidersIn = performance.now();
+        lab.revealMs = null;
+        for (const slider of Object.values(labUi.sliders)) slider.at.value = slider.at.velocity = 0;
       }
       requestAnimationFrame(() => { labUi.panel.classList.add('is-shown'); paintPlot(); });
     } else if (!labShown && panelState === 'shown') {
@@ -1772,9 +1846,12 @@ function intro(experience) {
   }
   for (const tab of labUi.tabs) {
     tab.addEventListener('click', () => {
+      if (lab.chart === tab.dataset.chart) return;
       lab.chart = tab.dataset.chart;
       for (const other of labUi.tabs) other.setAttribute('aria-pressed', String(other === tab));
       paintPlotPress();
+      // The new chart rises in and draws itself from the left, quicker than on the entrance.
+      if (!reduce.matches) { lab.reveal = performance.now(); lab.revealMs = 520; pulse(labUi.plot); }
       setLab({}, true);
     });
   }

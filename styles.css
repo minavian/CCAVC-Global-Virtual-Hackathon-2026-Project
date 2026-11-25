@@ -950,9 +950,19 @@ html[data-intro] .stage-light { opacity: 0; }
 }
 
 /* ---- The lab, "Try it yourself" (cinema.js `lab` step, lab-model.js) ----
-   A dark glass panel on the right, over the close-up's dark: readings, a chart, the
-   controls, the card's ID, Ask, and situations to try. On a phone it sits at the top. */
+   A white panel on the right, over the close-up's dark, in black and white only: readings, a
+   chart, the switches, the sliders, the card's ID, situations to try, and Ask. Everything in it
+   moves softly: it rises in part by part, a black pill slides under each switch's choice, the
+   sliders' thumbs glide on a spring (main.js `paintSliders`), and a chart draws itself in. On a
+   phone it sits at the top. */
 .intro .try {
+  --try-ink: #0a0a0a;
+  --try-sub: rgba(10, 10, 10, .52);
+  --try-faint: rgba(10, 10, 10, .055);
+  --try-line: rgba(10, 10, 10, .1);
+  /* Out fast, settle slow; and a spring with a small overshoot, for what slides. */
+  --try-out: cubic-bezier(.22, 1, .36, 1);
+  --try-spring: cubic-bezier(.3, 1.3, .5, 1);
   position: absolute;
   z-index: 6;
   top: clamp(4.4rem, 10dvh, 5.6rem);
@@ -961,126 +971,237 @@ html[data-intro] .stage-light { opacity: 0; }
   width: min(21rem, 31vw);
   display: flex;
   flex-direction: column;
-  gap: .55rem;
-  padding: .95rem 1rem 1rem;
+  gap: .6rem;
+  padding: 1rem;
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  color: #f4f1ea;
-  background: rgba(22, 20, 17, .74);
-  border: 1px solid rgba(255, 255, 255, .1);
-  border-radius: 1rem;
-  box-shadow: 0 1.2rem 3rem rgba(0, 0, 0, .35);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+  color: var(--try-ink);
+  background: #fff;
+  border-radius: 1.25rem;
+  box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, .45), 0 .2rem .8rem rgba(0, 0, 0, .2);
   opacity: 0;
-  transform: translateX(1rem);
-  transition: opacity .45s ease, transform .45s ease;
+  transform: translateX(1.5rem) scale(.97);
+  transform-origin: 100% 50%;
+  transition: opacity .4s ease, transform .55s var(--try-out);
   pointer-events: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, .2) transparent;
+  scrollbar-color: rgba(10, 10, 10, .18) transparent;
+  /* A narrow or a wide panel changes its layout (the container queries below). */
+  container-type: inline-size;
 }
 .intro .try.is-shown { opacity: 1; transform: none; }
-/* With reduced motion the panel doesn't slide: it only fades, quickly. */
-@media (prefers-reduced-motion: reduce) { .intro .try { transform: none; transition: opacity .2s ease; } }
+/* The entrance: its parts rise in one after the other, top to bottom, as the panel slides in. */
+.intro .try.is-shown > * { animation: try-rise .6s var(--try-out) backwards; }
+.intro .try.is-shown > :nth-child(1) { animation-delay: .06s; }
+.intro .try.is-shown > :nth-child(2) { animation-delay: .1s; }
+.intro .try.is-shown > :nth-child(3) { animation-delay: .14s; }
+.intro .try.is-shown > :nth-child(4) { animation-delay: .18s; }
+.intro .try.is-shown > :nth-child(5) { animation-delay: .22s; }
+.intro .try.is-shown > :nth-child(6) { animation-delay: .25s; }
+.intro .try.is-shown > :nth-child(7) { animation-delay: .28s; }
+.intro .try.is-shown > :nth-child(8) { animation-delay: .32s; }
+.intro .try.is-shown > :nth-child(9) { animation-delay: .35s; }
+.intro .try.is-shown > :nth-child(10) { animation-delay: .38s; }
+.intro .try.is-shown > :nth-child(11) { animation-delay: .41s; }
+@keyframes try-rise { from { opacity: 0; transform: translateY(.6rem); } }
 /* In the lab the readout moves into the space left of the panel, under the close-up. */
 .intro .intro-stage.is-lab .readout {
   right: calc(min(21rem, 31vw) + var(--gutter) + 1rem);
   width: min(32rem, calc(100% - min(21rem, 31vw) - 3 * var(--gutter)));
 }
-.intro .try-title { margin: 0; font-size: .82rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: rgba(244, 241, 234, .7); }
-.intro .try-readings { display: grid; grid-template-columns: 1fr 1fr; gap: .55rem .8rem; margin: 0; }
+.intro .try-title { margin: 0; font-size: .68rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--try-sub); }
+
+/* The four readings: a small grey name over a big black number. Short of what the chip needs, the
+   number and its bar go grey. */
+.intro .try-readings { display: grid; grid-template-columns: 1fr 1fr; gap: .55rem .9rem; margin: 0; }
 .intro .try-reading { min-width: 0; }
-.intro .try-reading dt[title] { cursor: help; text-decoration: underline dotted rgba(244, 241, 234, .3); text-underline-offset: 2px; }
-.intro .try-reading dt { font-size: .64rem; letter-spacing: .05em; text-transform: uppercase; color: rgba(244, 241, 234, .55); }
+.intro .try-reading dt { font-size: .6rem; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--try-sub); }
+.intro .try-reading dt[title] { cursor: help; }
 .intro .try-reading dd { margin: .12rem 0 0; }
-.intro .try-reading b { font: 700 1.12rem/1.2 "Inter Tight", system-ui, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: -.005em; transition: color .3s ease; }
-.intro .try-reading.is-good b { color: #ffc56b; }
-.intro .try-watts { display: block; margin-top: .22rem; font-size: .66rem; font-variant-numeric: tabular-nums; color: rgba(244, 241, 234, .62); white-space: nowrap; }
-.intro .try-reading.is-low b { color: #ff8f7a; }
+.intro .try-reading b {
+  display: inline-block; font: 700 1.18rem/1.15 "Inter Tight", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums; letter-spacing: -.02em; transition: color .35s ease;
+}
+.intro .try-reading.is-low b { color: rgba(10, 10, 10, .3); }
+.intro .try-watts { display: block; margin-top: .22rem; font-size: .64rem; font-variant-numeric: tabular-nums; color: var(--try-sub); white-space: nowrap; }
 /* Another reader or tag: the readings blink up into their new values, one after the other
    (main.js `pulse`), so the switch shows even when a number barely moves. */
-.intro .try-reading b { display: inline-block; }
 .intro .try-readings.is-pulsed .try-reading b { animation: try-pulse .55s cubic-bezier(.2, .8, .2, 1) backwards; }
 .intro .try-readings.is-pulsed .try-reading:nth-child(2) b { animation-delay: .05s; }
 .intro .try-readings.is-pulsed .try-reading:nth-child(3) b { animation-delay: .1s; }
 .intro .try-readings.is-pulsed .try-reading:nth-child(4) b { animation-delay: .15s; }
 @keyframes try-pulse { from { opacity: .15; transform: translateY(.4rem); } }
-@media (prefers-reduced-motion: reduce) { .intro .try-readings.is-pulsed .try-reading b { animation: none; } }
-/* A bar with a mark where the chip's need sits. */
-.intro .try-bar { position: relative; display: block; height: .3rem; margin-top: .3rem; border-radius: 1rem; background: rgba(255, 255, 255, .12); }
-.intro .try-bar span { position: absolute; inset: 0 auto 0 0; width: calc(var(--to, 0) * 100%); border-radius: inherit; background: #ffb52e; transition: width .15s linear, background-color .3s ease; }
-/* (It named the old lab's bar, `.lab-bar`, so a low reading's bar here stayed amber.) */
-.intro .try-reading.is-low .try-bar span { background: #ff8f7a; }
-.intro .try-reading.is-over .try-bar span { background: #ff8f7a; }
-.intro .try-bar em { position: absolute; top: -.2rem; bottom: -.2rem; left: calc(var(--need, 0) * 100%); width: 2px; background: #f4f1ea; border-radius: 1px; }
-.intro .try-chart { display: grid; grid-template-columns: minmax(0, 1fr); gap: .35rem; }
-.intro .try-tabs { display: inline-flex; gap: .25rem; justify-self: start; max-width: 100%; padding: .15rem; border-radius: 999px; background: rgba(255, 255, 255, .07); }
-.intro .try-tabs button {
-  padding: .25rem .7rem; border: 0; border-radius: 999px; font: inherit; font-size: .72rem; font-weight: 650;
-  color: rgba(244, 241, 234, .7); background: transparent; cursor: pointer;
+/* A bar with a mark where the chip's need sits (and, for the field, the standard's maximum). Its
+   fill and its marks glide to a new value. */
+.intro .try-bar { position: relative; display: block; height: 3px; margin-top: .4rem; border-radius: 3px; background: var(--try-line); }
+.intro .try-bar span {
+  position: absolute; inset: 0 auto 0 0; width: calc(min(var(--to, 0), 1) * 100%); border-radius: inherit;
+  background: var(--try-ink); transition: width .5s var(--try-out), opacity .35s ease;
 }
-.intro .try-tabs button[aria-pressed="true"] { color: #141210; background: #f4f1ea; }
+.intro .try-reading.is-low .try-bar span { opacity: .3; }
+.intro .try-bar em { position: absolute; top: -3px; bottom: -3px; left: calc(var(--need, 0) * 100%); width: 1.5px; border-radius: 1px; background: var(--try-ink); transition: left .5s var(--try-out); }
+
+/* The chart. A new tab rises in as its curve draws itself from the left (main.js `revealMs`). */
+.intro .try-chart { display: grid; grid-template-columns: minmax(0, 1fr); gap: .45rem; }
 .intro .try-plot { width: 100%; height: 5.2rem; display: block; cursor: crosshair; }
 .intro .try-plot.is-held { cursor: grabbing; }
-.intro .try-controls { display: grid; gap: .35rem; }
-/* Which reader: two buttons, like the chart's tabs, across the panel. */
-.intro .try-reader { display: grid; grid-template-columns: 1fr 1fr; gap: .25rem; padding: .2rem; border-radius: 999px; background: rgba(255, 255, 255, .07); }
-.intro .try-reader button {
-  min-height: 2rem; padding: .3rem .8rem; border: 0; border-radius: 999px; font: inherit; font-size: .8rem; font-weight: 650;
-  color: rgba(244, 241, 234, .75); background: transparent; cursor: pointer;
+.intro .try-plot.is-pulsed { animation: try-rise .5s var(--try-out) backwards; }
+
+/* The three switches: the chart's tabs, the reader, the tag. Grey words on a faint grey track; the
+   choice in white on a black pill (`.try-pill`, main.js) that slides under it with a small spring,
+   its width following the word's. */
+.intro :is(.try-tabs, .try-reader) { position: relative; isolation: isolate; padding: 3px; border-radius: 999px; background: var(--try-faint); }
+.intro .try-tabs { display: inline-flex; justify-self: start; max-width: 100%; }
+.intro .try-reader { display: grid; grid-template-columns: 1fr 1fr; }
+.intro .try-tag { grid-template-columns: repeat(3, 1fr); margin-top: -.25rem; }
+.intro .try-pill {
+  position: absolute; left: 0; top: 0; z-index: -1; border-radius: 999px; background: var(--try-ink);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .2); pointer-events: none;
+  transition: transform .5s var(--try-spring), width .5s var(--try-spring), height .3s ease;
 }
-.intro .try-reader button[aria-pressed="true"] { color: #141210; background: #f4f1ea; }
-.intro .try-reader button[aria-busy="true"] { cursor: progress; opacity: .7; }
-.intro .try-reader button:disabled { cursor: not-allowed; opacity: .35; }
-/* The tag's size: three across, a little smaller than the reader switch. */
-.intro .try-tag { grid-template-columns: repeat(3, 1fr); margin-top: -.2rem; }
+.intro :is(.try-tabs, .try-reader) button {
+  position: relative; border: 0; border-radius: 999px; font: inherit; font-weight: 650;
+  color: var(--try-sub); background: transparent; cursor: pointer;
+  transition: color .3s ease, transform .2s var(--try-spring), opacity .3s ease;
+}
+.intro :is(.try-tabs, .try-reader) button:hover { color: var(--try-ink); }
+.intro :is(.try-tabs, .try-reader) button[aria-pressed="true"] { color: #fff; }
+.intro :is(.try-tabs, .try-reader) button:active { transform: scale(.95); }
+.intro .try-tabs button { padding: .28rem .75rem; font-size: .72rem; }
+.intro .try-reader button { min-height: 2rem; padding: .3rem .8rem; font-size: .8rem; }
 .intro .try-tag button { min-height: 1.7rem; font-size: .74rem; }
-.intro .try-reader button:focus-visible { outline: 2px solid #ffb52e; outline-offset: 2px; }
-.intro .try-control { display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: .1rem .5rem; font-size: .8rem; font-weight: 600; }
-.intro .try-control output { font: 650 .84rem "Inter Tight", system-ui, sans-serif; color: #ffc56b; font-variant-numeric: tabular-nums; }
-.intro .try-control input { grid-column: 1 / -1; width: 100%; margin: .1rem 0 0; accent-color: #ffb52e; height: 1.25rem; cursor: pointer; }
-/* Under each slider: where along it the chip would wake (amber), inset to the thumb's travel. */
-/* On the panel's entrance the amber lines sweep in from the left, one slider after the other. */
-.intro .try.is-shown .try-zone { animation: zone-in .7s cubic-bezier(.2, .7, .2, 1) both; }
+.intro .try-reader button[aria-busy="true"] { cursor: progress; opacity: .55; }
+.intro .try-reader button:disabled { cursor: not-allowed; opacity: .3; }
+.intro .try-legend { display: flex; align-items: center; gap: .5rem; margin: -.1rem 0 0; font-size: .68rem; color: var(--try-sub); }
+.intro .try-legend i { width: 1.4rem; height: 3px; border-radius: 3px; background: var(--try-ink); }
+
+/* The sliders. Each is drawn by the page (main.js builds `.try-slider`): a thin grey track, black
+   where along it the chip would wake (`paintZones`), and a white thumb ringed in black that glides
+   to the value on a spring (`paintSliders` sets --p, 0 to 1, and --stretch, wider the faster it
+   moves). Hovered it grows a little, held more, with a soft halo. The real slider lies over it,
+   unseen, its own thumb as wide as the drawn one, so a press lands where the thumb is drawn and the
+   pointer, touch and the keyboard work it as before. */
+.intro .try-controls { display: grid; gap: .3rem; }
+.intro .try-control { display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 0 .5rem; font-size: .78rem; font-weight: 600; }
+.intro .try-control output { font: 650 .8rem "Inter Tight", system-ui, sans-serif; color: var(--try-ink); font-variant-numeric: tabular-nums; }
+.intro .try-slider { --thumb: 16px; position: relative; grid-column: 1 / -1; display: block; height: 1.35rem; }
+.intro .try-zone {
+  position: absolute; left: calc(var(--thumb) / 2); right: calc(var(--thumb) / 2); top: 50%;
+  height: 4px; margin-top: -2px; border-radius: 4px; background: var(--try-line);
+}
+.intro .try-thumb {
+  position: absolute; top: 50%; left: calc(var(--thumb) / 2 + var(--p, 0) * (100% - var(--thumb)));
+  width: var(--thumb); height: var(--thumb); margin: calc(var(--thumb) / -2) 0 0 calc(var(--thumb) / -2);
+  border-radius: 50%; background: #fff; pointer-events: none;
+  box-shadow: 0 0 0 1.5px var(--try-ink), 0 2px 6px rgba(0, 0, 0, .22);
+  transform: scaleX(calc(1 + var(--stretch, 0)));
+  transition: scale .35s var(--try-spring), box-shadow .3s ease;
+}
+.intro .try-slider:hover .try-thumb { scale: 1.12; }
+.intro .try-slider:has(input:active) .try-thumb { scale: 1.3; box-shadow: 0 0 0 1.5px var(--try-ink), 0 0 0 7px rgba(10, 10, 10, .08), 0 3px 10px rgba(0, 0, 0, .25); }
+.intro .try-slider:has(input:focus-visible) .try-thumb { box-shadow: 0 0 0 1.5px var(--try-ink), 0 0 0 4px #fff, 0 0 0 6px var(--try-ink); }
+.intro .try-slider input {
+  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer;
+  -webkit-appearance: none; appearance: none; background: transparent;
+}
+.intro .try-slider input::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: var(--thumb); height: var(--thumb); }
+.intro .try-slider input::-moz-range-thumb { width: var(--thumb); height: var(--thumb); border: 0; }
+/* On the panel's entrance the tracks sweep in from the left, one slider after the other, as the
+   thumbs glide out to their values. */
+.intro .try.is-shown .try-zone { animation: zone-in .7s var(--try-out) both; }
 .intro .try.is-shown .try-control:nth-child(2) .try-zone { animation-delay: .06s; }
 .intro .try.is-shown .try-control:nth-child(3) .try-zone { animation-delay: .12s; }
 .intro .try.is-shown .try-control:nth-child(4) .try-zone { animation-delay: .18s; }
 .intro .try.is-shown .try-control:nth-child(5) .try-zone { animation-delay: .24s; }
 @keyframes zone-in { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
-@media (prefers-reduced-motion: reduce) { .intro .try.is-shown .try-zone { animation: none; } }
-.intro .try-zone { grid-column: 1 / -1; display: block; height: 3px; margin: -.15rem .5rem 0; border-radius: 2px; background: rgba(255, 255, 255, .09); }
-.intro .try-legend { display: flex; align-items: center; gap: .45rem; margin: -.15rem 0 0; font-size: .7rem; color: rgba(244, 241, 234, .6); }
-.intro .try-legend i { width: 1.4rem; height: 3px; border-radius: 2px; background: rgba(255, 181, 46, .9); }
-.intro .try-presets button[aria-pressed="true"] { color: #141210; background: #f4f1ea; border-color: #f4f1ea; }
+
+/* The card's ID: a soft grey field that turns white with a black edge while typed in. */
 .intro .try-id { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: .6rem; }
-.intro .try-id label { display: grid; gap: .25rem; font-size: .8rem; font-weight: 600; }
+.intro .try-id label { display: grid; gap: .3rem; font-size: .78rem; font-weight: 600; }
 .intro .try-id input {
-  width: 100%; padding: .45rem .6rem; border: 1px solid rgba(255, 255, 255, .18); border-radius: .5rem;
-  font: 650 1rem "Inter Tight", system-ui, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: .08em; text-transform: uppercase;
-  color: #f4f1ea; background: rgba(255, 255, 255, .06);
+  width: 100%; padding: .45rem .65rem; border: 1px solid transparent; border-radius: .65rem;
+  font: 650 1rem "Inter Tight", system-ui, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--try-ink); background: var(--try-faint);
+  transition: border-color .25s ease, background-color .25s ease, box-shadow .25s ease;
 }
-.intro .try-id input[aria-invalid="true"] { border-color: #ff8f7a; }
+.intro .try-id input:hover { border-color: var(--try-line); }
+.intro .try-id input:focus { outline: none; border-color: var(--try-ink); background: #fff; box-shadow: 0 0 0 3px rgba(10, 10, 10, .08); }
+.intro .try-id input[aria-invalid="true"] { border-color: var(--try-ink); border-style: dashed; }
 /* Why a typed ID can't be a card's, under the field, only while it can't. */
-.intro .try-id-note { grid-column: 1 / -1; margin: -.35rem 0 0; font-size: .72rem; color: #ff8f7a; }
+.intro .try-id-note { grid-column: 1 / -1; margin: -.35rem 0 0; font-size: .72rem; font-weight: 600; color: var(--try-ink); animation: try-rise .3s var(--try-out); }
 .intro .try-id-note:empty { display: none; }
-.intro .try-check { margin: 0 0 .5rem; font-size: .72rem; color: rgba(244, 241, 234, .6); white-space: nowrap; }
-.intro .try-check b { font-family: "Inter Tight", system-ui, sans-serif; font-weight: 700; font-variant-numeric: tabular-nums; color: #f4f1ea; }
-.intro .try-actions { display: grid; grid-template-columns: 1fr 1fr auto; gap: .5rem; }
-/* Pinned to the panel's bottom edge: on a short screen the panel scrolls, and Ask, Prove it and
-   Reset stay in reach, over a fade so what scrolls under them doesn't show through. */
-.intro .try-actions {
-  position: sticky; bottom: -1rem; z-index: 2; margin: 0 -1rem -1rem; padding: .6rem 1rem 1rem;
-  background: linear-gradient(rgba(22, 20, 17, 0), rgba(22, 20, 17, .96) .55rem);
+.intro .try-check { margin: 0 0 .55rem; font-size: .7rem; color: var(--try-sub); white-space: nowrap; }
+.intro .try-check b { font-family: "Inter Tight", system-ui, sans-serif; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--try-ink); }
+
+/* Situations to try: outlined chips; the one that is set, filled black. They rise in, one after
+   the other, whenever the list is made again (another reader, another tag). */
+.intro .try-presets { display: flex; flex-wrap: wrap; gap: .35rem; }
+.intro .try-presets button {
+  min-height: 2rem; padding: .25rem .75rem; border: 1px solid var(--try-line); border-radius: 999px;
+  font: inherit; font-size: .74rem; font-weight: 600; color: var(--try-ink); background: #fff; cursor: pointer;
+  transition: color .25s ease, background-color .25s ease, border-color .25s ease, transform .2s var(--try-spring);
+  animation: try-rise .45s var(--try-out) backwards;
 }
-.intro .try-actions button { white-space: nowrap; min-width: 0; }
-/* A narrow panel (a small laptop, a tablet held sideways): the three buttons only fit with
-   "Ask the card" said as "Ask" (its name for screen readers stays whole). */
-.intro .try { container-type: inline-size; }
+.intro .try-presets button:nth-child(2) { animation-delay: .03s; }
+.intro .try-presets button:nth-child(3) { animation-delay: .06s; }
+.intro .try-presets button:nth-child(4) { animation-delay: .09s; }
+.intro .try-presets button:nth-child(5) { animation-delay: .12s; }
+.intro .try-presets button:nth-child(6) { animation-delay: .15s; }
+.intro .try-presets button:nth-child(7) { animation-delay: .18s; }
+.intro .try-presets button:hover { border-color: rgba(10, 10, 10, .35); }
+.intro .try-presets button:active { transform: scale(.95); }
+.intro .try-presets button[aria-pressed="true"] { color: #fff; background: var(--try-ink); border-color: var(--try-ink); }
+
+/* The numbers behind it: closed, one quiet line with a chevron; open, the chevron turns down and
+   a list of the engineering numbers rises in. */
+.intro .try-behind { font-size: .72rem; color: var(--try-sub); }
+.intro .try-behind summary {
+  display: flex; align-items: center; gap: .45rem; width: max-content; padding: .1rem 0;
+  font-weight: 650; list-style: none; cursor: pointer; transition: color .2s ease;
+}
+.intro .try-behind summary::-webkit-details-marker { display: none; }
+.intro .try-behind summary::before {
+  content: ""; width: .38rem; height: .38rem; margin-top: -.1rem; border: solid currentColor; border-width: 0 1.5px 1.5px 0;
+  transform: rotate(-45deg); transition: transform .3s var(--try-out), margin .3s var(--try-out);
+}
+.intro .try-behind[open] summary::before { margin-top: -.25rem; transform: rotate(45deg); }
+.intro .try-behind summary:hover { color: var(--try-ink); }
+.intro .try-behind dl { display: grid; gap: .2rem; margin: .45rem 0 0; }
+.intro .try-behind[open] dl { animation: try-rise .4s var(--try-out); }
+.intro .try-behind dl div { display: flex; justify-content: space-between; gap: .75rem; }
+.intro .try-behind dt { margin: 0; }
+.intro .try-behind dd { margin: 0; color: var(--try-ink); white-space: nowrap; font: 650 .72rem/1.3 "Inter Tight", system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+
+/* Ask the card (black), Prove it (outlined) and Reset (quiet). Pinned to the panel's bottom edge:
+   on a short screen the panel scrolls, and they stay in reach, over a white fade so what scrolls
+   under them doesn't show through. */
+.intro .try-actions {
+  position: sticky; bottom: -1rem; z-index: 2; display: grid; grid-template-columns: 1fr 1fr auto; gap: .5rem;
+  margin: 0 -1rem -1rem; padding: .6rem 1rem 1rem; background: linear-gradient(rgba(255, 255, 255, 0), #fff .55rem);
+}
+.intro .try-actions button {
+  min-width: 0; min-height: 2.4rem; padding: .4rem .9rem; border-radius: 999px; font: inherit; font-size: .82rem; font-weight: 650;
+  white-space: nowrap; cursor: pointer;
+  transition: background-color .25s ease, color .25s ease, border-color .25s ease, box-shadow .25s ease, transform .2s var(--try-spring), opacity .25s ease;
+}
+.intro .try-actions button:active:not(:disabled) { transform: scale(.95); }
+.intro .try-ask { border: 1px solid var(--try-ink); color: #fff; background: var(--try-ink); }
+.intro .try-ask:hover:not(:disabled) { box-shadow: 0 6px 16px rgba(0, 0, 0, .25); }
+.intro .try-prove { border: 1px solid var(--try-ink); color: var(--try-ink); background: #fff; }
+.intro .try-prove:hover:not(:disabled) { background: var(--try-faint); }
+.intro .try-reset { border: 1px solid transparent; color: var(--try-sub); background: transparent; }
+.intro .try-reset:hover { color: var(--try-ink); background: var(--try-faint); }
+.intro .try-ask:disabled, .intro .try-prove:disabled { opacity: .3; cursor: default; }
+.intro .try :focus-visible { outline: 2px solid var(--try-ink); outline-offset: 2px; }
+
 /* A wide panel (a tablet held upright, where it spans the stage): the sliders two across, so far
    more of it shows without scrolling the panel. */
 @container (min-width: 560px) {
   .intro .try-controls { grid-template-columns: 1fr 1fr; column-gap: 1.4rem; }
 }
+/* A narrow panel (a small laptop, a tablet held sideways): the three buttons only fit with
+   "Ask the card" said as "Ask" (its name for screen readers stays whole). */
 @container (max-width: 300px) {
   .intro .try-long { display: none; }
   .intro .try-actions { gap: .4rem; }
@@ -1091,30 +1212,14 @@ html[data-intro] .stage-light { opacity: 0; }
   .intro .try-tabs { display: flex; max-width: 100%; }
   .intro .try-tabs button { flex: 1 1 auto; min-width: 0; padding-inline: .4rem; font-size: .7rem; }
 }
-.intro .try-actions button, .intro .try-presets button {
-  min-height: 2.4rem; padding: .4rem .9rem; border-radius: 999px; font: inherit; font-size: .82rem; font-weight: 650; cursor: pointer;
+/* With reduced motion nothing in the panel slides or rises: it only fades, quickly, and the pill
+   and the thumbs go straight to their places. */
+@media (prefers-reduced-motion: reduce) {
+  .intro .try { transform: none; transition: opacity .2s ease; }
+  .intro .try.is-shown > *, .intro .try.is-shown .try-zone, .intro .try-presets button,
+  .intro .try-readings.is-pulsed .try-reading b, .intro .try-plot.is-pulsed, .intro .try-behind[open] dl, .intro .try-id-note { animation: none; }
+  .intro .try-pill, .intro .try-thumb, .intro .try-bar span, .intro .try-bar em { transition: none; }
 }
-.intro .try-ask { border: 0; color: #141210; background: #ff8a2a; }
-.intro .try-ask:disabled, .intro .try-prove:disabled { opacity: .5; cursor: default; }
-/* Prove it's real: the answer's blue, as the card's code comes back in blue. */
-.intro .try-prove { border: 1px solid rgba(74, 147, 255, .7); color: #f4f1ea; background: rgba(74, 147, 255, .18); }
-.intro .try-prove:hover:not(:disabled) { background: rgba(74, 147, 255, .3); }
-.intro .try-reset { border: 1px solid rgba(255, 255, 255, .22); color: #f4f1ea; background: transparent; }
-.intro .try-presets { display: flex; flex-wrap: wrap; gap: .35rem; }
-/* The numbers behind it: closed, one quiet line; open, a list of the engineering numbers. */
-.intro .try-behind { font-size: .74rem; color: rgba(244, 241, 234, .7); }
-.intro .try-behind summary { cursor: pointer; width: max-content; padding: .1rem 0; font-weight: 650; }
-.intro .try-behind summary:hover { color: #f4f1ea; }
-.intro .try-behind dl { display: grid; gap: .15rem; margin: .35rem 0 0; }
-.intro .try-behind dl div { display: flex; justify-content: space-between; gap: .75rem; }
-.intro .try-behind dt { margin: 0; }
-.intro .try-behind dd {
-  margin: 0; color: #f4f1ea; white-space: nowrap;
-  font: 650 .74rem/1.3 "Inter Tight", system-ui, sans-serif; font-variant-numeric: tabular-nums;
-}
-.intro .try-presets button { min-height: 2rem; padding: .25rem .7rem; font-size: .74rem; border: 1px solid rgba(255, 255, 255, .16); color: #f4f1ea; background: rgba(255, 255, 255, .05); transition: color .2s ease, background-color .2s ease, border-color .2s ease; }
-.intro .try-presets button:hover, .intro .try-reset:hover { background: rgba(255, 255, 255, .12); }
-.intro .try :focus-visible { outline: 2px solid #ffc56b; outline-offset: 2px; }
 
 .intro .cine-hint {
   position: absolute;
@@ -1293,7 +1398,8 @@ html[data-intro] .stage-light { opacity: 0; }
   .intro .readout-next { margin-left: .5rem; }
   .intro .cine-explain { left: var(--gutter); right: var(--gutter); top: 5%; width: auto; transform: none; }
   /* The lab on a phone: across the top, scrolling, with the close-up below it. */
-  .intro .try { top: .5rem; left: .5rem; right: .5rem; bottom: auto; width: auto; max-height: 47dvh; gap: .55rem; padding: .75rem .8rem .8rem; transform: translateY(-.75rem); }
+  .intro .try { top: .5rem; left: .5rem; right: .5rem; bottom: auto; width: auto; max-height: 47dvh; gap: .55rem; padding: .8rem; border-radius: 1rem; transform: translateY(-.75rem) scale(.98); transform-origin: 50% 0; }
+  .intro .try-actions { bottom: -.8rem; margin: 0 -.8rem -.8rem; padding: .55rem .8rem .8rem; }
   .intro .try-readings { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .4rem; }
   .intro .try-reading dt { font-size: .54rem; }
   .intro .try-reading b { font-size: .86rem; }
@@ -1319,7 +1425,7 @@ html[data-intro] .stage-light { opacity: 0; }
   .intro .try-reader button { min-height: 1.5rem; padding: .15rem .7rem; }
   .intro .try-controls { gap: .1rem; }
   .intro .try-control { font-size: .76rem; }
-  .intro .try-control input { height: .95rem; }
+  .intro .try-slider { height: 1.05rem; }
   .intro .try-id input { padding: .3rem .55rem; }
   .intro .try-id label { grid-template-columns: auto 1fr; align-items: center; gap: .5rem; }
   .intro .try-check { margin: 0 0 .4rem; }
@@ -1334,7 +1440,7 @@ html[data-intro] .stage-light { opacity: 0; }
   .intro .try-reading b { font-size: .9rem; }
   .intro .try-watts { white-space: normal; font-size: .56rem; line-height: 1.2; }
   .intro .try-plot { height: 3.1rem; }
-  /* The amber lines' caption moves into a tip on the lines themselves (main.js sets it). */
+  /* The legend moves into a tip on the sliders themselves (main.js sets it). */
   .intro .try-legend { display: none; }
 }
 
