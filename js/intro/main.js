@@ -857,6 +857,8 @@ function intro(experience) {
         : (rest ? s.tune : sliderToTune(v)).toFixed(2) + ' MHz';
       const output = labUi.outputs[name];
       if (output.textContent !== text) output.textContent = text;
+      // The value blurs a little while its thumb glides fast, as the readings do.
+      output.style.setProperty('--blur', (reduce.matches ? 0 : Math.min(2.5, Math.abs(at.velocity) * .6)).toFixed(2) + 'px');
     });
     return moving;
   }
@@ -911,17 +913,23 @@ function intro(experience) {
     lab.tweens ??= { ...t };
     const k = reduce.matches ? 1 : 1 - Math.exp(-dt * 14);
     let moving = false;
+    // Each number blurs as it rolls, as much as it is moving (its change a second, as a share of
+    // where it is going; at most 3 px), and comes sharp as it settles.
+    const blur = {};
     for (const key of ['field', 'volts', 'reach', 'answer', 'watts']) {
       const to = t[key];
+      blur[key] = 0;
       if (to === null) { lab.tweens[key] = null; continue; }
       const from = lab.tweens[key] ?? 0;
       const next = Math.abs(to - from) < 1e-3 ? to : from + (to - from) * k;
       lab.tweens[key] = next;
       moving ||= next !== to;
+      if (!reduce.matches && dt > 0) blur[key] = Math.min(3, Math.abs(next - from) / dt / Math.max(Math.abs(to), 1) * .8);
     }
     const v = lab.tweens, set = (name, text) => {
       const node = labUi.readings[name].querySelector('b');
       if (node.textContent !== text) node.textContent = text;
+      node.style.setProperty('--blur', blur[name].toFixed(2) + 'px');
     };
     set('field', v.field.toFixed(2) + ' A/m');
     set('volts', v.volts.toFixed(2) + ' V');
@@ -932,6 +940,7 @@ function intro(experience) {
     const need = (lab.m.needs * 1000).toFixed(1);
     const line = lab.m.limited ? `${v.watts.toFixed(1)} mW, its limiter holds 3.3 V` : `${v.watts.toFixed(1)} mW, needs ${need} mW`;
     if (watts.textContent !== line) watts.textContent = line;
+    watts.style.setProperty('--blur', blur.watts.toFixed(2) + 'px');
     const sliding = paintSliders(dt) | paintZoneMotion(dt);
     // The chart's entrance (or a new tab's), and its glide, at the same time.
     if (lab.reveal) {
@@ -1574,7 +1583,9 @@ function intro(experience) {
     const working = docked && STEPS[step].talk === 'answer' && b.message && !b.message.started;
     const inLab = docked && step === LAB;
     const names = working ? ['chip'] : inLab
-      ? ['chip', ...(lab.set.metal > 0 ? ['metal'] : []), ...(b.phone > .97 ? ['phoneCoil'] : []), ...(b.reachShow > .5 ? ['reach'] : [])]
+      ? ['chip', ...(lab.set.metal > 0 ? ['metal'] : []), ...(b.phone > .9 ? ['phoneCoil'] : []),
+        // The reach's label goes with its outline through a swap of readers (effects.js).
+        ...(b.reachShow > .5 && Math.abs(b.phone - .5) > .4 ? ['reach'] : [])]
       : STEPS[step]?.labels ?? [];
     paintLabels3D(docked && available ? names : []);
     // The lab's panel shows only in its step, once the readout is in. It is shown, leaving (fading

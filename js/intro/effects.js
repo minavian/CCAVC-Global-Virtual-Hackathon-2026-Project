@@ -376,7 +376,10 @@ export function buildEffects() {
   const baseUpdate = update;
   function updateAll(b, cardZ, talk) {
     baseUpdate(b, cardZ, talk);
-    const show = (b.reachShow || 0) * (1 - (b.phone > .02 && b.phone < .98 ? 1 : 0));
+    // Through a swap of readers it fades out over the first quarter and back in over the last, at
+    // the new reader's reach (it used to vanish for the whole swap, then pop back in one frame).
+    const across = Math.min(1, Math.abs((b.phone || 0) - .5) * 2);
+    const show = (b.reachShow || 0) * THREE.MathUtils.smoothstep(across, .5, 1);
     reachLine.visible = show > .01;
     if (!reachLine.visible) return;
     // As far over the coil as the card's coil can be and still wake it.

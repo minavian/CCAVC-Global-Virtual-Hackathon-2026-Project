@@ -941,14 +941,17 @@ html[data-intro] .stage-light { opacity: 0; }
   color: #fff1e2;
   text-shadow: 0 1px 10px rgba(0, 0, 0, .9), 0 0 3px rgba(0, 0, 0, .8);
   opacity: 0;
-  transition: opacity .45s ease;
+  filter: blur(6px);
+  transition: opacity .5s ease, filter .6s cubic-bezier(.2, .8, .2, 1);
 }
-.intro .cine-label.is-shown { opacity: 1; transition-delay: .15s; }
+/* Shown, it comes into focus as it fades in (a label used to appear with only a quick fade). */
+.intro .cine-label.is-shown { opacity: 1; filter: blur(0); transition-delay: .15s; }
 /* The lab keeps the lights up (cinema.js): its labels and their lines in ink on the paper. */
 .intro .intro-stage.is-lab .cine-leaders line { stroke: rgba(13, 13, 12, .45); }
 .intro .intro-stage.is-lab .cine-label { color: var(--ink); text-shadow: 0 0 6px rgba(245, 242, 236, .95), 0 0 2px rgba(245, 242, 236, .9); }
 @media (prefers-reduced-motion: reduce) {
   .intro .cine-leaders line { stroke-dasharray: none; stroke-dashoffset: 0; transition: opacity .45s ease; }
+  .intro .cine-label { filter: none; }
   .intro .cine-label.is-shown { transition-delay: 0s; }
 }
 
@@ -1031,13 +1034,16 @@ html[data-intro] .stage-light { opacity: 0; }
 }
 .intro .try-reading.is-low b { color: rgba(10, 10, 10, .3); }
 .intro .try-watts { display: block; margin-top: .22rem; font-size: .64rem; font-variant-numeric: tabular-nums; color: var(--try-sub); white-space: nowrap; }
-/* Another reader or tag: the readings blink up into their new values, one after the other
-   (main.js `pulse`), so the switch shows even when a number barely moves. */
-.intro .try-readings.is-pulsed .try-reading b { animation: try-pulse .55s cubic-bezier(.2, .8, .2, 1) backwards; }
+/* The numbers blur as they roll to a new value, as much as they are moving (main.js sets --blur
+   every frame), and come sharp as they settle. The values beside the sliders do the same. */
+.intro .try-reading b, .intro .try-watts, .intro .try-control output { filter: blur(var(--blur, 0px)); }
+/* Another reader or tag: the readings come back into focus, one after the other (main.js
+   `pulse`), so the switch shows even when a number barely moves. */
+.intro .try-readings.is-pulsed .try-reading b { animation: try-pulse .5s cubic-bezier(.2, .8, .2, 1) backwards; }
 .intro .try-readings.is-pulsed .try-reading:nth-child(2) b { animation-delay: .05s; }
 .intro .try-readings.is-pulsed .try-reading:nth-child(3) b { animation-delay: .1s; }
 .intro .try-readings.is-pulsed .try-reading:nth-child(4) b { animation-delay: .15s; }
-@keyframes try-pulse { from { opacity: .15; transform: translateY(.4rem); } }
+@keyframes try-pulse { from { filter: blur(5px); } }
 /* A bar with a mark where the chip's need sits (and, for the field, the standard's maximum). Its
    fill and its marks glide to a new value. */
 .intro .try-bar { position: relative; display: block; height: 3px; margin-top: .4rem; border-radius: 3px; background: var(--try-line); }
