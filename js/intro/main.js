@@ -708,7 +708,8 @@ function intro(experience) {
     }
     paintPlot();
     labUi.ask.disabled = labUi.prove.disabled = Boolean(lab.talk) || !m.on;
-    labUi.ask.title = labUi.prove.title = m.on ? '' : 'The reader is off: no field to ask with.';
+    labUi.ask.title = labUi.prove.title = m.on ? ''
+      : lab.set.reader === 'phone' ? 'The phone’s NFC is off: no field to ask with.' : 'The reader is off: no field to ask with.';
   }
 
   // The readings' numbers, gliding to their targets (each frame while the lab shows).
