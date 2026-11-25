@@ -184,6 +184,9 @@ async function main() {
       tags.fob = { group: g, parts, xrayLevel: 0.16, chipLocal: new THREE.Vector3(-0.0023 - 0.0038, 0.0006, 0.0046), coilCorner: new THREE.Vector3(0.0145, 0, 0.0097), lblTag: [64, 16], lblChip: [-56, -18] };
     }),
     loadModel('models/phone.glb').then((m) => {
+      // The same back as the main site's landing (../js/models.js refinePhone): its H redrawn from a
+      // photo of the real phone, its back and flash refined. Skipped if that script is not there.
+      window.RFIDModels?.refinePhone?.(THREE, m);
       // phone: back (local -z) -> world +y, long side (local y) -> world x
       m.quaternion.copy(basisQuat([0, 0, -1], [1, 0, 0], [0, -1, 0]));
       m.position.set(-0.0423, -0.0005, 0);
