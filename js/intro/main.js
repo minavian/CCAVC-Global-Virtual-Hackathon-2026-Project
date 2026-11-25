@@ -557,7 +557,9 @@ function intro(experience) {
     if (lab.chart === 'map') {
       if (lab.map && !reduce.matches) lab.mapFade = { map: lab.map, start: performance.now() };
       lab.map = wakeMap(lab.set);
-    } else lab.map = lab.mapFade = null;
+      // The other reader's, everything else the same, for its outline (coarser: about 500 solves).
+      lab.otherMap = { reader: lab.set.reader === 'phone' ? 'pad' : 'phone', map: wakeMap({ ...lab.set, reader: lab.set.reader === 'phone' ? 'pad' : 'phone' }, 19, 20) };
+    } else lab.map = lab.mapFade = lab.otherMap = null;
     lab.points = lab.chart === 'map' ? [] : curve(lab.set, lab.chart);
     // The other reader's curve, everything else the same, drawn faintly behind (not for tuning,
     // where both readers send 13.56 MHz): the two readers compared at a glance.
@@ -789,18 +791,11 @@ function intro(experience) {
     const starts = bands.map(band => [band.rest, band.angle]);
     shape('rgba(244,241,234,.04)', [[map.near, 0], ...starts, [map.near, 90]]);
     shape('rgba(255,181,46,.1)', [...starts, [map.far, 90], [map.far, 0]]);
-    // Where it wakes: one stretch in each band, from face-on up to the last band that wakes.
-    const top = bands.reduce((at, band, j) => (band.spans.length ? j : at), -1);
-    const simple = top >= 0 && bands.every((band, j) => (j <= top ? band.spans.length === 1 : !band.spans.length));
-    if (simple) {
-      // Closed half a band above the last that wakes (where the next one doesn't).
-      const lid = Math.min(90, bands[top].angle + 45 / last), [from, to] = bands[top].spans[0];
-      const mid = (from + to) / 2;
-      shape('rgba(255,181,46,.82)', [
-        ...bands.slice(0, top + 1).map(band => [band.spans[0][0] <= band.start ? band.rest : band.spans[0][0], band.angle]), [mid, lid],
-        ...bands.slice(0, top + 1).reverse().map(band => [band.spans[0][1], band.angle]),
-      ]);
-    } else if (top >= 0) {
+    // Where it wakes: one shape when it is one stretch in each band, from face-on up (closed half
+    // a band above the last that wakes); else band by band.
+    const outline = mapOutline(map);
+    if (outline) shape('rgba(255,181,46,.82)', outline);
+    else if (bands.some(band => band.spans.length)) {
       const half = 45 / last;
       g.fillStyle = 'rgba(255,181,46,.82)';
       g.beginPath();
@@ -813,9 +808,24 @@ function intro(experience) {
     g.globalAlpha = 1;
   }
 
+  // The outline of where a map wakes, as points (cm, degrees): up its near edges, over its top,
+  // down its far edges. Only for a region of one stretch a band from face-on up (else null).
+  function mapOutline(map) {
+    const bands = map.bands, top = bands.reduce((at, band, j) => (band.spans.length ? j : at), -1);
+    if (top < 0 || !bands.every((band, j) => (j <= top ? band.spans.length === 1 : !band.spans.length))) return null;
+    const lid = Math.min(90, bands[top].angle + 45 / (bands.length - 1)), [from, to] = bands[top].spans[0];
+    return [
+      ...bands.slice(0, top + 1).map(band => [band.spans[0][0] <= band.start ? band.rest : band.spans[0][0], band.angle]),
+      [(from + to) / 2, lid],
+      ...bands.slice(0, top + 1).reverse().map(band => [band.spans[0][1], band.angle]),
+    ];
+  }
+
   // Where "wakes" can sit on the Map: in the amber, clear of the dot of the setting, and wide
   // enough over the word's whole height (the waking region narrows as the card turns).
-  function mapWordAt(map, X, Y, dotX, dotY, H, top, bottom) {
+  function mapWordAt(map, X, Y, avoid, H, top, bottom) {
+    const [dotX, dotY] = avoid[0];
+    const clear = (x, y) => avoid.every(([ax, ay, aw = 0]) => Math.abs(x - ax) > 18 + aw / 2 + 2 || Math.abs(y - ay) > 12);
     const bands = map.bands, highest = bands.reduce((at, band, j) => (band.spans.length ? j : at), -1);
     if (highest < 0) return null;
     const covers = (band, x0, x1) => band.spans.some(([from, to]) => X(from) <= x0 && X(to) >= x1);
@@ -830,7 +840,7 @@ function intro(experience) {
         const parts = dotX > a && dotX < b && Math.abs(y - 4 - dotY) < 14 ? [[a, dotX - 9], [dotX + 9, b]] : [[a, b]];
         for (const [p, q] of parts.sort((m, n) => (n[1] - n[0]) - (m[1] - m[0]))) {
           const x = (p + q) / 2;
-          if (q - p < 40 || !covers(above, x - 18, x + 18) || Math.hypot(x - dotX, y - 4 - dotY) < 18) continue;
+          if (q - p < 40 || !covers(above, x - 18, x + 18) || Math.hypot(x - dotX, y - 4 - dotY) < 18 || !clear(x, y - 4)) continue;
           return { x, y };
         }
       }
@@ -868,10 +878,41 @@ function intro(experience) {
     const fade = lab.mapFade ? smoother(0, 1, (performance.now() - lab.mapFade.start) / MAP_FADE) : 1;
     if (fade < 1) drawMap(g, lab.mapFade.map, X, Y, 1 - fade);
     drawMap(g, map, X, Y, fade);
+    // The other reader's waking region, as a faint dashed outline over it: the two compared.
+    const outline = lab.otherMap && mapOutline(lab.otherMap.map);
+    if (outline) {
+      g.strokeStyle = 'rgba(244,241,234,.5)';
+      g.lineWidth = 1.2;
+      g.setLineDash([3, 3]);
+      g.beginPath();
+      outline.forEach(([d, a], i) => (i ? g.lineTo(X(d), Y(a)) : g.moveTo(X(d), Y(a))));
+      g.closePath();
+      g.stroke();
+      g.setLineDash([]);
+    }
     g.restore();
-    // "wakes", in the amber, where the word fits and the dot is not.
-    const dotX = X(lab.set.distance), dotY = Y(lab.set.angle);
-    const word = drawn >= 1 ? mapWordAt(map, X, Y, dotX, dotY, H, top, bottom) : null;
+    const dotX = X(lab.set.distance), dotY = Y(lab.set.angle), avoid = [[dotX, dotY]];
+    if (outline && drawn >= 1) {
+      // Named just over its peak (or beside it, at the chart's top), clear of the dot: light, with a
+      // dark halo, so it reads on the amber and off it alike.
+      const name = lab.otherMap.reader === 'phone' ? 'phone' : 'card reader';
+      g.font = '600 10px "Inter Tight", system-ui, sans-serif';
+      const width = g.measureText(name).width, peak = outline[outline.length >> 1];
+      let x = Math.min(W - right - width / 2, Math.max(left + width / 2, X(peak[0]))), y = Y(peak[1]) - 4;
+      if (y - 9 < top) { y = Y(peak[1]) + 12; x = Math.min(W - right - width / 2, X(peak[0]) + width / 2 + 8); }
+      if (Math.hypot(x - dotX, y - 4 - dotY) < 16 + width / 2) x = Math.min(W - right - width / 2, dotX + width / 2 + 10);
+      g.textAlign = 'center';
+      g.lineJoin = 'round';
+      g.strokeStyle = 'rgba(20,18,16,.75)';
+      g.lineWidth = 3;
+      g.strokeText(name, x, y);
+      g.fillStyle = 'rgba(244,241,234,.85)';
+      g.fillText(name, x, y);
+      g.textAlign = 'left';
+      avoid.push([x, y - 4, width]);
+    }
+    // "wakes", in the amber, where the word fits and clear of the dot and the other's name.
+    const word = drawn >= 1 ? mapWordAt(map, X, Y, avoid, H, top, bottom) : null;
     if (word) {
       g.font = '650 10px "Inter Tight", system-ui, sans-serif';
       g.textAlign = 'center';
