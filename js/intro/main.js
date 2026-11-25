@@ -81,7 +81,8 @@ function intro(experience) {
     inputs: Object.fromEntries([...experience.querySelectorAll('.try-controls input')].map(input => [input.name, input])),
     outputs: Object.fromEntries([...experience.querySelectorAll('.try-controls output')].map(output => [output.dataset.for, output])),
     id: $('.try-id input'), check: $('.try-check b'), ask: $('.try-ask'), prove: $('.try-prove'), reset: $('.try-reset'), presets: $('.try-presets'),
-    readers: [...experience.querySelectorAll('.try-reader button')], driveLabel: $('.try-control-drive span'),
+    // (Only the buttons that name a reader: the tag's switch shares the reader switch's look.)
+    readers: [...experience.querySelectorAll('.try-reader button[data-reader]')], driveLabel: $('.try-control-drive span'),
     tags: [...experience.querySelectorAll('.try-tag button')],
   };
   // Under each slider, a thin line: amber where along it the chip would wake, with everything
