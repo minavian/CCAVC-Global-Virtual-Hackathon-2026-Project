@@ -10,7 +10,7 @@ import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose
 import { renderSignals } from './signals.js?v=2';
 import { ANSWER_AFTER, APPROACH_DETAIL, APPROACH_TEXT, ASK, SAMPLES_PER_BIT, CARD_ID, IDLE, LAB, LAST, NEAREST, REAL_MS, SHOTS, STEPS, TALK, approach, approachBand, approachView, centimetres,
   checkByte, chipShare, hex, message, proofSeconds, proofTalk, setCardId, talkLevels, view } from './cinema.js';
-import { LAB_START, PRESETS, READERS, clampSetting, curve, labLevels, measure as measureLab, parseId, proofCode, startFor, status as labStatus, wakes, chipPower } from './lab-model.js';
+import { LAB_START, PRESETS, READERS, clampSetting, curve, labLevels, measure as measureLab, parseId, proofCode, startFor, status as labStatus, wakes, chipPower, wakeMap } from './lab-model.js';
 
 // Resolves once the landing's opening is over (js/landing.js), the visitor scrolls, or
 // `fallback` ms pass, whichever is first: the moment to load 3D without stuttering it.
@@ -552,11 +552,17 @@ function intro(experience) {
       || lab.set.tag !== tagBefore || lab.set.clone !== cloneBefore)) endTalk();
     // (Only within one chart: the x of its points stay put.)
     lab.morph = shownBefore && shownBefore.chart === lab.chart ? { ...shownBefore, start: performance.now() } : null;
-    lab.points = curve(lab.set, lab.chart);
+    // The Map chart is a grid of where the chip wakes, not a curve. The last one stays a moment,
+    // fading out under the new one, so a change cross-fades instead of jumping.
+    if (lab.chart === 'map') {
+      if (lab.map && !reduce.matches) lab.mapFade = { map: lab.map, start: performance.now() };
+      lab.map = wakeMap(lab.set);
+    } else lab.map = lab.mapFade = null;
+    lab.points = lab.chart === 'map' ? [] : curve(lab.set, lab.chart);
     // The other reader's curve, everything else the same, drawn faintly behind (not for tuning,
     // where both readers send 13.56 MHz): the two readers compared at a glance.
     const other = lab.set.reader === 'phone' ? 'pad' : 'phone';
-    lab.other = lab.chart === 'tuning' ? null : { reader: other, points: curve({ ...lab.set, reader: other }, lab.chart) };
+    lab.other = lab.chart === 'tuning' || lab.chart === 'map' ? null : { reader: other, points: curve({ ...lab.set, reader: other }, lab.chart) };
     lab.pointsChart = lab.chart;
     paintZones();
     // Always: turning the card can lift it (a tilted card's edge rests on the reader), so the
@@ -756,7 +762,144 @@ function intro(experience) {
       paintPlot();
       if (performance.now() - lab.morph.start > 400) { lab.morph = null; paintPlot(); }
     }
-    return moving || Boolean(lab.morph) || Boolean(lab.reveal);
+    if (lab.mapFade) {
+      paintPlot();
+      if (performance.now() - lab.mapFade.start > MAP_FADE) { lab.mapFade = null; paintPlot(); }
+    }
+    return moving || Boolean(lab.morph) || Boolean(lab.reveal) || Boolean(lab.mapFade);
+  }
+
+  const MAP_FADE = 260;
+  // One Map drawn (see `paintMap`): faint grey where no card can be (closer than a card turned
+  // that far can come), a faint amber wash where it can be but sleeps, amber where it wakes. Each
+  // region is one shape through the bands' edges (one fill, so no seams between bands, and a
+  // sloped edge rather than steps). Where metal splits a band's waking into two stretches, the
+  // amber is drawn band by band instead, each a strip as tall as its share of the angles.
+  function drawMap(g, map, X, Y, alpha) {
+    const bands = map.bands, last = bands.length - 1;
+    g.globalAlpha = alpha;
+    const shape = (fill, points) => {
+      g.fillStyle = fill;
+      g.beginPath();
+      points.forEach(([d, a], i) => (i ? g.lineTo(X(d), Y(a)) : g.moveTo(X(d), Y(a))));
+      g.closePath();
+      g.fill();
+    };
+    // Where no card can be, and where one can: either side of the line of the bands' starts.
+    const starts = bands.map(band => [band.rest, band.angle]);
+    shape('rgba(244,241,234,.04)', [[map.near, 0], ...starts, [map.near, 90]]);
+    shape('rgba(255,181,46,.1)', [...starts, [map.far, 90], [map.far, 0]]);
+    // Where it wakes: one stretch in each band, from face-on up to the last band that wakes.
+    const top = bands.reduce((at, band, j) => (band.spans.length ? j : at), -1);
+    const simple = top >= 0 && bands.every((band, j) => (j <= top ? band.spans.length === 1 : !band.spans.length));
+    if (simple) {
+      // Closed half a band above the last that wakes (where the next one doesn't).
+      const lid = Math.min(90, bands[top].angle + 45 / last), [from, to] = bands[top].spans[0];
+      const mid = (from + to) / 2;
+      shape('rgba(255,181,46,.82)', [
+        ...bands.slice(0, top + 1).map(band => [band.spans[0][0] <= band.start ? band.rest : band.spans[0][0], band.angle]), [mid, lid],
+        ...bands.slice(0, top + 1).reverse().map(band => [band.spans[0][1], band.angle]),
+      ]);
+    } else if (top >= 0) {
+      const half = 45 / last;
+      g.fillStyle = 'rgba(255,181,46,.82)';
+      g.beginPath();
+      for (const band of bands) {
+        const y0 = Y(Math.min(90, band.angle + half)), y1 = Y(Math.max(0, band.angle - half));
+        for (const [from, to] of band.spans) g.rect(X(from), y0, X(to) - X(from), y1 - y0);
+      }
+      g.fill();
+    }
+    g.globalAlpha = 1;
+  }
+
+  // Where "wakes" can sit on the Map: in the amber, clear of the dot of the setting, and wide
+  // enough over the word's whole height (the waking region narrows as the card turns).
+  function mapWordAt(map, X, Y, dotX, dotY, H, top, bottom) {
+    const bands = map.bands, highest = bands.reduce((at, band, j) => (band.spans.length ? j : at), -1);
+    if (highest < 0) return null;
+    const covers = (band, x0, x1) => band.spans.some(([from, to]) => X(from) <= x0 && X(to) >= x1);
+    for (const share of [.35, .2, .55, .1, .7]) {
+      const j = Math.round(highest * share), band = bands[j], y = Y(band.angle) + 4;
+      if (y > H - bottom - 2 || y - 10 < top) continue;
+      // The band at the word's top: its angle where the word's top edge is.
+      const above = bands[Math.min(bands.length - 1, Math.round((90 * (1 - (y - 10 - top) / (H - top - bottom))) / (90 / (bands.length - 1))))];
+      for (const [from, to] of band.spans) {
+        const a = X(from), b = X(to);
+        // The stretch whole, or either side of the dot when it sits in it.
+        const parts = dotX > a && dotX < b && Math.abs(y - 4 - dotY) < 14 ? [[a, dotX - 9], [dotX + 9, b]] : [[a, b]];
+        for (const [p, q] of parts.sort((m, n) => (n[1] - n[0]) - (m[1] - m[0]))) {
+          const x = (p + q) / 2;
+          if (q - p < 40 || !covers(above, x - 18, x + 18) || Math.hypot(x - dotX, y - 4 - dotY) < 18) continue;
+          return { x, y };
+        }
+      }
+    }
+    return null;
+  }
+
+  // The Map chart: where the chip wakes, across distance (along) and the card's angle (up), with
+  // the setting as a dot. The other charts' frame, scale along the bottom and entrance; a change
+  // cross-fades from the last map to the new one.
+  function paintMap(g, W, H, left, right, top, bottom) {
+    const map = lab.map;
+    if (!map || !lab.m) return;
+    const X = d => left + (W - left - right) * (d - map.near) / (map.far - map.near);
+    const Y = a => top + (H - top - bottom) * (1 - a / 90);
+    g.font = '600 10px "Inter Tight", system-ui, sans-serif';
+    g.fillStyle = 'rgba(244,241,234,.5)';
+    g.strokeStyle = 'rgba(255,255,255,.1)';
+    g.lineWidth = 1;
+    for (const a of H < 90 ? [0, 90] : [0, 45, 90]) {
+      g.beginPath(); g.moveTo(left, Y(a) + .5); g.lineTo(W - right, Y(a) + .5); g.stroke();
+      g.fillText(a + '°', 2, Y(a) + 3);
+    }
+    const ticks = W < 270 ? [2, 5, 10] : [2, 4, 6, 8, 10];
+    for (const v of ticks) {
+      const last = v === ticks[ticks.length - 1];
+      g.textAlign = last ? 'right' : 'center';
+      g.fillText(v + ' cm', last ? W - right : X(v), H - 4);
+    }
+    g.textAlign = 'left';
+    // On the panel's entrance it sweeps in from the left, as the curves do.
+    const drawn = lab.reveal ? smoother(0, 1, (performance.now() - lab.reveal) / 800) : 1;
+    g.save();
+    g.beginPath(); g.rect(left, top, (W - left - right) * drawn, H - top - bottom); g.clip();
+    const fade = lab.mapFade ? smoother(0, 1, (performance.now() - lab.mapFade.start) / MAP_FADE) : 1;
+    if (fade < 1) drawMap(g, lab.mapFade.map, X, Y, 1 - fade);
+    drawMap(g, map, X, Y, fade);
+    g.restore();
+    // "wakes", in the amber, where the word fits and the dot is not.
+    const dotX = X(lab.set.distance), dotY = Y(lab.set.angle);
+    const word = drawn >= 1 ? mapWordAt(map, X, Y, dotX, dotY, H, top, bottom) : null;
+    if (word) {
+      g.font = '650 10px "Inter Tight", system-ui, sans-serif';
+      g.textAlign = 'center';
+      g.fillStyle = 'rgba(20,18,16,.8)';
+      g.fillText('wakes', word.x, word.y);
+      g.textAlign = 'left';
+    }
+    // Where the setting is now.
+    const dotSize = 4 * smoother(.85, 1, drawn);
+    if (dotSize > .2) {
+      g.fillStyle = lab.m.awake ? '#ffffff' : '#ff8f7a';
+      g.strokeStyle = 'rgba(20,18,16,.85)';
+      g.lineWidth = 1.5;
+      g.beginPath(); g.arc(dotX, dotY, dotSize, 0, Math.PI * 2); g.fill(); g.stroke();
+    }
+    // Said in words: how far it wakes face-on, and how far it can be turned where it is.
+    const d = lab.set.distance, at = `At ${d.toFixed(1)} cm`;
+    const faceOn = map.bands[0].spans.at(-1)?.[1];
+    const fits = map.bands.filter(band => band.start <= d + .05);
+    const turned = fits.filter(band => band.spans.some(([from, to]) => d >= from - .05 && d <= to + .05)).at(-1);
+    labUi.plot.setAttribute('aria-label', 'Where the chip wakes, by distance and the card’s angle. '
+      + (faceOn === undefined ? 'Like this, it wakes nowhere.'
+        : `Face-on it wakes up to ${faceOn.toFixed(1)} cm. `
+        + (!turned ? `${at} it sleeps at any angle.`
+          : fits.length === 1 ? `${at} only a flat card fits, and it wakes.`
+          : turned.angle === 0 ? `${at} it wakes only face-on.`
+          : `${at} it still wakes turned up to ${Math.round(turned.angle)}°.`))
+      + ` Now it is ${lab.m.awake ? 'awake' : 'asleep'}.`);
   }
 
   // The chart: the voltage at the chip across distance or across tuning, everything else as
@@ -771,6 +914,7 @@ function intro(experience) {
     g.setTransform(ratio, 0, 0, ratio, 0, 0);
     const W = box.width, H = box.height, left = 30, right = 8, top = 8, bottom = 18;
     g.clearRect(0, 0, W, H);
+    if (lab.chart === 'map') { paintMap(g, W, H, left, right, top, bottom); return; }
     const now = plotNow();
     if (!now) return;
     const points = now.points, tuning = lab.chart === 'tuning', answer = lab.chart === 'answer';

@@ -37,10 +37,13 @@ export const READERS = {
 // even 30° on a phone, the card's own edge holds it out at 2.2 cm, past where it can wake.
 const CARD_HALF_CM = 2.7;
 export function nearestFor(s) {
-  const r = READERS[readerOf(s)], half = CARD_HALF_CM * TAG_SIZES[tagOf(s)].scale;
   // Up to the distance slider's next 0.1 cm step, so a lifted card sits on a value it can show.
-  const lifted = Math.ceil((half * Math.sin((s.angle || 0) * Math.PI / 180) + r.surface + .1) * 10 - 1e-9) / 10;
-  return Math.max(r.nearest, lifted);
+  return Math.max(READERS[readerOf(s)].nearest, Math.ceil(restFor(s) * 10 - 1e-9) / 10);
+}
+// Where a turned card's middle is with its edge resting on the reader, exactly (cm).
+function restFor(s) {
+  const r = READERS[readerOf(s)], half = CARD_HALF_CM * TAG_SIZES[tagOf(s)].scale;
+  return half * Math.sin((s.angle || 0) * Math.PI / 180) + r.surface + .1;
 }
 const readerOf = s => READERS[s.reader] ? s.reader : 'pad';
 // The tag's coil: a bank card's (35.7 mm in radius, the engine's card), a key ring tag's (15 mm) or
@@ -145,6 +148,38 @@ function reachOf(s) {
   let lo = far, hi = far + .05;
   for (let i = 0; i < 14; i++) { const mid = (lo + hi) / 2; if (awakeAt(mid)) lo = mid; else hi = mid; }
   return lo;
+}
+
+// Where the chip wakes, by distance and the card's angle together, everything else as set: the
+// lab's Map chart. One band for each of `rows` angles, 0° to 90°, from face-on up. Each band has
+// `start`, the nearest a card turned that far can be (its edge rests on the reader's top; `rest`,
+// the same unrounded, for drawing a smooth edge rather than the slider's 0.1 cm steps), and
+// `spans`, the stretches of distance (cm, up to 10, as the Distance chart) where the chip wakes:
+// usually one, but metal can leave it asleep very close and awake further out. Each band is
+// scanned at `cols` points, then every edge found is pinned down by bisection, so the outline is
+// exact (to a fiftieth of a millimetre) rather than stepped. About 2,000 solves, a few milliseconds.
+export function wakeMap(s, rows = 37, cols = 36) {
+  const near = LIMITS.distance[0], far = LIMITS.distance[1], bands = [];
+  for (let j = 0; j < rows; j++) {
+    const angle = 90 * j / (rows - 1), start = Math.max(near, nearestFor({ ...s, angle }));
+    const base = clampSetting({ ...s, angle }), at = distance => wakes({ ...base, distance });
+    const spans = [];
+    let before = start, was = at(start), from = was ? start : null;
+    for (let i = 1; i <= cols; i++) {
+      const x = start + (far - start) * i / cols, is = at(x);
+      if (is !== was) {
+        let lo = before, hi = x;
+        for (let k = 0; k < 12; k++) { const mid = (lo + hi) / 2; if (at(mid) === was) lo = mid; else hi = mid; }
+        const edge = (lo + hi) / 2;
+        if (is) from = edge; else { spans.push([from, edge]); from = null; }
+        was = is;
+      }
+      before = x;
+    }
+    if (from !== null) spans.push([from, far]);
+    bands.push({ angle, start, rest: Math.max(near, READERS[readerOf(s)].nearest, Math.min(start, restFor({ ...s, angle }))), spans });
+  }
+  return { near, far, rows, bands };
 }
 
 // The voltage at the chip across distances (cm), or across the reader's frequency (MHz),

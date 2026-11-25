@@ -117,6 +117,27 @@ test('turned up, the power it would take to wake the card', () => {
   assert.equal(L.timesText(9149), '9,100');
 });
 
+test('the map of where it wakes has exact edges', () => {
+  for (const reader of ['pad', 'phone']) for (const metal of [0, 2]) for (const tag of ['card', 'sticker']) {
+    const s = L.clampSetting({ ...L.startFor(reader), metal, tag }), map = L.wakeMap(s), at = JSON.stringify(s);
+    assert.equal(map.bands.length, 37);
+    // Face-on, its last edge is the reach the lab states (both found from the same physics).
+    const faceOn = map.bands[0].spans.at(-1)?.[1] ?? 0, reach = L.measure(L.clampSetting({ ...s, angle: 0 })).reach;
+    assert.ok(Math.abs(faceOn - reach) < .03, `face-on ${faceOn} against reach ${reach} at ${at}`);
+    for (const band of map.bands) {
+      assert.equal(band.start, Math.max(.5, L.nearestFor({ ...s, angle: band.angle })));
+      const base = L.clampSetting({ ...s, angle: band.angle });
+      for (const [from, to] of band.spans) {
+        assert.ok(from >= band.start - 1e-9 && to > from, `span ${from}–${to} at ${band.angle}°`);
+        // Inside each span it wakes; just past an edge (not the chart's own ends) it sleeps.
+        assert.ok(L.wakes({ ...base, distance: (from + to) / 2 }), `asleep inside a span at ${band.angle}°, ${at}`);
+        if (to < 10) assert.ok(!L.wakes({ ...base, distance: to + .01 }), `awake past an edge at ${band.angle}°, ${at}`);
+        if (from > band.start) assert.ok(!L.wakes({ ...base, distance: from - .01 }), `awake before an edge at ${band.angle}°, ${at}`);
+      }
+    }
+  }
+});
+
 test('a copy has the ID but not the key', () => {
   const key = Array.from({ length: 16 }, (_, i) => i * 17 & 255), copy = key.map(b => b ^ 1);
   const challenge = [0x5a, 0x13, 0xc2, 0x7e];
