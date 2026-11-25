@@ -160,22 +160,25 @@ function intro(experience) {
   const random = n => [...crypto.getRandomValues(new Uint8Array(n))];
   const CARD_KEY = random(16), COPY_KEY = random(16);
   // Played by itself, the lab shows its controls at work: the card moved away until the chip
-  // sleeps and back, turned side-on and back, then a metal plate slid behind it and away.
+  // sleeps; there the reader turned all the way up, and still too far (the readout says how
+  // much more power it would take: nearly 5 times), and back down; the card brought back, turned
+  // side-on and back, then a metal plate slid behind it and away.
   // Keyframes: [seconds into the step, { setting }]; each value glides between its keyframes.
   const DEMO = [
-    [0, { distance: 3, angle: 0, metal: 0 }], [1.6, { distance: 3 }], [5.2, { distance: 7.2 }], [6.6, { distance: 7.2 }],
-    [8.8, { distance: 2.2 }], [9.4, { angle: 0 }], [11.8, { angle: 82 }], [13, { angle: 82 }], [14.6, { angle: 0 }],
-    [15, { metal: 0 }], [15.1, { metal: 4 }], [17.6, { metal: 4 }], [17.7, { metal: 0 }],
+    [0, { distance: 3, angle: 0, metal: 0, drive: 100 }], [1.6, { distance: 3 }], [5.2, { distance: 7.2 }],
+    [5.6, { drive: 100 }], [6.6, { drive: 150 }], [8.4, { drive: 150 }], [9.1, { drive: 100 }], [9.1, { distance: 7.2 }],
+    [11.3, { distance: 2.2 }], [11.9, { angle: 0 }], [14.3, { angle: 82 }], [15.5, { angle: 82 }], [17.1, { angle: 0 }],
+    [17.5, { metal: 0 }], [17.6, { metal: 4 }], [20.1, { metal: 4 }], [20.2, { metal: 0 }],
     // Then the phone: the pad slides away and the phone comes in, the card lowers to a phone's
     // tap (1 cm), is taken out past its reach (2.4 cm) and back, then the pad returns.
-    [17.8, { distance: 2.2 }], [18.4, { distance: 3 }], [18.8, { distance: 1 }], [20.8, { distance: 1 }],
-    [24, { distance: 3.4 }], [25.2, { distance: 3.4 }], [27.2, { distance: 1 }], [29.4, { distance: 1 }], [30, { distance: 3 }],
+    [20.3, { distance: 2.2 }], [20.9, { distance: 3 }], [21.3, { distance: 1 }], [23.3, { distance: 1 }],
+    [26.5, { distance: 3.4 }], [27.7, { distance: 3.4 }], [29.7, { distance: 1 }], [31.9, { distance: 1 }], [32.5, { distance: 3 }],
   ];
   // Which reader the demo uses, from when.
-  const DEMO_READER = [[0, 'pad'], [18.8, 'phone'], [29.4, 'pad']];
+  const DEMO_READER = [[0, 'pad'], [21.3, 'phone'], [31.9, 'pad']];
   // Last, from when to when: the card becomes a copy and is asked to prove itself, and the reader
   // turns it down (about 9 s), so a demo shows why copying the ID isn't enough.
-  const DEMO_COPY = [31, 41];
+  const DEMO_COPY = [33.5, 43.5];
   const shown = Object.fromEntries(Object.keys(IDLE).map(key => [key, spring(IDLE[key])]));
   let lens = null;
   let lastLevels = null;   // what the close-up drew last (the debug hook reads it)
@@ -513,7 +516,7 @@ function intro(experience) {
     } else if (plan.lab) {
       // The demo: each control glides through its keyframes.
       const next = {};
-      for (const key of ['distance', 'angle', 'metal']) {
+      for (const key of ['distance', 'angle', 'metal', 'drive']) {
         const frames = DEMO.filter(([, set]) => key in set);
         let value = frames[0][1][key];
         for (let i = 1; i < frames.length; i++) {
@@ -529,7 +532,6 @@ function intro(experience) {
       if (auto.held < DEMO_COPY[0]) lab.demoProved = false;
       // What the demo doesn't move stays normal, whatever the visitor set before pressing Play
       // (a card left tuned to 6 MHz made the whole demo say it was tuned wrong).
-      next.drive = LAB_START.drive;
       next.tune = LAB_START.tune;
       next.tag = LAB_START.tag;
       if (next.reader === 'phone' && available) scene.usePhone();
@@ -1723,7 +1725,7 @@ function intro(experience) {
     // From the tap's third step on, the phone (the lab's second reader) is made ready in the
     // background: the landing page has usually fetched its 3 MB model already, but reading it and
     // preparing it to draw takes a moment, so it is done well before the lab's demo turns to the
-    // phone (18.8 s in). Made ready only on reaching the lab, a slow device could miss that, and
+    // phone (21.3 s in). Made ready only on reaching the lab, a slow device could miss that, and
     // the demo kept the card reader.
     if (step >= 2 && available) scene.usePhone();
     // The card answers by itself, a moment after the step starts; the question waits for Ask.
