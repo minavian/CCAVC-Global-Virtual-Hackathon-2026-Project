@@ -995,8 +995,8 @@ html[data-intro] .stage-light { opacity: 0; }
 .intro .try-reading.is-low .lab-bar span { background: #ff8f7a; }
 .intro .try-reading.is-over .try-bar span { background: #ff8f7a; }
 .intro .try-bar em { position: absolute; top: -.2rem; bottom: -.2rem; left: calc(var(--need, 0) * 100%); width: 2px; background: #f4f1ea; border-radius: 1px; }
-.intro .try-chart { display: grid; gap: .35rem; }
-.intro .try-tabs { display: inline-flex; gap: .25rem; justify-self: start; padding: .15rem; border-radius: 999px; background: rgba(255, 255, 255, .07); }
+.intro .try-chart { display: grid; grid-template-columns: minmax(0, 1fr); gap: .35rem; }
+.intro .try-tabs { display: inline-flex; gap: .25rem; justify-self: start; max-width: 100%; padding: .15rem; border-radius: 999px; background: rgba(255, 255, 255, .07); }
 .intro .try-tabs button {
   padding: .25rem .7rem; border: 0; border-radius: 999px; font: inherit; font-size: .72rem; font-weight: 650;
   color: rgba(244, 241, 234, .7); background: transparent; cursor: pointer;
@@ -1068,6 +1068,10 @@ html[data-intro] .stage-light { opacity: 0; }
   .intro .try-actions { gap: .4rem; }
   .intro .try-actions button { padding-inline: .6rem; }
   .intro .try-reader button { padding-inline: .35rem; white-space: nowrap; }
+  /* The four chart tabs share the row, a little tighter, so the fourth (Map) is never cut off
+     and the tabs never push the chart wider than the panel. */
+  .intro .try-tabs { display: flex; max-width: 100%; }
+  .intro .try-tabs button { flex: 1 1 auto; min-width: 0; padding-inline: .4rem; font-size: .7rem; }
 }
 .intro .try-actions button, .intro .try-presets button {
   min-height: 2.4rem; padding: .4rem .9rem; border-radius: 999px; font: inherit; font-size: .82rem; font-weight: 650; cursor: pointer;
