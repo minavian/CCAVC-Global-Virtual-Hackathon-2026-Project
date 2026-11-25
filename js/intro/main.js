@@ -349,12 +349,17 @@ function intro(experience) {
   };
 
   // Swaps the readout's sentence and its small print, fading the new ones in.
+  const SENTENCE_HOLD = 180;   // ms a new lab sentence must hold before it shows (see below)
   function say(text, detail = '') {
     if (text === shownText && detail === film.detail.textContent) return;
+    // Only a new sentence comes in. New small print under the same sentence (a number following a
+    // slider: "It runs on 9.8 mW") just changes; it used to replay the entrance at every step, so
+    // the readout blinked all the way along a drag.
+    const fresh = text !== shownText;
     shownText = text;
     film.text.textContent = text;
     film.detail.textContent = detail;
-    if (!reduce.matches && text) {
+    if (fresh && !reduce.matches && text) {
       film.words.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }],
         { duration: 420, easing: 'cubic-bezier(.2, .7, .2, 1)' });
     }
@@ -1167,6 +1172,18 @@ function intro(experience) {
           else if (!(b.message?.dir < 0 && b.message.landed >= 1)) { text = 'The card answers: ' + TALK.answer.words + '.'; detail = `The ${noun} feels a ${(lab.m.dip * 100).toFixed(1)}% change.`; }
           // The whole answer is in: the reader has checked it.
           else { text = `Verified. The ${noun} has the ID.`; detail = 'Its check byte matches the four ID bytes.'; }
+        }
+      }
+      // In the lab, a new sentence for the setting waits until it has held for a moment, so a
+      // slider swept through a passing state (a card turned past "Awake, but only just") doesn't
+      // flash that state's sentence on its way. Conversations speak at once.
+      // (A sentence that comes back before then cancels the wait.)
+      if (plan.lab && !lab.talk && text && shownText) {
+        const now = performance.now();
+        if (text === shownText) lab.nextText = null;
+        else {
+          if (lab.nextText !== text) { lab.nextText = text; lab.nextSince = now; setTimeout(invalidate, SENTENCE_HOLD + 20); }
+          if (now - lab.nextSince < SENTENCE_HOLD) text = '';
         }
       }
       if (text) say(text, detail);
