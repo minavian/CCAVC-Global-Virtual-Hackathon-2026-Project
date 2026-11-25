@@ -1841,7 +1841,10 @@ function intro(experience) {
       const omega = key === 'dark' ? Math.min(pace, 2.4) : pace;
       // With reduced motion the lab's readers swap at once, without sliding.
       if (key === 'phone' && reduce.matches) { shown[key].value = goal[key]; shown[key].velocity = 0; }
-      chase(shown[key], goal[key], omega, dt, key === 'gap' ? 1e-5 : .0008);
+      // Levels in metres (the card's gap, the reach's height, the metal's distance) settle to a
+      // hundredth of a millimetre: at .0008 the reach's outline snapped its last 0.8 mm into place
+      // at the end of a swap of readers, a visible jerk up close.
+      chase(shown[key], goal[key], omega, dt, key === 'gap' || key === 'reachZ' || key === 'plate' ? 1e-5 : .0008);
       settled &&= resting(shown[key], goal[key]);
     }
     // The camera glides from shot to shot: its zoom in even steps (log), its aim and angle.
