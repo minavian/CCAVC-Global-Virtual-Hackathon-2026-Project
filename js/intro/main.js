@@ -1096,6 +1096,7 @@ function intro(experience) {
     }
     // The other reader's curve, faint and dashed, named at its near end, just under its line,
     // where the curve in use never is (the label used to land on the dot of the setting).
+    let otherName = null;
     if (lab.other && lab.other.points.length) {
       const pts = lab.other.points;
       g.strokeStyle = 'rgba(244,241,234,.3)';
@@ -1106,9 +1107,11 @@ function intro(experience) {
         .forEach(([x, v], i) => (i ? g.lineTo(X(x), Y(v)) : g.moveTo(X(x), Y(v))));
       g.stroke();
       g.setLineDash([]);
-      const [x0, v0] = pts[0];
+      const [x0, v0] = pts[0], name = lab.other.reader === 'phone' ? 'phone' : 'card reader';
+      const nameY = Math.min(H - bottom - 3, Y(Math.min(v0, yMax)) + 11), nameWidth = g.measureText(name).width;
       g.fillStyle = 'rgba(244,241,234,.6)';
-      g.fillText(lab.other.reader === 'phone' ? 'phone' : 'card reader', X(x0) + 3, Math.min(H - bottom - 3, Y(Math.min(v0, yMax)) + 11));
+      g.fillText(name, X(x0) + 3, nameY);
+      otherName = [X(x0) + 3 + nameWidth / 2, nameY - 4, nameWidth];
     }
     // On the panel's entrance the curves draw in from the left over 0.8 s, then the dot appears.
     const drawn = lab.reveal ? smoother(0, 1, (performance.now() - lab.reveal) / 800) : 1;
@@ -1124,21 +1127,31 @@ function intro(experience) {
         : (va + vb) / 2 >= 2 && reachable ? '#ffb52e' : 'rgba(255,181,46,.35)';
       g.beginPath(); g.moveTo(X(a), Y(va)); g.lineTo(X(b), Y(vb)); g.stroke();
     }
-    // On Tuning, the card's own peak named: where its circuit resonates. Metal behind the card
-    // moves it up (2 mm of metal: about 17 MHz), off the reader's 13.56; a card tuned to match
-    // peaks on the reader's line.
-    if (tuning && drawn >= 1) {
-      const peak = points.reduce((best, p) => (p[1] > best[1] ? p : best), points[0]);
-      const matched = Math.abs(peak[0] - 13.56) < .25;
-      const words = matched ? 'tuned to the reader' : `card peaks at ${peak[0].toFixed(1)} MHz`;
+    // The peak named. On Tuning, where the card's own circuit resonates: metal behind the card
+    // moves it up (2 mm of metal: about 17 MHz), off the reader's 13.56, and a card tuned to
+    // match peaks on the reader's line. On Answer, where the answer is strongest: in between,
+    // not closest (about 2.6 cm over the card reader).
+    const peak = points.reduce((best, p) => (p[1] > best[1] ? p : best), points[0]);
+    if ((tuning || (answer && peak[1] > 0)) && drawn >= 1) {
+      const matched = tuning && Math.abs(peak[0] - 13.56) < .25;
+      const words = answer ? `strongest at ${peak[0].toFixed(1)} cm`
+        : matched ? 'tuned to the reader' : `card peaks at ${peak[0].toFixed(1)} MHz`;
       g.save();
       g.font = '600 9px "Inter Tight", system-ui, sans-serif';
       const width = g.measureText(words).width, px = X(peak[0]), py = Y(Math.min(peak[1], yMax));
-      const x = Math.min(W - right - width / 2, Math.max(left + width / 2, px));
-      let y = Math.max(top + 8, py - 7);
-      // Never on the "wakes" label at the right end of the 2 V line: above it instead.
-      const wakesWidth = g.measureText('wakes').width + 8, wakesY = Y(2) - 4;
-      if (x + width / 2 > W - right - wakesWidth && Math.abs(y - 2 - wakesY) < 11) y = wakesY - 11;
+      const fit = x => Math.min(W - right - width / 2, Math.max(left + width / 2, x));
+      // Where it may go, in order: just over the peak, just under it, then beside it. The first
+      // clear of the dot of the setting, the other reader's name and (on Tuning) the "wakes"
+      // label at the right end of the 2 V line. Boxes: [middle x, middle y, width].
+      const dot = [X(now.dot.x), Y(Math.min(now.dot.v, yMax)), 10];
+      const wakes = answer ? null : [W - right - 14, Y(2) - 8, 30];
+      const rule = !tuning && lab.set.reader === 'pad' ? [X(TERMINAL_CM) + 38, top + 4, 72] : null;
+      const clear = box => [dot, otherName, wakes, rule].every(other => !other
+        || Math.abs(box[0] - other[0]) > (box[2] + other[2]) / 2 + 3 || Math.abs(box[1] - other[1]) > 10);
+      const spots = [[fit(px), Math.max(top + 6, py - 9)], [fit(px), Math.min(H - bottom - 6, py + 12)],
+        [fit(px + width / 2 + 10), Math.max(top + 6, py - 4)], [fit(px - width / 2 - 10), Math.max(top + 6, py - 4)]];
+      const [x, middle] = spots.find(([sx, sy]) => clear([sx, sy, width])) ?? spots[0];
+      const y = middle + 4;
       g.strokeStyle = 'rgba(244,241,234,.45)';
       g.lineWidth = 1;
       g.beginPath(); g.moveTo(px, py - 1); g.lineTo(px, py - 4); g.stroke();
@@ -1146,9 +1159,9 @@ function intro(experience) {
       g.lineJoin = 'round';
       g.strokeStyle = 'rgba(20,18,16,.75)';
       g.lineWidth = 3;
-      g.strokeText(words, x, y - 2);
+      g.strokeText(words, x, y);
       g.fillStyle = 'rgba(244,241,234,.7)';
-      g.fillText(words, x, y - 2);
+      g.fillText(words, x, y);
       g.restore();
     }
     // Where the setting is now (once the curve is in, growing to its size).
