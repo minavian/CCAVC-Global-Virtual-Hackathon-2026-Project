@@ -291,10 +291,11 @@ function runReverseCanvasMorph(fromEl, toEl, { mode = 'default', cut = 430, arri
   if (toCanvas) toCanvas.style.opacity = '0';
   chapter.append(copy);
 
+  const textBlur = mode === 'metal' ? 'none' : 'blur(3px)';
   for (const [i, node] of Array.from(fromWords.children).entries()) {
     animations.push(node.animate([
       { opacity: 1, transform: 'none', filter: 'blur(0px)' },
-      { opacity: 0, transform: 'translateY(11px)', filter: 'blur(3px)' },
+      { opacity: 0, transform: 'translateY(11px)', filter: textBlur },
     ], { duration: 320, delay: i * 24, easing: 'ease-in', fill: 'both' }));
   }
 
@@ -322,7 +323,7 @@ function runReverseCanvasMorph(fromEl, toEl, { mode = 'default', cut = 430, arri
     for (const [i, node] of Array.from(toWords.children).entries()) {
       if (mode === 'whispering' && i === 1) continue;
       animations.push(node.animate([
-        { opacity: 0, transform: 'translateY(-10px)', filter: 'blur(3px)' },
+        { opacity: 0, transform: 'translateY(-10px)', filter: textBlur },
         { opacity: 1, transform: 'none', filter: 'blur(0px)' },
       ], { duration: 380, delay: 40 + i * 38, easing: arrivalEase, fill: 'both' }));
     }
@@ -960,12 +961,8 @@ function watchMetal(previous, plate) {
   const outgoing = previous.querySelector('.plate-words'), incoming = plate.querySelector('.plate-words');
   const figure = target.parentElement;
   const plot = document.createElement('canvas');
-  const wipe = document.createElement('span');
   plot.className = 's9-plot-copy';
-  wipe.className = 's9-copy-wipe';
-  wipe.hidden = true;
   plot.setAttribute('aria-hidden', 'true');
-  wipe.setAttribute('aria-hidden', 'true');
   const ctx = plot.getContext('2d');
   const end = 2560, readHold = 1000;
   let layout, frame, previousTop, targetTop, approach, lockedAt, revCtrl;
@@ -978,7 +975,6 @@ function watchMetal(previous, plate) {
     if (lockedAt === undefined) return;
     cancelAnimationFrame(frame);
     plot.remove();
-    wipe.remove();
     for (const node of [source, outgoing]) node.style.removeProperty('transform');
     incoming.style.removeProperty('transform');
     for (const node of [outgoing, incoming]) node.style.removeProperty('clip-path');
@@ -1013,8 +1009,7 @@ function watchMetal(previous, plate) {
   }
 
   function swapCopy(progress) {
-    wipe.hidden = progress === 0 || progress === 1;
-    if (wipe.hidden) {
+    if (progress === 0 || progress === 1) {
       outgoing.style.clipPath = progress === 1 ? 'inset(0 0 0 100%)' : 'none';
       incoming.style.clipPath = progress === 0 ? 'inset(0 100% 0 0)' : 'none';
       return;
@@ -1034,14 +1029,6 @@ function watchMetal(previous, plate) {
     };
     outgoing.style.clipPath = clip(old, 100);
     incoming.style.clipPath = clip(next, 0);
-
-    const band = 8;
-    const front = sampleFront(top, height);
-    const left = Math.max(0, Math.min(...front.map(([x]) => x)) - band);
-    const right = Math.min(viewportWidth(), Math.max(...front.map(([x]) => x)) + band);
-    const edgePoints = (points, offset) => points.map(([x, y]) => `${x - left + offset}px ${y}px`);
-    wipe.style.cssText = `left:${left}px;top:${top}px;width:${right - left}px;height:${height}px;`;
-    wipe.style.clipPath = `polygon(${[...edgePoints(front, -band), ...edgePoints(front.reverse(), band)].join(', ')})`;
   }
 
   function paint(elapsed) {
@@ -1130,7 +1117,7 @@ function watchMetal(previous, plate) {
     const pin = `translateY(${lockedAt - origin}px)`;
     outgoing.style.transform = pin;
     source.style.transform = pin;
-    chapter.append(plot, wipe);
+    chapter.append(plot);
     paint(0);
     plate.classList.remove('s9-awaiting');
 
@@ -1146,7 +1133,6 @@ function watchMetal(previous, plate) {
       else if (plot.isConnected) {
         paint(end);
         plot.remove();
-        wipe.remove();
       }
       if (elapsed >= end + readHold) return skip();
       frame = requestAnimationFrame(tick);

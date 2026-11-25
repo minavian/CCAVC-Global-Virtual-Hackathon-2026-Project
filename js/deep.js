@@ -420,151 +420,165 @@
     const strength = document.getElementById('s9-strength'), tuning = document.getElementById('s9-tuning');
     const park = Number(metal.getAttribute('aria-valuemax')), restY = 68, d = .02, a = physics.READERS.pad.radius;
     const card = physics.TAGS.card.radius, seeds = [.3, .5, .68, .82, .93].map(f => [f * a, 0]);
-    let gapMm = park, value = park, model, scale, coilY, metalY = restY, pointer = null, grabOffset, travel;
-    const heightAt = mm => coilY - (d + mm / 1000) * scale;
-
-    function positionMetal(y = heightAt(gapMm)) {
-      metalY = y;
-      metal.style.setProperty('--s9-metal-y', `${y}px`);
-    }
+    const mix = (from, to, t) => from + (to - from) * t;
+    const samples = new Map();
+    let gapMm = park, value = park, model, scale, coilY, geometry, nearestY, pointer = null, grabOffset, travel;
+    const heightAt = mm => mix(nearestY, restY, (mm - 1) / (park - 1));
 
     function setGap(mm) {
       gapMm = mm;
       scene.dirty = true;
-      const displayed = mm === park ? park : Math.min(park - 1, Math.round(mm));
-      if (displayed === value) return;
-      value = displayed;
-      const label = value === park ? 'No metal' : `Metal ${value} mm behind the card`;
-      metal.setAttribute('aria-valuenow', value);
-      metal.setAttribute('aria-valuetext', label);
-      distance.textContent = label;
-      const nextAction = value === park ? 'Bring metal closer' : 'Move metal away';
-      if (action.textContent !== nextAction) action.textContent = nextAction;
-      figure.classList.toggle('has-metal', value !== park);
     }
 
-    function followPlate(y) {
-      const mm = y === restY ? park : clamp(((coilY - y) / scale - d) * 1000, 1, park);
-      setGap(mm);
-      positionMetal(y);
+    function moveTo(to, duration) {
+      if (reduced.matches || to === gapMm) {
+        travel = null;
+        setGap(to);
+      } else {
+        travel = { from: gapMm, to, duration, elapsed: 0, last: performance.now() };
+        scene.dirty = true;
+      }
     }
 
-    function stopTravel() {
-      travel = null;
-      figure.classList.remove('is-moving');
-    }
-
-    function fieldAt(gap) {
+    const unshielded = physics.solve({ tag: 'card', reader: 'pad', distance: d, metal: null });
+    function fieldAt(mm) {
+      if (samples.has(mm)) return samples.get(mm);
+      const gap = mm / 1000, height = d + gap;
+      const fraction = stage(0, 14, park - mm);
+      const shielding = fraction * fraction * (3 - 2 * fraction);
       const coils = [[a, 1, 0]];
-      if (gap !== null) coils.push([a, -1, 2 * (d + gap)]);
-      const ceiling = gap === null ? .1 : Math.min(.1, d + gap);
-      const lines = traceField(coils, seeds, ceiling).map(points => {
+      if (shielding) coils.push([a, -shielding, 2 * height]);
+      const lines = traceField(coils, seeds, Math.min(.1, height)).map(points => {
         const through = points.some(([rho, z], i) => i > 0 && (points[i - 1][1] - d) * (z - d) <= 0 && Math.abs(rho) < card);
-        return { points, color: through ? COPPER : FAINT };
+        return { points, through: Number(through) };
       });
-      return { lines, readings: physics.solve({ tag: 'card', reader: 'pad', distance: d, metal: gap }) };
+      const s = shielding ? physics.solve({ tag: 'card', reader: 'pad', distance: d, metal: gap }) : unshielded;
+      const result = {
+        lines,
+        field: mix(unshielded.field, s.field, shielding),
+        resonance: mix(unshielded.resonance, s.resonance, shielding),
+      };
+      samples.set(mm, result);
+      return result;
     }
 
-    const unshielded = fieldAt(null);
+    function fieldBetween(mm) {
+      const low = Math.floor(mm), high = Math.ceil(mm), t = mm - low;
+      const from = fieldAt(low), to = fieldAt(high);
+      const lines = from.lines.map((line, i) => {
+        const next = to.lines[i];
+        const color = mix(line.through, next.through, t);
+        // The integrator advances a fixed distance per step. Keep a shorter line at its endpoint.
+        const points = from === to ? line.points : Array.from({ length: Math.max(line.points.length, next.points.length) }, (_, j) => {
+          const start = line.points[Math.min(j, line.points.length - 1)];
+          const end = next.points[Math.min(j, next.points.length - 1)];
+          return [mix(start[0], end[0], t), mix(start[1], end[1], t)];
+        });
+        return { points, color: color === 0 ? FAINT : color === 1 ? COPPER
+          : `rgba(${mix(13, 184, color)}, ${mix(13, 101, color)}, ${mix(12, 42, color)}, ${mix(.35, 1, color)})` };
+      });
+      return { gapMm: mm, lines, field: mix(from.field, to.field, t), resonance: mix(from.resonance, to.resonance, t) };
+    }
+
+    function updateReadout() {
+      const displayed = gapMm === park ? park : Math.min(park - 1, Math.round(gapMm));
+      if (displayed !== value) {
+        value = displayed;
+        const label = value === park ? 'No metal' : `Metal ${value} mm behind the card`;
+        metal.setAttribute('aria-valuenow', value);
+        metal.setAttribute('aria-valuetext', label);
+        distance.textContent = label;
+      }
+      const fieldText = `${model.field.toFixed(2)} A/m`, tuningText = si(model.resonance, 'Hz', 4);
+      if (strength.textContent !== fieldText) strength.textContent = fieldText;
+      if (tuning.textContent !== tuningText) tuning.textContent = tuningText;
+      const awake = gapMm === park ? unshielded.awake : physics.solve({ tag: 'card', reader: 'pad', distance: d, metal: gapMm / 1000 }).awake;
+      const state = awake ? 'Chip awake' : 'Chip asleep';
+      if (chip.textContent !== state) {
+        chip.textContent = state;
+        chip.dataset.awake = awake;
+      }
+    }
+
     const scene = plate('s9', p => {
       const ctx = fit(p), k = Math.min(p.w / .2, p.h / .15);
-      coilY = p.h - 34;
-      scale = (coilY - restY) / (d + park / 1000);
-      if (travel) {
-        const progress = reduced.matches ? 1 : stage(0, 600, performance.now() - travel.started);
-        const end = travel.to === park ? restY : heightAt(travel.to);
-        if (progress === 1) {
-          setGap(travel.to);
-          stopTravel();
-        } else {
-          const t = progress * progress * (3 - 2 * progress);
-          followPlate(travel.from + (end - travel.from) * t);
-        }
+      if (p.h !== geometry?.height || p.w !== geometry?.width) {
+        coilY = p.h - 34;
+        scale = (coilY - restY) / (d + park / 1000);
+        nearestY = coilY - (d + .001) * scale;
+        metal.style.setProperty('--s9-metal-width', `${.16 * k}px`);
+        figure.style.setProperty('--s9-stop-y', `${nearestY}px`);
+        geometry = { width: p.w, height: p.h };
       }
-      // Ease out the simulated sheet as it enters the parked position.
-      const fraction = stage(0, 14, park - gapMm);
-      const shielding = fraction * fraction * (3 - 2 * fraction);
+      if (travel) {
+        const now = performance.now();
+        // A cold field sample can delay a frame. Keep the plate moving from the last drawn position.
+        travel.elapsed += Math.min(now - travel.last, 1000 / 30);
+        travel.last = now;
+        const t = reduced.matches ? 1 : stage(0, travel.duration, travel.elapsed);
+        gapMm = t === 1 ? travel.to : mix(travel.from, travel.to, t * t * (3 - 2 * t));
+        if (t === 1) travel = null;
+        else p.dirty = true;
+      }
       if (model?.gapMm !== gapMm) {
-        const field = shielding ? fieldAt(gapMm / 1000) : unshielded;
-        model = { ...field, gapMm };
-        const s = field.readings;
-        const fieldText = `${(unshielded.readings.field + (s.field - unshielded.readings.field) * shielding).toFixed(2)} A/m`;
-        const tuningText = si(unshielded.readings.resonance + (s.resonance - unshielded.readings.resonance) * shielding, 'Hz', 4);
-        if (strength.textContent !== fieldText) strength.textContent = fieldText;
-        if (tuning.textContent !== tuningText) tuning.textContent = tuningText;
-        const state = s.awake ? 'Chip awake' : 'Chip asleep';
-        if (chip.textContent !== state) chip.textContent = state;
-        chip.dataset.awake = s.awake;
+        model = fieldBetween(gapMm);
+        updateReadout();
       }
 
+      const parked = (travel?.to ?? gapMm) === park;
+      figure.classList.toggle('has-metal', !parked);
+      const nextAction = parked ? 'Bring metal closer' : 'Move metal away';
+      if (action.textContent !== nextAction) action.textContent = nextAction;
+      const edge = heightAt(gapMm);
+      const metalPosition = `${edge}px`;
+      if (metal.style.getPropertyValue('--s9-metal-y') !== metalPosition) metal.style.setProperty('--s9-metal-y', metalPosition);
       const X = rho => p.w / 2 + rho * k, Y = z => coilY - z * scale;
-      function drawField(lines, opacity) {
-        ctx.globalAlpha = opacity;
-        for (const { points, color } of lines) {
-          for (const side of [-1, 1]) curve(ctx, points, rho => X(side * rho), Y, color, 1.4);
-        }
+      p.canvas.metalField = { lines: model.lines, X, Y };
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, edge, p.w, p.h - edge);
+      ctx.clip();
+      for (const { points, color } of model.lines) {
+        for (const side of [-1, 1]) curve(ctx, points, rho => X(side * rho), Y, color, 1.4);
       }
-      p.canvas.metalField = { lines: shielding < .5 ? unshielded.lines : model.lines, X, Y };
-      if (shielding) {
-        // Hide any integration step that would draw a line through the conductive sheet.
-        ctx.save();
-        const edge = pointer !== null || travel ? metalY : heightAt(gapMm);
-        ctx.beginPath();
-        ctx.rect(0, edge - 2, p.w, p.h);
-        ctx.clip();
-      }
-      if (shielding < 1) drawField(unshielded.lines, 1 - shielding);
-      if (shielding) {
-        drawField(model.lines, shielding);
-        ctx.restore();
-      }
-      ctx.globalAlpha = 1;
+      ctx.restore();
+
       for (const side of [-1, 1]) dot(ctx, X(side * a), Y(0), INK, 4);
       ctx.fillStyle = 'rgba(184, 101, 42, .25)'; ctx.fillRect(X(-card), Y(d) - 3, X(card) - X(-card), 6);
       ctx.fillStyle = INK; ctx.font = `600 11px ${SANS}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
       ctx.fillText('Card', X(card) + 6, Y(d) + 6);
       ctx.fillText('Reader’s coil', X(a) + 8, Y(0) + 4);
-      metal.style.setProperty('--s9-metal-width', `${.16 * k}px`);
-      if (pointer === null && !travel) positionMetal();
     });
 
-    action.addEventListener('click', () => {
-      const to = (travel?.to ?? value) === park ? 1 : park;
-      if (reduced.matches || !scale) {
-        stopTravel();
-        setGap(to);
-      } else {
-        travel = { from: metalY, to, started: performance.now() };
-        figure.classList.add('is-moving');
-        scene.dirty = true;
-      }
-    });
+    action.addEventListener('click', () => moveTo((travel?.to ?? gapMm) === park ? 1 : park, 720));
     const steps = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 10, PageDown: -10, Home: 1 - park, End: park - 1 };
     metal.addEventListener('keydown', event => {
       if (!Object.hasOwn(steps, event.key)) return;
       event.preventDefault();
-      stopTravel();
-      setGap(clamp(value + steps[event.key], 1, park));
+      const target = travel?.to ?? value;
+      moveTo(clamp(target + steps[event.key], 1, park), event.key === 'Home' || event.key === 'End' ? 720 : 140);
     });
     metal.addEventListener('pointerdown', event => {
       if (!event.isPrimary || event.button !== 0 || !scale) return;
-      stopTravel();
+      travel = null;
+      scene.dirty = true;
       metal.setPointerCapture(event.pointerId);
       pointer = event.pointerId;
-      grabOffset = event.clientY - figure.getBoundingClientRect().top - metalY;
+      grabOffset = event.clientY - figure.getBoundingClientRect().top - heightAt(gapMm);
       figure.classList.add('is-dragging');
     });
-    metal.addEventListener('pointermove', event => {
+    function updateDrag(event) {
       if (event.pointerId !== pointer) return;
-      const y = clamp(event.clientY - figure.getBoundingClientRect().top - grabOffset, restY, heightAt(1));
-      followPlate(y);
-    });
+      const y = event.clientY - figure.getBoundingClientRect().top - grabOffset;
+      setGap(mix(1, park, 1 - stage(restY, nearestY, y)));
+    }
+    metal.addEventListener('pointermove', updateDrag);
     for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
       metal.addEventListener(type, event => {
         if (event.pointerId !== pointer) return;
+        if (type === 'pointerup') updateDrag(event);
         pointer = null;
         figure.classList.remove('is-dragging');
-        positionMetal();
       });
     }
   }

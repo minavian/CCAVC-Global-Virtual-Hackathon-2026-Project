@@ -459,8 +459,10 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
 
 .s9-readout {
   max-inline-size: 27rem;
-  margin-block: 6px 2px;
-  border-block: 1px solid rgba(13, 13, 12, .16);
+  margin-block: 8px 2px;
+  padding-inline: 14px;
+  border-inline-start: 2px solid var(--copper);
+  background: #eeeae2;
 }
 .s9-status {
   display: flex;
@@ -473,7 +475,8 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   font-size: .875rem;
   font-variant-numeric: tabular-nums;
 }
-#s9-chip { color: var(--green); font-weight: 600; }
+#s9-chip { display: inline-flex; align-items: center; gap: 6px; color: var(--green); font-weight: 650; }
+#s9-chip::before { content: ""; inline-size: 6px; block-size: 6px; border-radius: 50%; background: currentColor; }
 #s9-chip[data-awake="false"] { color: var(--red); }
 .s9-metrics {
   display: grid;
@@ -491,7 +494,29 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   line-height: 1.1;
 }
 
-.s9-field { position: relative; }
+.s9-field {
+  position: relative;
+  background: #eeeae2;
+  box-shadow: inset 0 0 0 1px #d9d1c5;
+  border-radius: 4px;
+}
+.s9-field::before {
+  content: "";
+  position: absolute;
+  inset-block: 68px calc(100% - var(--s9-stop-y, 68px));
+  inset-inline: 7%;
+  border-inline: 1px dashed #c5b9a8;
+  pointer-events: none;
+}
+.s9-plate-label {
+  position: absolute;
+  inset-block-start: 17px;
+  inset-inline-start: 7%;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--muted);
+  pointer-events: none;
+}
 .deep-metal-hold #s8 > .plate-words { z-index: 2; pointer-events: none; }
 .s9-metal-action, .s9-metal {
   position: absolute;
@@ -500,6 +525,7 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   min-block-size: 44px;
 }
 .s9-metal-action {
+  inset-inline: auto 7%;
   display: flex;
   align-items: center;
   gap: 9px;
@@ -510,7 +536,7 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   font: 650 .875rem "Inter Tight", system-ui, sans-serif;
   white-space: nowrap;
   cursor: pointer;
-  transform: translateX(-50%);
+  padding-inline-end: 0;
 }
 .s9-metal-action::after {
   content: "";
@@ -518,7 +544,7 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   block-size: 7px;
   border-block-end: 1px solid;
   border-inline-end: 1px solid;
-  transform: translateY(calc(-2px + var(--s9-cue-drop, 0px))) rotate(45deg);
+  transform: translateY(-2px) rotate(45deg);
 }
 .s9-field.has-metal .s9-metal-action::after { transform: translateY(2px) rotate(225deg); }
 .s9-metal-action:hover, .s9-metal-action:focus-visible { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
@@ -533,19 +559,21 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
 .s9-metal-surface {
   position: absolute;
   inset-inline: 0;
-  inset-block-end: calc(50% + 2px);
-  block-size: 15px;
+  inset-block-end: 50%;
+  block-size: 16px;
   border: 1px solid #8b847a;
   border-radius: 2px;
-  background: linear-gradient(174deg, #e9e6df, #c4beb3 52%, #a29b90);
-  box-shadow: inset 0 1px rgba(255, 255, 255, .64), 0 2px 3px rgba(13, 13, 12, .12);
+  background: linear-gradient(#f2eee5 0%, #d5cec2 52%, #b2aa9e 53%, #b2aa9e 100%);
+  box-shadow: inset 0 1px #f5f2ec, 0 1px #a79e91;
 }
-.s9-field:is(.is-moving, .is-dragging) .s9-metal-surface {
-  box-shadow: inset 0 1px rgba(255, 255, 255, .7), 0 4px 8px rgba(13, 13, 12, .19);
+.s9-metal-surface::after {
+  content: "";
+  position: absolute;
+  inset: 4px calc(50% - 12px);
+  background: repeating-linear-gradient(90deg, #797165 0 1px, transparent 1px 4px);
+  opacity: .72;
 }
-@media (prefers-reduced-motion: no-preference) {
-  .s9-metal-surface { transition: box-shadow .18s ease-out; }
-}
+.s9-field.is-dragging .s9-metal-surface { border-color: var(--ink); }
 .s9-metal:focus-visible, .s9-metal-action:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .s9-plot-copy {
   position: fixed;
@@ -554,13 +582,6 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   inline-size: 100%;
   block-size: 100%;
   pointer-events: none;
-}
-.s9-copy-wipe {
-  position: fixed;
-  z-index: 3;
-  pointer-events: none;
-  backdrop-filter: blur(2.5px);
-  background: linear-gradient(transparent, rgb(184 101 42 / .09) 20% 80%, transparent);
 }
 @media (max-width: 860px) and (max-height: 700px) {
   #s9 { gap: 16px; padding-block: 18px; }
