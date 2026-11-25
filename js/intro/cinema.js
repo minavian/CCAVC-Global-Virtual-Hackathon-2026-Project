@@ -16,8 +16,6 @@
 import { clamp, shownPower, smoother } from './easing.js';
 import { TOP, COIL_Z, CHIP as READER_CHIP } from './reader-size.js';
 
-export const MHZ = '13.56';   // the carrier of bank and metro cards (ISO 14443), in MHz
-
 // Where the card lies over the reader (metres, in the reader's frame), and the reader's
 // resting angle: tipped back to show its top and front.
 export const HOVER = { x: .002, y: -.003, spin: -.1 };
