@@ -2591,6 +2591,7 @@
 
   // ---------- 17. Why your phone can't read your car key ----------
   let s17Anim = null;
+  const s17ReaderPulse = document.getElementById('s17-reader-pulse');
   plate('s17', p => {
     const readerKey = p.radio('reader') || 'phone', tagKey = p.radio('tag') || 'key';
     const R = physics.READERS[readerKey], T = physics.TAGS[tagKey];
@@ -2638,7 +2639,13 @@
     curve(ctx, curSweep.map(([f, v]) => [f, Math.max(v, 1e-3)]), a.X, a.Y, COPPER, 2);
     vline(ctx, a.X(curFreq), bx.y, bx.y + bx.h, INK, B.readerLabel);
     hline(ctx, a.Y(curWake), bx.x, bx.x + bx.w, GREEN, 'Wake-up');
-    dot(ctx, a.X(curFreq), a.Y(Math.max(curVolts, 1e-3)), s.awake ? GREEN : RED);
+    const markerX = a.X(curFreq), markerY = a.Y(Math.max(curVolts, 1e-3));
+    dot(ctx, markerX, markerY, s.awake ? GREEN : RED);
+    if (s17ReaderPulse) {
+      s17ReaderPulse.style.left = `${markerX}px`;
+      s17ReaderPulse.style.top = `${markerY}px`;
+      s17ReaderPulse.hidden = false;
+    }
     p.say(`${readerKey === 'phone' ? 'The phone' : 'The car’s reader'} gives the ${B.tagName}’s chip ${si(s.rawVolts, 'V', 2)}. It needs ${T.wake} V. ${s.awake ? 'Awake.' : 'Nothing happens.'}`);
     if (rawT < 1) p.dirty = true;
     else s17Anim.active = false;

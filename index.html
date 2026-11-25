@@ -21,8 +21,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
-  <link rel="stylesheet" href="styles.css?v=50">
-  <link rel="stylesheet" href="take-apart/style.css?v=conversation-tap-1">
+  <link rel="stylesheet" href="styles.css?v=51">
+  <link rel="stylesheet" href="take-apart/style.css?v=part-two-wave-1">
   <script type="importmap">
     {"imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -40,12 +40,12 @@
   <script src="js/models.js" defer></script>
   <script src="js/story.js?v=5" defer></script>
   <script src="js/lab.js" defer></script>
-  <script src="js/deep.js?v=conversation-tap-1" defer></script>
-  <script type="module" src="js/deep-motion.js?v=conversation-tap-1"></script>
-  <script src="js/landing.js?v=7" defer></script>
+  <script src="js/deep.js?v=finale-cue-1" defer></script>
+  <script type="module" src="js/deep-motion.js?v=part-two-wave-1"></script>
+  <script src="js/landing.js?v=9" defer></script>
   <script src="js/present.js?v=5" defer></script>
   <script type="module" src="js/taps.js"></script>
-  <script type="module" src="js/intro/main.js?v=103"></script>
+  <script type="module" src="js/intro/main.js?v=104"></script>
 </head>
 <body>
   <main class="hero">
@@ -329,22 +329,45 @@
 
   <!-- Part 2: take it apart (js/deep.js). Every scene runs on the same simulation as the film. -->
   <section class="deep" id="take-apart" aria-labelledby="deep-title" tabindex="-1">
+    <nav class="deep-index" id="deep-index" aria-label="Take it apart sections">
+      <button class="deep-index-toggle" type="button" aria-expanded="false" aria-controls="deep-index-list" aria-label="Show Take it apart sections"></button>
+      <div class="deep-index-panel" id="deep-index-list">
+        <div class="deep-index-backdrop" aria-hidden="true"></div>
+        <p class="deep-index-group">Part one</p>
+        <ol class="deep-index-items">
+          <li><a href="#s6" data-target="s6"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">1</span><span class="deep-index-name">Closer is stronger</span></a></li>
+          <li><a href="#s7" data-target="s7"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">2</span><span class="deep-index-name">It has to keep flipping</span></a></li>
+          <li><a href="#s8" data-target="s8"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">3</span><span class="deep-index-name">The tuning trick</span></a></li>
+          <li><a href="#s9" data-target="s9"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">4</span><span class="deep-index-name">Why metal fights back</span></a></li>
+          <li><a href="#s10" data-target="s10"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">5</span><span class="deep-index-name">Getting through the pauses</span></a></li>
+        </ol>
+        <p class="deep-index-group deep-index-group-two">Part two</p>
+        <ol class="deep-index-items" start="6">
+          <li><a href="#s11" data-target="s11"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">6</span><span class="deep-index-name">Soaking up more, then less</span></a></li>
+          <li><a href="#s12" data-target="s12"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">7</span><span class="deep-index-name">Whispering next to a shout</span></a></li>
+          <li><a href="#s13" data-target="s13"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">8</span><span class="deep-index-name">Keeping count</span></a></li>
+          <li><a href="#s14" data-target="s14"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">9</span><span class="deep-index-name">Catching mistakes</span></a></li>
+          <li><a href="#s15" data-target="s15"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">10</span><span class="deep-index-name">The whole conversation</span></a></li>
+          <li><a href="#s16" data-target="s16"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">11</span><span class="deep-index-name">Two cards in one field</span></a></li>
+          <li><a href="#s17" data-target="s17"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">12</span><span class="deep-index-name">Why your phone can’t read your car key</span></a></li>
+        </ol>
+      </div>
+    </nav>
     <header class="deep-head">
       <div class="deep-head-words">
         <p class="kicker">Take it apart</p>
-        <h2 id="deep-title">Everything you just saw happens faster than a <span id="deep-blink-word">blink</span>.</h2>
+        <h2 id="deep-title">Everything you just saw happens faster than a blink.</h2>
         <p>Here it is, slowed down and taken apart. From here on, the card is the tag and the phone is the reader. Every number below is calculated as you change things.</p>
       </div>
+      <h2 class="deep-part deep-part-inline" id="part-one">
+        <span>Part one</span>
+        <span class="deep-part-title"><span id="part-one-power">The power</span>: how a field makes electricity</span>
+      </h2>
     </header>
-
-    <h2 class="deep-part" id="part-one">
-      <span>Part one</span>
-      <span class="deep-part-title"><span id="part-one-power">The power</span>: how a field makes electricity</span>
-    </h2>
 
     <section class="plate" id="s6" aria-labelledby="s6-title" tabindex="-1">
       <div class="plate-words">
-        <p class="plate-num">6</p>
+        <p class="plate-num">1</p>
         <h3 id="s6-title">Closer is stronger</h3>
         <p class="s6-intro">The field fades very fast with distance. A bigger coil catches more of it, which is why the card’s coil runs around its whole edge.</p>
         <div class="plate-controls">
@@ -382,7 +405,7 @@
     <section class="plate" id="s7" aria-labelledby="s7-title" tabindex="-1">
       <header class="s7-heading">
         <div>
-          <p class="plate-num">7</p>
+          <p class="plate-num">2</p>
           <h3 id="s7-title"><span>It</span> <span>has</span> <span>to</span> <span>keep</span> <span id="s7-flipping">flipping</span></h3>
         </div>
         <p>Only a changing magnetic field induces voltage in the coil. The reader’s field flips 13.56 million times a second.</p>
@@ -411,9 +434,9 @@
       <p class="plate-real s7-formula">Faraday’s law of induction. A faster-changing field induces more voltage. <span>V = ω · M · I</span></p>
     </section>
 
-    <section class="plate" id="s8" aria-labelledby="s8-title">
+    <section class="plate" id="s8" aria-labelledby="s8-title" tabindex="-1">
       <div class="plate-words">
-        <p class="plate-num">8</p>
+        <p class="plate-num">3</p>
         <h3 id="s8-title"><span>The</span> <span>tuning</span> <span>trick</span></h3>
         <p>The coil and the tiny capacitor beside it swing together, like a child on a swing pushed at just the right moment. Tuned right, a weak field is enough.</p>
         <div class="plate-controls">
@@ -449,9 +472,9 @@
       <canvas class="plate-canvas" id="s8-chart" role="img" aria-label="The chip's volts across frequencies, with its tuned response for comparison"></canvas>
     </section>
 
-    <section class="plate" id="s9" aria-labelledby="s9-title">
+    <section class="plate" id="s9" aria-labelledby="s9-title" tabindex="-1">
       <div class="plate-words">
-        <p class="plate-num">9</p>
+        <p class="plate-num">4</p>
         <h3 id="s9-title">Why metal fights back</h3>
         <p>Metal makes its own currents that push against the field, and it knocks the coil out of tune.</p>
         <div class="s9-readout">
@@ -477,9 +500,9 @@
       </div>
     </section>
 
-    <section class="plate" id="s10" aria-labelledby="s10-title">
+    <section class="plate" id="s10" aria-labelledby="s10-title" tabindex="-1">
       <div class="plate-words">
-        <p class="plate-num">10</p>
+        <p class="plate-num">5</p>
         <h3 id="s10-title"><span class="s10-title-text">Getting through the <a id="s10-pauses" href="#part-two" aria-describedby="part-two-label"><span>pauses</span></a></span></h3>
         <p>The phone talks by switching its field off for an instant. A chip with no battery has to survive every pause, a few millionths of a second long, on saved energy.</p>
         <div class="plate-controls s10-control">
@@ -503,9 +526,9 @@
       <span class="deep-part-title">The answer: how a chip with no radio talks back</span>
     </h2>
 
-    <section class="plate" id="s11" aria-labelledby="s11-title">
+    <section class="plate" id="s11" aria-labelledby="s11-title" tabindex="-1">
       <div class="plate-words">
-        <p class="plate-num">11</p>
+        <p class="plate-num">6</p>
         <h3 id="s11-title">Soaking up more, then less</h3>
         <p>The chip never sends anything. It changes how much of the field it soaks up, and the reader feels the difference in its own coil.</p>
         <div class="plate-controls">
@@ -531,9 +554,9 @@
       </div>
     </section>
 
-    <section class="plate" id="s12" aria-labelledby="s12-title">
+    <section class="plate" id="s12" aria-labelledby="s12-title" tabindex="-1">
       <div class="plate-words">
-        <p class="plate-num">12</p>
+        <p class="plate-num">7</p>
         <h3 id="s12-title">Whispering next to a shout</h3>
         <p>The card’s answer is tiny next to the reader’s own field. So the chip flickers its dips 847,500 times a second. That moves its answer to a pitch the reader can pick out.</p>
         <div class="plate-controls">
@@ -550,7 +573,7 @@
 
     <section class="plate" id="s13" aria-labelledby="s13-title" tabindex="-1">
       <div class="plate-words">
-        <p class="plate-num">13</p>
+        <p class="plate-num">8</p>
         <h3 id="s13-title">Keeping count</h3>
         <p class="s13-intro">With “dip for 1, quiet for 0”, a run of zeros is a flat line, and a reader whose clock runs a little fast loses count. With “every bit changes in its middle”, the count never slips.</p>
         <div class="plate-controls">
@@ -581,7 +604,7 @@
 
     <section class="plate" id="s14" aria-labelledby="s14-title" tabindex="-1">
       <div class="plate-words">
-        <p class="plate-num">14</p>
+        <p class="plate-num">9</p>
         <h3 id="s14-title">Catching mistakes</h3>
         <p>A dip drowns and a 1 becomes a 0. A check bit on every byte and a check number on every message catch it, and the phone asks again.</p>
         <div class="plate-controls s14-controls">
@@ -635,9 +658,9 @@
       </div>
     </section>
 
-    <section class="plate" id="s15" aria-labelledby="s15-title">
+    <section class="plate" id="s15" aria-labelledby="s15-title" tabindex="-1">
       <div class="plate-words">
-        <p class="plate-num">15</p>
+        <p class="plate-num">10</p>
         <h3 id="s15-title">The whole conversation</h3>
         <p class="plate-gate">You’re not supposed to see this… But just this once, we’ll make an exception.</p>
         <p>Every tap starts with the same six messages. The phone works out every bit from the dips alone: it never peeks at the card’s memory.</p>
@@ -692,13 +715,13 @@
       </div>
       <div class="plate-river">
         <canvas class="plate-canvas" id="s15-chart" role="img" aria-label="Messages flowing between the phone and the card"></canvas>
-        <ol class="chat" aria-label="The phone's log"></ol>
+        <ol class="chat" aria-label="The phone's log" tabindex="0"></ol>
       </div>
     </section>
 
-    <section class="plate" id="s16" aria-labelledby="s16-title">
+    <section class="plate" id="s16" aria-labelledby="s16-title" tabindex="-1">
       <div class="plate-words">
-        <p class="plate-num">16</p>
+        <p class="plate-num">11</p>
         <h3 id="s16-title">Two cards in one field</h3>
         <p>Both cards answer at once. Where their IDs differ, the reader hears a 1 and a 0 together: a clash. It picks one side, and the other card goes quiet. That’s why tapping a whole wallet can charge the wrong card.</p>
         <div class="plate-controls s16-controls">
@@ -752,10 +775,10 @@
       </div>
     </section>
 
-    <section class="plate" id="s17" aria-labelledby="s17-title">
+    <section class="plate" id="s17" aria-labelledby="s17-title" tabindex="-1">
       <div class="plate-words">
-        <p class="plate-num">17</p>
-        <h3 id="s17-title"><span id="s17-why-word" class="s17-why-word">Why</span> your phone can’t read your car key</h3>
+        <p class="plate-num">12</p>
+        <h3 id="s17-title">Why your phone can’t read your car key</h3>
         <p>A reader and a tag have to be tuned to each other. The key is tuned to 125 kHz; the phone’s field flips at 13.56 MHz, about 100 times faster.</p>
         <div class="plate-controls s17-controls">
           <div class="s17-switch-row">
@@ -778,7 +801,10 @@
         <p class="plate-readout" aria-live="polite"></p>
         <p class="plate-real">Real name: low frequency (LF, 125 kHz) and high frequency (HF, 13.56 MHz).</p>
       </div>
-      <canvas class="plate-canvas" id="s17-chart" role="img" aria-label="The tag's tuning curve and the reader's frequency"></canvas>
+      <div class="s17-plot">
+        <canvas class="plate-canvas" id="s17-chart" role="img" aria-label="The tag's tuning curve and the reader's frequency"></canvas>
+        <span id="s17-reader-pulse" aria-hidden="true" hidden></span>
+      </div>
     </section>
 
     <footer class="deep-end" id="deep-end">
