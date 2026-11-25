@@ -337,7 +337,18 @@ function intro(experience) {
     const grow = Math.min(b.view.zoom, 1.3);
     const faceWidth = pose.width * Math.cos(pose.yaw) * grow;
     const faceHeight = pose.width * .63 * Math.cos(pose.pitch) * grow;
-    place(poster, pose.x, pose.y, faceWidth, faceHeight, -pose.roll);
+    // Without 3D, once the card is down, its picture stands in for the close-up. It was drawn at
+    // the 3D shot's size and ran under the readout; it keeps its top and shrinks to end just
+    // above the readout instead.
+    // (Measured by its tilted outline, which is taller than the picture itself.)
+    let fit = 1;
+    const tall = faceWidth * Math.abs(Math.sin(pose.roll)) + faceHeight * Math.abs(Math.cos(pose.roll));
+    if (!available && b.dock > .5) {
+      const top = pose.y - tall / 2;
+      const room = film.readout.getBoundingClientRect().top - stage.getBoundingClientRect().top - 20 - top;
+      fit = clamp(room / tall, .35, 1);
+    }
+    place(poster, pose.x, pose.y - tall * (1 - fit) / 2, faceWidth * fit, faceHeight * fit, -pose.roll);
     poster.style.setProperty('--xray', Math.max(pose.xray, b.xray));
     poster.style.opacity = b.card;
     place(shadow, pose.x + 10, pose.y + pose.width * .33 * grow, pose.width * .87 * grow, pose.width * .15 * grow);
@@ -1475,7 +1486,8 @@ function intro(experience) {
     // elsewhere, that the view can be turned.
     const hint = inLab ? (cardMoved ? 'Drag on the chart too.' : 'Drag the card to move it.') : 'Drag to look around';
     if (film.hint.textContent !== hint) film.hint.textContent = hint;
-    film.hint.classList.toggle('is-shown', docked && b.dark > .6 && !auto.on && (inLab ? !(cardMoved && chartPressed) : !orbited));
+    // (Not without 3D: neither the card nor the view can be dragged then.)
+    film.hint.classList.toggle('is-shown', available && docked && b.dark > .6 && !auto.on && (inLab ? !(cardMoved && chartPressed) : !orbited));
 
     // The check mark, drawn over the reader, and the explanation at the end.
     const top = available ? scene.anchor('readerTop') : { x: layout.reader.x, y: layout.reader.y - layout.reader.height * .3 };
