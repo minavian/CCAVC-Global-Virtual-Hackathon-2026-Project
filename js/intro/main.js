@@ -47,7 +47,12 @@ function intro(experience) {
   const labels = [$('.antenna-label'), $('.chip-label')];
   const panels = Object.fromEntries(['meaning', 'definition', 'question', 'instruction']
     .map(name => [name, $('.' + name)]));
-  const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+  // With `?debug&calm` in the address the close-up behaves as with reduced motion, so that path
+  // can be checked in a browser that can't be set to it.
+  const query = new URLSearchParams(location.search);
+  const reduce = query.has('debug') && query.has('calm')
+    ? { matches: true, addEventListener() {}, removeEventListener() {} }
+    : matchMedia('(prefers-reduced-motion: reduce)');
   const hud = $('.hud');
   // The close-up's words and marks: the readout (one sentence at a time and a line of small
   // print, with the radio frequency, the distance or the real time, and the chip's power),
