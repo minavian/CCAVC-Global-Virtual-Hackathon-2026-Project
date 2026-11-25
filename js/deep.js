@@ -1557,11 +1557,9 @@
     messages: [],
     started: 0,
     seed: 1,
-    awaitingTap: !reduced.matches,
-    heistActive: false,
-    heistGrabbed: false,
-    grabbedIndex: -1,
-    grabAt: 0,
+    awaitingTap: true,
+    approaching: false,
+    heist: null,
     packetPos: null,
     settledReadout: '',
   };
@@ -1590,12 +1588,14 @@
   }
 
   function setS15StateUI(p) {
-    const tapBox = p.el.querySelector('#s15-tap-box');
+    const tapBox = p.input('tap');
     const prompt = p.el.querySelector('#s15-tap-prompt');
     const randomInput = p.input('random');
     const randomState = p.input('random-state');
-    if (tapBox) tapBox.dataset.state = river.awaitingTap ? 'idle' : 'ready';
-    if (prompt) prompt.textContent = river.awaitingTap ? 'Drag the card onto the reader' : 'Drag card to replay';
+    const state = river.approaching ? 'approaching' : river.awaitingTap ? 'idle' : 'ready';
+    const label = river.awaitingTap ? 'Tap the card' : 'Tap again to replay';
+    if (tapBox && tapBox.dataset.state !== state) tapBox.dataset.state = state;
+    if (prompt && prompt.textContent !== label) prompt.textContent = label;
     if (randomState && randomInput) {
       randomState.textContent = randomInput.checked ? 'On' : 'Off';
       randomState.toggleAttribute('data-off', !randomInput.checked);
@@ -1606,9 +1606,7 @@
     const random = p.input('random').checked;
     river.seed++;
     river.awaitingTap = false;
-    river.heistGrabbed = false;
-    river.grabbedIndex = -1;
-    river.grabAt = 0;
+    river.approaching = false;
     river.packetPos = null;
     const chip = tags.cardChip({ randomUid: random, seed: random ? river.seed : 1 });
     const s = physics.solve({ tag: 'card', reader: 'phone', distance: .015 });
@@ -1638,7 +1636,7 @@
     chat.scrollTop = 0;
     syncChatScroll(chat, false);
     setS15StateUI(p);
-    p.say(river.settledReadout);
+    p.say(reduced.matches ? river.settledReadout : 'The card touched the reader. Watch the six messages.');
   }
 
   function riverTiming(elapsed) {
@@ -1653,7 +1651,10 @@
   const s15 = plate('s15', p => {
     const ctx = fit(p), now = performance.now();
     const left = 40, right = p.w - 40, mid = p.h / 2;
-    const t = river.awaitingTap ? now / 1000 : (now - river.started) / 1000;
+    const waiting = river.awaitingTap || river.approaching;
+    const heist = river.heist;
+    const clock = heist && !heist.caughtAt ? heist.pausedAt : now;
+    const t = waiting ? now / 1000 : (clock - river.started) / 1000;
 
     // The river: bits flowing between the phone and the card.
     ctx.font = `500 11px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -1668,22 +1669,22 @@
     ctx.textAlign = 'left'; ctx.fillText('Phone', 10, 16); ctx.textAlign = 'right'; ctx.fillText('Card', p.w - 10, 16);
 
     const chat = p.el.querySelector('.chat');
-    if (river.awaitingTap) {
+    if (waiting) {
       river.packetPos = null;
       p.canvas.riverState = null;
       setS15StateUI(p);
       ctx.font = `500 13px ${SANS}`;
       ctx.fillStyle = 'rgba(87, 83, 76, .88)';
       ctx.textAlign = 'center';
-      ctx.fillText('Drag the card onto the reader to start', p.w / 2, mid);
+      ctx.fillText(river.approaching ? 'Waiting for contact…' : 'Tap the card to start', p.w / 2, mid);
       if (!chat.children.length) {
         const empty = document.createElement('li');
         empty.className = 'chat-empty';
-        empty.textContent = 'Waiting for you to drag the card onto the reader…';
+        empty.textContent = 'The conversation starts when the card touches the reader.';
         chat.append(empty);
         syncChatScroll(chat, false);
       }
-      p.say('Drag the card onto the reader to watch all six messages.');
+      p.say(river.approaching ? 'The card is moving toward the reader.' : 'Tap the card to watch all six messages.');
       return;
     }
 
@@ -1694,31 +1695,31 @@
     // The packet in flight.
     const idx = shown - 1, m = river.messages[idx];
     if (m && m.from !== 'app') {
-      const x = m.from === 'phone' ? left + q * (right - left) : right - q * (right - left);
+      const held = heist?.packet.index === idx && !heist.caughtAt;
+      const x = held ? heist.packet.x : m.from === 'phone' ? left + q * (right - left) : right - q * (right - left);
       const label = m.name;
       ctx.font = `700 12px ${SANS}`;
       const w = ctx.measureText(label).width + 24;
       river.packetPos = { x, y: mid, w, h: 28, stolen: !!m.stolen, q, index: idx, label };
       p.canvas.riverState = river.packetPos;
-      if (river.heistGrabbed && idx === river.grabbedIndex) {
-        const age = Math.min(1, (now - river.grabAt) / 480);
+      if (m.stolen && !held) {
+        const age = heist?.packet.index === idx ? Math.min(1, (now - heist.caughtAt) / 430) : 1;
         if (age < 1) {
           ctx.save();
-          ctx.strokeStyle = RED;
-          ctx.globalAlpha = (1 - age) * .72;
-          ctx.lineWidth = 1.6;
+          ctx.strokeStyle = COPPER;
+          ctx.globalAlpha = (1 - age) * .62;
+          ctx.lineWidth = 1.2;
           ctx.beginPath();
-          ctx.arc(x, mid, 10 + age * 26, 0, Math.PI * 2);
+          ctx.arc(heist.packet.x, mid, 10 + age * 19, 0, Math.PI * 2);
           ctx.stroke();
           ctx.restore();
         }
         ctx.fillStyle = RED; ctx.font = `700 12px ${SANS}`; ctx.textAlign = 'center';
-        ctx.fillText('WARNING: Data packet missing!', p.w / 2, mid + 40);
+        ctx.fillText('Packet missing. The phone will retry.', p.w / 2, mid + 40);
       } else {
-        ctx.fillStyle = m.stolen ? RED : m.from === 'phone' ? INK : COPPER;
+        ctx.fillStyle = m.from === 'phone' ? INK : COPPER;
         ctx.beginPath(); ctx.roundRect(x - w / 2, mid - 14, w, 28, 14); ctx.fill();
         ctx.fillStyle = '#f5f2ec'; ctx.textAlign = 'center'; ctx.fillText(label, x, mid + 1);
-        if (m.stolen && q > .5) { ctx.fillStyle = RED; ctx.font = `700 12px ${SANS}`; ctx.fillText('WARNING: Data packet missing!', p.w / 2, mid + 40); }
       }
     } else {
       river.packetPos = null;
@@ -1744,286 +1745,181 @@
 
   if (s15) {
     const tapBtn = s15.input('tap'), stealBtn = s15.input('steal');
-    const stage = s15.el.querySelector('#s15-tap-stage'), ring = s15.el.querySelector('.s15-reader-ring');
+    const tapStage = s15.el.querySelector('#s15-tap-stage'), ring = tapStage.querySelector('.s15-reader-ring');
+    const card = tapStage.querySelector('.s15-tap-card'), readerModel = tapStage.querySelector('.s15-reader');
+    const hint = s15.el.querySelector('#s15-tap-hint');
     const randomInput = s15.input('random'), randomState = s15.input('random-state');
     const chartEl = s15.el.querySelector('#s15-chart'), chatEl = s15.el.querySelector('.chat');
-    let cardAnim, ringAnim, randomFlip, heistFrame = 0, heistSvg = null, drag = null;
-    let heistStartScroll = 0;
+    let tapRun, ringAnim, randomFlip, heistFrame = 0, heistSvg;
 
     chatEl?.addEventListener('scroll', () => updateChatFade(chatEl), { passive: true });
     addEventListener('resize', () => updateChatFade(chatEl));
 
     function cancelHeist() {
+      const heist = river.heist;
+      if (!heist) return;
+      if (!heist.caughtAt) river.started += performance.now() - heist.pausedAt;
+      river.heist = null;
       cancelAnimationFrame(heistFrame);
-      heistFrame = 0;
       heistSvg?.remove();
       heistSvg = null;
-      river.heistActive = false;
-      river.heistGrabbed = false;
-      river.grabbedIndex = -1;
-      if (stealBtn) {
-        stealBtn.removeAttribute('data-heist');
-        stealBtn.style.removeProperty('--s15-jaw-angle');
-        stealBtn.style.removeProperty('--s15-jaw-scale');
-        stealBtn.style.removeProperty('--s15-jaw-aim');
-        stealBtn.style.removeProperty('transform');
-      }
+      stealBtn.removeAttribute('data-heist');
+      for (const property of ['angle', 'scale', 'aim']) stealBtn.style.removeProperty(`--s15-jaw-${property}`);
     }
 
-    function performTap({ fromDrag = false } = {}) {
-      cancelHeist();
-      cardAnim?.cancel();
+    function finishTap() {
+      if (!tapRun) return;
+      const { animation, contacted } = tapRun;
+      tapRun = undefined;
+      animation.cancel();
       ringAnim?.cancel();
-      const distance = stage ? Math.max(52, stage.clientWidth - tapBtn.offsetWidth - 16) : 90;
-      if (!fromDrag && !reduced.matches && !document.hidden && tapBtn?.animate) {
-        cardAnim = tapBtn.animate([
-          { transform: 'translateX(-6px) rotate(5deg)' },
-          { transform: `translateX(-${distance}px) rotate(0deg)`, offset: .30 },
-          { transform: `translateX(-${distance}px) rotate(0deg)`, offset: .56 },
-          { transform: 'translateX(0px) rotate(7deg)' },
-        ], { duration: 760, easing: 'cubic-bezier(.22, 1, .36, 1)' });
-      }
-      if (!reduced.matches && !document.hidden && ring?.animate) {
-        ringAnim = ring.animate([
-          { opacity: .35, transform: 'scale(.95)' },
-          { opacity: 1, transform: 'scale(1.24)', offset: .36 },
-          { opacity: .30, transform: 'scale(1)' },
-        ], { duration: 680, easing: 'cubic-bezier(.16, 1, .3, 1)' });
-      }
-      conversation(s15);
+      tapBtn.removeAttribute('aria-disabled');
+      hint.textContent = '';
+      if (!contacted) conversation(s15);
     }
 
-    function nudgeHint() {
-      if (reduced.matches || document.hidden || !tapBtn?.animate) return;
-      cardAnim?.cancel();
-      cardAnim = tapBtn.animate([
-        { transform: 'translateX(0) rotate(7deg)' },
-        { transform: 'translateX(-12px) rotate(3deg)', offset: .45 },
-        { transform: 'translateX(0) rotate(7deg)' },
-      ], { duration: 280, easing: 'cubic-bezier(.16, 1, .3, 1)' });
-    }
-
-    function launchInstantHeist(targetIndex, label, width) {
+    async function performTap() {
+      if (tapRun) return;
       cancelHeist();
-      if (reduced.matches || document.hidden || !stealBtn || !chartEl) return;
-      river.heistActive = true;
-      river.grabbedIndex = targetIndex;
-      heistStartScroll = scrollY;
-      stealBtn.dataset.heist = 'lunging';
+      if (reduced.matches || document.hidden || !card.animate) {
+        conversation(s15);
+        return;
+      }
 
-      const pillW = Math.max(44, Math.ceil(width));
-      const ns = 'http://www.w3.org/2000/svg';
-      const svg = document.createElementNS(ns, 'svg');
+      const readerEdge = readerModel.offsetLeft + readerModel.offsetWidth + 6;
+      const travel = readerEdge - card.offsetLeft - card.offsetWidth / 2;
+      const resting = 'rotate(7deg)';
+      const contact = `translateX(${travel}px) rotate(0deg)`;
+      river.approaching = true;
+      river.packetPos = null;
+      chatEl.replaceChildren();
+      tapBtn.setAttribute('aria-disabled', 'true');
+      hint.textContent = 'Approaching';
+      setS15StateUI(s15);
+
+      const approach = card.animate([
+        { transform: resting },
+        { transform: `translate(${travel * .72}px, -5px) rotate(2deg)`, offset: .67 },
+        { transform: contact },
+      ], { duration: 760, easing: 'cubic-bezier(.35, 0, .25, 1)', fill: 'forwards' });
+      const run = { animation: approach, contacted: false };
+      tapRun = run;
+      try {
+        await approach.finished;
+        if (tapRun !== run) return;
+        run.contacted = true;
+        conversation(s15);
+        hint.textContent = 'Contact';
+        ringAnim = ring.animate([
+          { opacity: .42, transform: 'scale(1)' },
+          { opacity: 1, transform: 'scale(1.18)', offset: .25 },
+          { opacity: .42, transform: 'scale(1.38)' },
+        ], { duration: 570, easing: 'ease-out' });
+        run.animation = card.animate([
+          { transform: contact },
+          { transform: contact, offset: .4, easing: 'cubic-bezier(.4, 0, .35, 1)' },
+          { transform: resting },
+        ], { duration: 900 });
+        approach.cancel();
+        await run.animation.finished;
+      } catch (error) {
+        if (error.name !== 'AbortError') throw error;
+      } finally {
+        if (tapRun === run) finishTap();
+      }
+    }
+
+    function launchHeist(packet, fromPhone) {
+      if (reduced.matches || document.hidden) return;
+      const heist = { packet, pausedAt: performance.now(), caughtAt: 0 };
+      river.heist = heist;
+      stealBtn.dataset.heist = 'reaching';
+
+      const pillWidth = packet.w;
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       svg.setAttribute('class', 's15-heist-svg');
       svg.setAttribute('aria-hidden', 'true');
       svg.innerHTML = `
-        <path class="s15-heist-arm" fill="none" stroke="#0d0d0c" stroke-width="3.6" stroke-linecap="round"/>
-        <g class="s15-heist-crumbs" opacity="0">
-          <text font-family="JetBrains Mono, ui-monospace, monospace" font-size="11" font-weight="700" fill="#b3261e">0</text>
-          <text font-family="JetBrains Mono, ui-monospace, monospace" font-size="11" font-weight="700" fill="#0d0d0c">1</text>
-          <text font-family="JetBrains Mono, ui-monospace, monospace" font-size="10" font-weight="700" fill="#b3261e">1</text>
-          <text font-family="JetBrains Mono, ui-monospace, monospace" font-size="11" font-weight="700" fill="#0d0d0c">0</text>
-          <text font-family="JetBrains Mono, ui-monospace, monospace" font-size="10" font-weight="700" fill="#b3261e">0</text>
-          <text font-family="JetBrains Mono, ui-monospace, monospace" font-size="11" font-weight="700" fill="#0d0d0c">1</text>
-        </g>
+        <path class="s15-heist-arm" fill="none" stroke="#8b4e23" stroke-width="3" stroke-linecap="round"/>
         <g class="s15-heist-packet" opacity="0">
-          <rect x="${(-pillW / 2).toFixed(1)}" y="-14" width="${pillW}" height="28" rx="14" fill="#b3261e"/>
-          <text x="0" y="4" text-anchor="middle" font-family="Inter Tight, system-ui, sans-serif" font-size="12" font-weight="700" fill="#f5f2ec"></text>
+          <rect x="${-pillWidth / 2}" y="-14" width="${pillWidth}" height="28" rx="14" fill="${fromPhone ? INK : COPPER}"/>
+          <text x="0" y="1" dominant-baseline="middle" text-anchor="middle" font-family="Inter Tight, system-ui, sans-serif" font-size="12" font-weight="700" fill="#f5f2ec"></text>
         </g>
         <g class="s15-heist-hand">
-          <g class="s15-hand-open">
-            <path d="M-9 5 L-11 -6 C-11 -9 -7 -9 -7 -6 L-6 1 L-4 -10 C-4 -13 0 -13 0 -10 L0 0 L3 -9 C3 -12 7 -12 7 -9 L6 2 L10 -4 C11 -6 14 -5 13 -2 L8 10 C6 13 -5 13 -8 8 Z" fill="#f5f2ec" stroke="#0d0d0c" stroke-width="1.9" stroke-linejoin="round"/>
-          </g>
+          <path class="s15-hand-open" d="M-9 5 L-11 -6 C-11 -9 -7 -9 -7 -6 L-6 1 L-4 -10 C-4 -13 0 -13 0 -10 L0 0 L3 -9 C3 -12 7 -12 7 -9 L6 2 L10 -4 C11 -6 14 -5 13 -2 L8 10 C6 13 -5 13 -8 8 Z" fill="#f5f2ec" stroke="#0d0d0c" stroke-width="1.9" stroke-linejoin="round"/>
           <g class="s15-hand-fist" opacity="0">
             <rect x="-10" y="-6" width="20" height="15" rx="7" fill="#f5f2ec" stroke="#0d0d0c" stroke-width="1.9"/>
             <path d="M-6 -6 V2 M-1 -6 V2 M4 -6 V2" stroke="#0d0d0c" stroke-width="1.5" stroke-linecap="round"/>
           </g>
+        </g>
+        <g class="s15-heist-crumbs" opacity="0" text-anchor="middle" fill="#8b4e23" font-family="JetBrains Mono, monospace" font-size="10" font-weight="600">
+          <text>0</text><text>1</text><text>1</text><text>0</text>
         </g>`;
-      svg.querySelector('.s15-heist-packet text').textContent = label;
+      svg.querySelector('.s15-heist-packet text').textContent = packet.label;
       document.body.append(svg);
       heistSvg = svg;
 
-      const armEl = svg.querySelector('.s15-heist-arm');
-      const handEl = svg.querySelector('.s15-heist-hand');
-      const openHand = svg.querySelector('.s15-hand-open');
-      const fistHand = svg.querySelector('.s15-hand-fist');
-      const packetEl = svg.querySelector('.s15-heist-packet');
-      const crumbsEl = svg.querySelector('.s15-heist-crumbs');
-      const crumbNodes = Array.from(crumbsEl.children);
-      const startTime = performance.now();
-      let grabOrigin = null, snapped = false, chomped = false;
-
-      function easeOutCubic(t) { return 1 - Math.pow(1 - clamp(t, 0, 1), 3); }
-      function easeInOut(t) { const x = clamp(t, 0, 1); return x * x * (3 - 2 * x); }
+      const arm = svg.querySelector('.s15-heist-arm');
+      const hand = svg.querySelector('.s15-heist-hand');
+      const open = svg.querySelector('.s15-hand-open'), fist = svg.querySelector('.s15-hand-fist');
+      const carried = svg.querySelector('.s15-heist-packet');
+      const crumbs = svg.querySelector('.s15-heist-crumbs');
+      const jaw = stealBtn.querySelector('.s15-jaw-wrap');
+      const originScroll = scrollY;
+      const grab = 422, returnAt = 490, mouthAt = 1110, bite = 1280, end = 1540;
+      const smooth = (from, to, time) => {
+        const t = stage(from, to, time);
+        return t * t * (3 - 2 * t);
+      };
+      const mix = (from, to, t) => from + (to - from) * t;
 
       function step(now) {
-        if (!heistSvg?.isConnected || Math.abs(scrollY - heistStartScroll) > innerHeight * .38) {
-          cancelHeist();
-          return;
+        const elapsed = now - heist.pausedAt;
+        if (!svg.isConnected || elapsed >= end || Math.abs(scrollY - originScroll) > innerHeight * .35) return cancelHeist();
+        const button = jaw.getBoundingClientRect(), chart = chartEl.getBoundingClientRect();
+        const ax = button.left + button.width / 2, ay = button.top + button.height / 2;
+        const px = chart.left + packet.x, py = chart.top + packet.y;
+        const reach = smooth(0, grab, elapsed), grip = smooth(grab - 55, returnAt, elapsed);
+        const retract = smooth(returnAt, mouthAt, elapsed), eat = smooth(mouthAt, bite, elapsed);
+        const position = reach * (1 - retract);
+        const curl = Math.sin(Math.PI * reach) * 24 - Math.sin(Math.PI * retract) * 32;
+        const x = mix(ax, px, position) + curl * .5, y = mix(ay, py, position) + curl;
+        const aim = Math.atan2(py - ay, px - ax) * 180 / Math.PI;
+        const twist = clamp((aim + 65) * .48, -46, 46) * position;
+
+        if (!heist.caughtAt && elapsed >= grab) {
+          heist.caughtAt = now;
+          river.started += now - heist.pausedAt;
+          stealBtn.dataset.heist = 'returning';
         }
-        const jawEl = stealBtn.querySelector('.s15-jaw-wrap') || stealBtn;
-        const jRect = jawEl.getBoundingClientRect();
-        const cRect = chartEl.getBoundingClientRect();
-        const ax = jRect.left + jRect.width * .5;
-        const ay = jRect.top + jRect.height * .5;
-        const elapsed = now - startTime;
-        const live = river.packetPos;
-        const curTargetX = (live && live.index === targetIndex) ? cRect.left + live.x : (grabOrigin?.x ?? cRect.left + cRect.width * .5);
-        const curTargetY = (live && live.index === targetIndex) ? cRect.top + live.y : (grabOrigin?.y ?? cRect.top + cRect.height * .5);
+        const handX = x, handY = y + position * 10;
+        const armOpacity = smooth(0, 98, elapsed) * (1 - smooth(mouthAt - 25, bite - 35, elapsed));
+        arm.setAttribute('d', `M ${ax} ${ay} Q ${mix(ax, handX, .38) + 34 * position} ${mix(ay, handY, .58) + 24 * position} ${handX} ${handY}`);
+        arm.setAttribute('opacity', armOpacity);
+        hand.setAttribute('opacity', armOpacity);
+        hand.setAttribute('transform', `translate(${handX} ${handY}) rotate(${twist})`);
+        open.setAttribute('opacity', 1 - grip);
+        fist.setAttribute('opacity', grip);
 
-        let hx = ax, hy = ay, showArm = true, showPacket = false, pScale = 1, handRot = 0;
+        const jawOpen = smooth(returnAt + 190, mouthAt + 20, elapsed) * (1 - smooth(mouthAt + 65, bite + 90, elapsed));
+        stealBtn.style.setProperty('--s15-jaw-angle', `${jawOpen * 38}deg`);
+        stealBtn.style.setProperty('--s15-jaw-scale', 1 + jawOpen * .24);
+        stealBtn.style.setProperty('--s15-jaw-aim', `${aim * jawOpen}deg`);
+        carried.setAttribute('opacity', heist.caughtAt ? 1 - eat : 0);
+        carried.setAttribute('transform', `translate(${x} ${y}) scale(${(1 - .34 * retract) * (1 - eat)})`);
 
-        if (elapsed < 170) {
-          const p = easeOutCubic(elapsed / 170);
-          hx = ax + (curTargetX - ax) * p;
-          hy = ay + (curTargetY - ay) * p;
-          handRot = Math.atan2(hy - ay, hx - ax) * 180 / Math.PI + 90;
-          stealBtn.style.setProperty('--s15-jaw-angle', '8deg');
-          stealBtn.style.setProperty('--s15-jaw-scale', '1');
-          if (elapsed >= 105 && !snapped) {
-            snapped = true;
-            river.heistGrabbed = true;
-            river.grabAt = now;
-            openHand.setAttribute('opacity', '0');
-            fistHand.setAttribute('opacity', '1');
-            grabOrigin = { x: curTargetX, y: curTargetY };
-          }
-          if (snapped) showPacket = true;
-        } else if (elapsed < 960) {
-          if (!snapped) {
-            snapped = true;
-            river.heistGrabbed = true;
-            river.grabAt = now;
-            openHand.setAttribute('opacity', '0');
-            fistHand.setAttribute('opacity', '1');
-            grabOrigin = { x: curTargetX, y: curTargetY };
-          }
-          const retT = easeInOut((elapsed - 170) / 790);
-          const arc = Math.sin(Math.PI * retT) * -36;
-          hx = grabOrigin.x + (ax - grabOrigin.x) * retT;
-          hy = grabOrigin.y + (ay - grabOrigin.y) * retT + arc;
-          handRot = Math.atan2(ay - grabOrigin.y, ax - grabOrigin.x) * 180 / Math.PI + 90;
-          showPacket = true;
-          pScale = retT > .78 ? 1 - easeInOut((retT - .78) / .22) * .42 : 1;
-          const mouthOpen = easeOutCubic((retT - .34) / .56);
-          if (mouthOpen > 0) {
-            const aim = clamp(Math.atan2(grabOrigin.y - ay, grabOrigin.x - ax) * 180 / Math.PI, -72, 24);
-            stealBtn.dataset.heist = 'open';
-            stealBtn.style.setProperty('--s15-jaw-angle', `${(mouthOpen * 52).toFixed(1)}deg`);
-            stealBtn.style.setProperty('--s15-jaw-scale', `${(1 + mouthOpen * .55).toFixed(3)}`);
-            stealBtn.style.setProperty('--s15-jaw-aim', `${(aim * mouthOpen).toFixed(1)}deg`);
-          }
-        } else if (elapsed < 1560) {
-          const chT = elapsed - 960;
-          showArm = chT < 160;
-          hx = ax; hy = ay;
-          const shrinkT = easeInOut(chT / 120);
-          showPacket = chT < 120;
-          pScale = Math.max(0, .58 * (1 - shrinkT));
-          let angle = 0;
-          if (chT < 120) angle = 52 * (1 - easeInOut(chT / 120));
-          else if (chT < 260) angle = Math.sin(((chT - 120) / 140) * Math.PI) * 24;
-          else if (chT < 400) angle = Math.sin(((chT - 260) / 140) * Math.PI) * 14;
-          if (!chomped && chT >= 100) {
-            chomped = true;
-            stealBtn.dataset.heist = 'chomp';
-            stealBtn.animate?.([
-              { transform: 'scale(1)' },
-              { transform: 'scale(1.06, .93)', offset: .32 },
-              { transform: 'scale(.98, 1.03)', offset: .68 },
-              { transform: 'scale(1)' },
-            ], { duration: 340, easing: 'cubic-bezier(.16, 1, .3, 1)' });
-          }
-          stealBtn.style.setProperty('--s15-jaw-angle', `${angle.toFixed(1)}deg`);
-          stealBtn.style.setProperty('--s15-jaw-scale', `${(1.55 - easeInOut(chT / 440) * .55).toFixed(3)}`);
-
-          const burst = clamp((chT - 80) / 420, 0, 1);
-          if (burst > 0 && burst < 1) {
-            crumbsEl.setAttribute('opacity', (1 - burst).toFixed(2));
-            crumbNodes.forEach((node, idx) => {
-              const a = (-0.75 + idx * 0.42);
-              const d = (12 + (idx % 2) * 8) * easeOutCubic(burst);
-              node.setAttribute('x', (ax + Math.cos(a) * d).toFixed(1));
-              node.setAttribute('y', (ay + Math.sin(a) * d - burst * 6).toFixed(1));
-            });
-          } else {
-            crumbsEl.setAttribute('opacity', '0');
-          }
-        } else {
-          cancelHeist();
-          return;
-        }
-
-        if (showArm) {
-          const mx = (ax + hx) * .5 + 22;
-          const my = (ay + hy) * .5 + 48;
-          armEl.setAttribute('d', `M ${ax.toFixed(1)} ${ay.toFixed(1)} Q ${mx.toFixed(1)} ${my.toFixed(1)} ${hx.toFixed(1)} ${hy.toFixed(1)}`);
-          armEl.setAttribute('opacity', '1');
-          handEl.setAttribute('opacity', '1');
-          handEl.setAttribute('transform', `translate(${hx.toFixed(1)} ${hy.toFixed(1)}) rotate(${(clamp(handRot, -45, 45)).toFixed(1)})`);
-        } else {
-          armEl.setAttribute('opacity', '0');
-          handEl.setAttribute('opacity', '0');
-        }
-
-        if (showPacket) {
-          packetEl.setAttribute('opacity', '1');
-          packetEl.setAttribute('transform', `translate(${hx.toFixed(1)} ${hy.toFixed(1)}) scale(${pScale.toFixed(3)})`);
-        } else {
-          packetEl.setAttribute('opacity', '0');
-        }
-
+        const burst = smooth(bite - 35, end, elapsed);
+        crumbs.setAttribute('opacity', burst > 0 ? (1 - burst) * .72 : 0);
+        Array.from(crumbs.children).forEach((dot, i) => {
+          dot.setAttribute('x', ax + (i - 1.5) * (7 + 14 * burst));
+          dot.setAttribute('y', ay - (12 + 13 * burst) * (1 - Math.abs(i - 1.5) * .22));
+        });
         heistFrame = requestAnimationFrame(step);
       }
-
       heistFrame = requestAnimationFrame(step);
     }
 
-    if (tapBtn && stage) {
-      tapBtn.addEventListener('pointerdown', event => {
-        if (!event.isPrimary || event.button !== 0) return;
-        const maxTravel = Math.max(52, stage.clientWidth - tapBtn.offsetWidth - 14);
-        drag = { id: event.pointerId, startX: event.clientX, maxTravel, dx: 0, tapped: false };
-        tapBtn.classList.add('is-dragging');
-        tapBtn.setPointerCapture?.(event.pointerId);
-      });
-
-      tapBtn.addEventListener('pointermove', event => {
-        if (event.pointerId !== drag?.id || !(event.buttons & 1)) return;
-        const dx = clamp(drag.startX - event.clientX, 0, drag.maxTravel);
-        drag.dx = dx;
-        const prox = dx / drag.maxTravel;
-        stage.style.setProperty('--s15-drag-x', `${(-dx).toFixed(1)}px`);
-        stage.style.setProperty('--s15-prox', prox.toFixed(3));
-        if (prox >= .72 && !drag.tapped) {
-          drag.tapped = true;
-          performTap({ fromDrag: true });
-        }
-      });
-
-      for (const name of ['pointerup', 'pointercancel']) {
-        tapBtn.addEventListener(name, event => {
-          if (event.pointerId !== drag?.id) return;
-          const ended = drag;
-          drag = null;
-          tapBtn.classList.remove('is-dragging');
-          stage.style.removeProperty('--s15-drag-x');
-          stage.style.removeProperty('--s15-prox');
-          if (!ended.tapped) {
-            if (ended.dx / ended.maxTravel >= .48) performTap({ fromDrag: true });
-            else if (ended.dx < 8 && event.type === 'pointerup') nudgeHint();
-          }
-        });
-      }
-
-      tapBtn.addEventListener('keydown', event => {
-        if (event.altKey || event.ctrlKey || event.metaKey) return;
-        if (event.key === 'ArrowLeft' || event.key === 'Home') {
-          event.preventDefault();
-          performTap({ fromDrag: false });
-        }
-      });
-    }
+    tapBtn.addEventListener('click', () => { void performTap(); });
 
     randomInput?.addEventListener('change', () => {
       if (!randomState) return;
@@ -2042,7 +1938,7 @@
 
     stealBtn?.addEventListener('click', () => {
       const pkt = river.packetPos;
-      if (river.awaitingTap || river.heistActive || !pkt || pkt.stolen || pkt.q >= .96) return;
+      if (river.awaitingTap || river.approaching || river.heist || !pkt || pkt.stolen || pkt.q >= .96) return;
       const idx = pkt.index, msg = river.messages[idx];
       if (!msg || msg.from === 'app' || msg.stolen) return;
 
@@ -2071,17 +1967,13 @@
       }
       pkt.stolen = true;
       s15?.say('A packet was stolen mid-air — watch the phone ask again.');
-      launchInstantHeist(idx, pkt.label, pkt.w);
+      launchHeist(pkt, msg.from === 'phone');
     });
 
-    for (const ev of ['resize', 'hashchange', 'pagehide']) addEventListener(ev, cancelHeist);
-    document.addEventListener('visibilitychange', () => { if (document.hidden) cancelHeist(); });
-    reduced.addEventListener('change', () => {
-      if (reduced.matches) {
-        cancelHeist();
-        if (river.awaitingTap) conversation(s15);
-      }
-    });
+    const settle = () => { finishTap(); cancelHeist(); };
+    for (const ev of ['resize', 'hashchange', 'pagehide']) addEventListener(ev, settle);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) settle(); });
+    reduced.addEventListener('change', () => { if (reduced.matches) settle(); });
   }
 
   // ---------- 16. Two cards in one field ----------

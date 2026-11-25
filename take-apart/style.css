@@ -1492,7 +1492,7 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   position: fixed;
   inset: 0;
   inline-size: 100%;
-  block-size: 100vh;
+  block-size: 100%;
   z-index: 15;
   pointer-events: none;
   overflow: visible;
@@ -1502,14 +1502,21 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   gap: 12px;
   max-inline-size: 420px;
 }
-.s15-tap-box {
+#s15 .s15-tap-box {
   display: grid;
   gap: 10px;
+  inline-size: 100%;
+  justify-self: stretch;
   padding: 12px 16px;
   border: 1px solid rgba(13, 13, 12, .16);
   border-radius: 12px;
   background: color-mix(in srgb, var(--copper) 4%, var(--paper));
+  color: var(--ink);
+  text-align: start;
+  touch-action: manipulation;
 }
+#s15 .s15-tap-box:hover { border-color: color-mix(in srgb, var(--copper) 62%, var(--paper)); }
+#s15 .s15-tap-box[aria-disabled="true"] { cursor: default; }
 .s15-tap-head {
   display: flex;
   align-items: baseline;
@@ -1549,8 +1556,7 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   block-size: 52px;
   border: 1.5px dashed var(--copper);
   border-radius: 50%;
-  opacity: calc(.28 + var(--s15-prox, 0) * .62);
-  transform: scale(calc(.92 + var(--s15-prox, 0) * .22));
+  opacity: .42;
   pointer-events: none;
 }
 .s15-field-arc {
@@ -1560,25 +1566,18 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   block-size: 14px;
   border-block: 1px dotted var(--copper);
   border-radius: 50%;
-  opacity: calc(.28 + var(--s15-prox, 0) * .55);
+  opacity: .34;
   pointer-events: none;
 }
-#s15 .s15-card-btn {
+.s15-tap-card {
   position: absolute;
   inset-inline-end: 2px;
   z-index: 3;
   inline-size: 88px;
-  padding: 0;
-  border: 0;
   border-radius: 6% / 9%;
-  background: transparent;
-  cursor: grab;
-  touch-action: none;
-  transform: translateX(var(--s15-drag-x, 0px)) rotate(calc(7deg - var(--s15-prox, 0) * 7deg));
+  transform: rotate(7deg);
 }
-#s15 .s15-card-btn:hover { background: transparent; color: inherit; }
-#s15 .s15-card-btn.is-dragging { cursor: grabbing; transition: none !important; }
-#s15 .s15-card-btn img {
+.s15-tap-card img {
   display: block;
   inline-size: 100%;
   block-size: auto;
@@ -1586,7 +1585,6 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   box-shadow: 0 3px 8px rgba(13, 13, 12, .17);
   pointer-events: none;
 }
-#s15 .s15-card-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
 .s15-action-row {
   display: flex;
   flex-wrap: wrap;
@@ -1613,8 +1611,8 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
 }
 #s15 .s15-steal-btn:hover,
 #s15 .s15-steal-btn[data-heist] {
-  border-color: var(--red);
-  background: color-mix(in srgb, var(--red) 8%, var(--paper));
+  border-color: #8b4e23;
+  background: color-mix(in srgb, var(--copper) 8%, var(--paper));
   color: var(--ink);
 }
 .s15-jaw-wrap {
@@ -1632,7 +1630,7 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   color: var(--ink);
 }
 #s15 .s15-steal-btn[data-heist] .s15-jaw-svg,
-#s15 .s15-steal-btn:hover .s15-jaw-svg { color: var(--red); }
+#s15 .s15-steal-btn:hover .s15-jaw-svg { color: #8b4e23; }
 .s15-jaw-top, .s15-jaw-bot { transform-origin: 18px 18px; }
 .s15-jaw-top { transform: rotate(calc(var(--s15-jaw-angle, 0deg) * -1)); }
 .s15-jaw-bot { transform: rotate(var(--s15-jaw-angle, 0deg)); }
@@ -1696,31 +1694,19 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   0%, 100% { opacity: .28; transform: scale(.94); }
   50% { opacity: .66; transform: scale(1.06); }
 }
-@keyframes s15-card-invite {
-  0%, 100% { transform: translateX(0) rotate(7deg); }
-  50% { transform: translateX(-8px) rotate(4.5deg); }
-}
 @media (prefers-reduced-motion: no-preference) {
   .s15-tap-box[data-state="idle"] .s15-reader-ring { animation: s15-ring-invite 2.4s ease-in-out infinite; }
-  .s15-tap-box[data-state="idle"] .s15-card-btn:not(.is-dragging):not(:hover):not(:focus-visible) {
-    animation: s15-card-invite 2.4s ease-in-out infinite;
-  }
-  #s15 .s15-card-btn { transition: transform .28s cubic-bezier(.16, 1, .3, 1); }
-  .s15-reader-ring, .s15-field-arc { transition: opacity .2s ease, transform .24s ease; }
+  #s15 .s15-tap-box { transition: border-color .18s; }
   #s15 .s15-steal-btn { transition: border-color .18s, background-color .18s; }
   #s15-random { transition: background-color .18s, border-color .18s, color .18s; }
   #s15-random::before { transition: transform .2s cubic-bezier(.16, 1, .3, 1); }
 }
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
-  #s15 .s15-card-btn:not(.is-dragging):hover,
-  #s15 .s15-card-btn:not(.is-dragging):focus-visible {
-    transform: translateX(-11px) rotate(3deg);
-  }
-  #s15 .s15-steal-btn:hover .s15-jaw-top { transform: rotate(-16deg); }
-  #s15 .s15-steal-btn:hover .s15-jaw-bot { transform: rotate(16deg); }
+  #s15 .s15-steal-btn:not([data-heist]):hover .s15-jaw-top { transform: rotate(-12deg); }
+  #s15 .s15-steal-btn:not([data-heist]):hover .s15-jaw-bot { transform: rotate(12deg); }
 }
 @media (forced-colors: active) {
-  .s15-tap-box, #s15 .s15-steal-btn { border-color: ButtonText; }
+  #s15 .s15-tap-box, #s15 .s15-steal-btn { border-color: ButtonText; }
   #s15-random { appearance: auto; inline-size: auto; block-size: auto; }
   #s15-random::before { content: none; }
 }

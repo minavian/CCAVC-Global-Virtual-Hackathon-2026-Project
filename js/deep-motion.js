@@ -3776,7 +3776,7 @@ function createChapterDeck(stops, transitions) {
   }
 
   function isInteractiveTarget(target) {
-    return !!target?.closest?.('.s6-card, .s9-metal, .s13-drift-track, .s15-card-btn, .s16-pad-card, .s16-wallet, input[type="range"], [role="slider"]');
+    return !!target?.closest?.('.s6-card, .s9-metal, .s13-drift-track, .s16-pad-card, .s16-wallet, input[type="range"], [role="slider"]');
   }
 
   function currentStopIndex() {
