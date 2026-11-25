@@ -30,7 +30,7 @@
 <body>
   <main>
     <h1>The simulation’s checks</h1>
-    <p class="lead">These run the real code behind the site, in your browser, right now: the standard’s own examples, a reader that has to read random IDs from nothing but the signal, two cards at once, and the physics. The same checks run with <code>node --test tests/</code>.</p>
+    <p class="lead">These run the real code behind the site, in your browser, right now: the standard’s own examples, a reader that has to read random IDs from nothing but the signal, two cards at once, the physics, and the card close-up’s lab (that it never draws or says what the physics doesn’t). The same checks run with <code>node --test</code> in the project’s folder.</p>
     <p class="summary" id="summary" aria-live="polite">Running…</p>
     <ol id="results"></ol>
     <p class="lead"><a href="../">Back to the site</a></p>
@@ -43,11 +43,25 @@
   <script src="../js/rfid/reader.js"></script>
   <script src="../js/rfid/channel.js"></script>
   <script src="cases.js"></script>
-  <script>
-    (async function () {
+  <script type="module">
+    // The lab's checks too (tests/lab-cases.mjs), with a small assert of their own here (Node uses
+    // node:assert): each throws with the check's message when it fails.
+    import { labCases } from './lab-cases.mjs';
+    const L = await import('../js/intro/lab-model.js');
+    const fail = (message, fallback) => { throw new Error(message || fallback); };
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const assert = {
+      ok: (value, message) => value || fail(message, 'expected a true value'),
+      equal: (a, b, message) => Object.is(a, b) || fail(message, `${a} is not ${b}`),
+      match: (text, pattern, message) => pattern.test(text) || fail(message, `"${text}" does not match ${pattern}`),
+      deepEqual: (a, b, message) => same(a, b) || fail(message, 'expected the same values'),
+      notDeepEqual: (a, b, message) => !same(a, b) || fail(message, 'expected different values'),
+    };
+    const checks = [...window.RFIDTests, ...labCases(assert, L).map(([name, fn]) => ['The lab: ' + name, fn])];
+    {
       const list = document.getElementById('results'), summary = document.getElementById('summary');
       let passed = 0, failed = 0;
-      for (const [name, fn] of window.RFIDTests) {
+      for (const [name, fn] of checks) {
         await new Promise(r => setTimeout(r));          // let the page paint between checks
         const li = document.createElement('li'), t0 = performance.now();
         try { fn(); li.className = 'pass'; passed++; li.innerHTML = '<span class="mark">✓</span>'; }
@@ -61,7 +75,7 @@
       }
       summary.textContent = failed ? `${failed} of ${passed + failed} checks failed.` : `All ${passed} checks passed.`;
       summary.className = 'summary ' + (failed ? 'fail' : 'pass');
-    })();
+    }
   </script>
 </body>
 </html>
