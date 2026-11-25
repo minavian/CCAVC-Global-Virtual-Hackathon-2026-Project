@@ -772,6 +772,8 @@ function intro(experience) {
   }
 
   const MAP_FADE = 260;
+  // The charts' frame inside the canvas (px): room for the scale on the left and along the bottom.
+  const PLOT = { left: 30, right: 8, top: 8, bottom: 18 };
   // One Map drawn (see `paintMap`): faint grey where no card can be (closer than a card turned
   // that far can come), a faint amber wash where it can be but sleeps, amber where it wakes. Each
   // region is one shape through the bands' edges (one fill, so no seams between bands, and a
@@ -953,7 +955,7 @@ function intro(experience) {
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
     const g = canvas.getContext('2d');
     g.setTransform(ratio, 0, 0, ratio, 0, 0);
-    const W = box.width, H = box.height, left = 30, right = 8, top = 8, bottom = 18;
+    const W = box.width, H = box.height, { left, right, top, bottom } = PLOT;
     g.clearRect(0, 0, W, H);
     if (lab.chart === 'map') { paintMap(g, W, H, left, right, top, bottom); return; }
     const now = plotNow();
@@ -1589,7 +1591,46 @@ function intro(experience) {
     tab.addEventListener('click', () => {
       lab.chart = tab.dataset.chart;
       for (const other of labUi.tabs) other.setAttribute('aria-pressed', String(other === tab));
+      paintPlotPress();
       setLab({}, true);
+    });
+  }
+  // The chart is a control too: press or drag on it to set what its axes show. On Distance and
+  // Answer, the distance; on the Map, the distance and the angle at once; on Tuning, the card's
+  // tuning (its peak goes where you press). A press where no card can be (the Map's grey) leaves
+  // it as near as it can come. The sliders stay, for the keyboard.
+  let plotHeld = null;
+  function plotPress(event) {
+    const box = labUi.plot.getBoundingClientRect();
+    const fx = clamp((event.clientX - box.left - PLOT.left) / (box.width - PLOT.left - PLOT.right));
+    const fy = clamp((event.clientY - box.top - PLOT.top) / (box.height - PLOT.top - PLOT.bottom));
+    const distance = Math.round((.5 + 9.5 * fx) * 10) / 10;
+    if (lab.chart === 'tuning') setLab({ tune: sliderToTune(tuneToSlider(5 * 6 ** fx)) });
+    else if (lab.chart === 'map') setLab({ distance, angle: Math.round(90 * (1 - fy)) });
+    else setLab({ distance });
+  }
+  // What a press on the chart does, said on it, and how a touch on it moves: the Map takes every
+  // direction; the others only across, so a swipe up or down still scrolls the panel.
+  function paintPlotPress() {
+    labUi.plot.title = { tuning: 'Press or drag to tune the card', map: 'Press or drag to move and turn the card' }[lab.chart]
+      ?? 'Press or drag to move the card';
+    labUi.plot.style.touchAction = lab.chart === 'map' ? 'none' : 'pan-y';
+  }
+  paintPlotPress();
+  labUi.plot.addEventListener('pointerdown', event => {
+    if (event.button !== 0 || step !== LAB) return;
+    takeOver();
+    plotHeld = event.pointerId;
+    labUi.plot.setPointerCapture(event.pointerId);
+    labUi.plot.classList.add('is-held');
+    plotPress(event);
+  });
+  labUi.plot.addEventListener('pointermove', event => { if (event.pointerId === plotHeld) plotPress(event); });
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+    labUi.plot.addEventListener(type, event => {
+      if (event.pointerId !== plotHeld) return;
+      plotHeld = null;
+      labUi.plot.classList.remove('is-held');
     });
   }
   // The tag's size: a bank card, a key ring tag or a sticker.
