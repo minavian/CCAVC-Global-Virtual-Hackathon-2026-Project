@@ -801,16 +801,19 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
 }
 
 @media (width > 860px) {
-  #s12 { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); }
+  #s12 { grid-template-columns: minmax(0, 8fr) minmax(0, 5fr); }
   #s12 .plate-words { grid-area: 1 / 2; }
   #s12-chart { grid-area: 1 / 1; }
 }
+#s12 .plate-words { gap: 14px; }
 .s12-flicker-control {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
   gap: 4px 12px;
-  justify-self: start;
+  padding-block-start: 3px;
+  border-block-start: 1px solid rgba(13, 13, 12, .16);
 }
 #s12 .s12-flicker-label {
   display: flex;
@@ -854,7 +857,7 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   #s12-flicker:checked:hover { border-color: color-mix(in srgb, var(--copper) 48%, var(--ink)); }
 }
 #s12-flicker-rate {
-  font: 600 12px "JetBrains Mono", ui-monospace, monospace;
+  font: 600 13px "JetBrains Mono", ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
   color: color-mix(in srgb, var(--copper) 66%, var(--ink));
   letter-spacing: .01em;

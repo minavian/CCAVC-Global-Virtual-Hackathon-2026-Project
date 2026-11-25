@@ -788,27 +788,47 @@
     const flicker = p.input('flicker').checked;
     const blend = spectrumMotion.blend ?? Number(flicker);
     const ctx = fit(p), stagger = p.w < 340, bx = box(p, 26, stagger ? 54 : 44, 42, 32);
-    const top = 0, floor = -110;
-    const a = chart(ctx, bx, { from: iso.CARRIER - 1.5e6, to: iso.CARRIER + 1.5e6, ticks: [-1.5e6, -.8475e6, 0, .8475e6, 1.5e6].map(o => [iso.CARRIER + o, si(iso.CARRIER + o, 'Hz', 4)]), label: 'Pitch', stagger },
-      { from: floor, to: top + 6, ticks: [[top, '0 dB'], [top - 50, '−50'], [top - 100, '−100']], label: 'Strength (decibels)' });
+    const top = 0, floor = -110, sideband = iso.SAMPLE_RATE / iso.SUB;
+    const a = chart(ctx, bx, { from: iso.CARRIER - 1.5e6, to: iso.CARRIER + 1.5e6, ticks: [-1.5e6, -sideband, 0, sideband, 1.5e6].map(o => [iso.CARRIER + o, si(iso.CARRIER + o, 'Hz', 4)]), label: 'Frequency', stagger },
+      { from: floor, to: top + 6, ticks: [[top, '0 dB'], [top - 50, '−50'], [top - 100, '−100']], label: stagger ? 'Level (dB)' : 'Strength (dB)' });
     const { freqs, values: onValues } = spectrumRecording.on, { values: offValues } = spectrumRecording.off;
     const points = freqs.map((f, i) => [f, Math.max(offValues[i] + (onValues[i] - offValues[i]) * blend, floor)]);
+    const carrierIndex = (points.length - 1) / 2, sidebandBins = Math.round(sideband / (freqs[1] - freqs[0]));
+    const traceColor = 'rgba(13, 13, 12, .46)', sidebandColor = '#8b4e23';
     // Keep the plotted bins and their canvas coordinates available for the next scene.
-    p.canvas.spectrumTrace = { box: bx, points, ...a, color: INK, carrier: points[(points.length - 1) / 2], flicker, blend };
+    p.canvas.spectrumTrace = { box: bx, points, ...a, color: traceColor, carrier: points[carrierIndex], flicker, blend };
     ctx.save(); ctx.beginPath(); ctx.rect(bx.x, bx.y, bx.w, bx.h); ctx.clip();
-    curve(ctx, points, a.X, a.Y, INK, 1);
+    curve(ctx, points, a.X, a.Y, traceColor, 1);
     ctx.restore();
-    ctx.fillStyle = INK; ctx.font = `600 11px ${SANS}`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-    ctx.fillText('The phone’s own field', a.X(iso.CARRIER), bx.y + 12);
-    if (blend > .05) {
-      ctx.globalAlpha = Math.min(1, Math.max(0, (blend - .2) / .8));
-      for (const o of [-1, 1]) { ctx.fillStyle = COPPER; ctx.fillText('The card', a.X(iso.CARRIER + o * 847.5e3), a.Y(top - 38)); }
+    ctx.font = `600 11px ${SANS}`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+
+    function markPeak(index, color, label, labelY, opacity = 1) {
+      if (!opacity) return;
+      const [frequency, db] = points[index], x = a.X(frequency), y = a.Y(db);
+      ctx.save();
+      ctx.globalAlpha = opacity;
+      curve(ctx, points.slice(index - 3, index + 4), a.X, a.Y, color, 1.5);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, labelY + 3); ctx.lineTo(x, y); ctx.stroke();
+      dot(ctx, x, y, color, 2.5);
+      ctx.fillStyle = color;
+      ctx.fillText(label, x, labelY);
+      ctx.restore();
     }
-    if (blend < .95) {
-      ctx.globalAlpha = Math.min(1, Math.max(0, (.8 - blend) / .8));
-      ctx.fillStyle = COPPER; ctx.fillText('The card, buried here', a.X(iso.CARRIER + 2.2e5), a.Y(top - 30));
+
+    markPeak(carrierIndex, INK, 'Phone’s field', bx.y - 6);
+    for (const side of [-1, 1]) {
+      const index = carrierIndex + side * sidebandBins;
+      const offset = `${side < 0 ? '−' : '+'}${si(sideband, 'Hz', 4)}`;
+      markPeak(index, sidebandColor, stagger ? offset : `Card ${offset}`, a.Y(points[index][1]) - 14, stage(.2, 1, blend));
     }
-    ctx.globalAlpha = 1;
+    ctx.save();
+    ctx.globalAlpha = 1 - stage(0, .65, blend);
+    ctx.fillStyle = sidebandColor;
+    ctx.textAlign = 'left';
+    ctx.fillText('Card near the carrier', a.X(iso.CARRIER) + 12, a.Y(-27));
+    ctx.restore();
     p.say(flicker ? 'With the flicker, the card’s answer sits 847.5 kHz either side of the phone’s field, well clear of its noise.'
       : 'Without the flicker, the card’s answer sits right beside the phone’s huge field, inside the noise around it.');
   });
