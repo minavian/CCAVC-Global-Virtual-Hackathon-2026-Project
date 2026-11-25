@@ -531,10 +531,18 @@ function intro(experience) {
   function setLab(next, fromControl) {
     // What the chart shows now, before anything changes: it glides from there to the new curve.
     const shownBefore = plotNow();
-    const before = lab.set.reader, tagBefore = lab.set.tag;
+    const before = lab.set.reader, tagBefore = lab.set.tag, cloneBefore = lab.set.clone;
     lab.set = clampSetting({ ...lab.set, ...next });
     if (lab.set.reader !== before || lab.set.tag !== tagBefore || !labUi.presets.childElementCount) paintReader();
     lab.m = measureLab(lab.set);
+    // A conversation under way follows what happens to it. With the reader off there is no field
+    // to carry it; a chip that falls asleep loses everything it was doing (woken again, it starts
+    // from nothing and waits for a new question); another reader or another card was never part
+    // of it. Any of these ends it at once, and the readout says why (the setting's own sentence).
+    // A chip that wakes during a question it slept through still does not answer it: it never
+    // heard the start.
+    if (lab.talk && (!lab.m.on || (lab.talk.answers && !lab.m.awake) || lab.set.reader !== before
+      || lab.set.tag !== tagBefore || lab.set.clone !== cloneBefore)) endTalk();
     // (Only within one chart: the x of its points stay put.)
     lab.morph = shownBefore && shownBefore.chart === lab.chart ? { ...shownBefore, start: performance.now() } : null;
     lab.points = curve(lab.set, lab.chart);
@@ -864,9 +872,17 @@ function intro(experience) {
     // With reduced motion the clock stands still: the outcome shows, still, for a while.
     if (reduce.matches) {
       const asked = lab.talk;
-      setTimeout(() => { if (lab.talk === asked) { lab.talk = null; labUi.ask.disabled = labUi.prove.disabled = false; invalidate(); } }, 5000);
+      setTimeout(() => { if (lab.talk === asked) { endTalk(); invalidate(); } }, 5000);
     }
     invalidate();
+  }
+
+  // The lab's conversation is over (or cut short): Ask and Prove it can be pressed again, if the
+  // reader is on.
+  function endTalk() {
+    lab.talk = null;
+    labUi.ask.disabled = labUi.prove.disabled = !lab.m?.on;
+    return null;
   }
 
   // The lab's conversation now (cinema.js `message`), or null once it is over.
@@ -876,26 +892,25 @@ function intro(experience) {
     const e = clock - t.start;
     if (t.proof) {
       // The proof: the challenge, then (only from an awake chip) the code.
-      const over = () => { lab.talk = null; labUi.ask.disabled = labUi.prove.disabled = false; return null; };
       if (reduce.matches) return t.answers ? message('response', 99) : message('challenge', 99);
       if (!t.answers || e < t.after) {
-        if (!t.answers && e > proofSeconds('challenge') + 4) return over();
+        if (!t.answers && e > proofSeconds('challenge') + 4) return endTalk();
         return message('challenge', e);
       }
       const said = message('response', e - t.after);
-      if (said.landed >= 1 && e - t.after > proofSeconds('response') + 3.5) return over();
+      if (said.landed >= 1 && e - t.after > proofSeconds('response') + 3.5) return endTalk();
       return said;
     }
     if (reduce.matches) return t.answers ? message('answer', 99) : message('ask', 99);
     if (!t.answers || e < ANSWER_AFTER) {
       const said = message('ask', e);
       // No answer comes: the readout says so for a few seconds, then it is over.
-      if (!t.answers && e > TALK.ask.length / SAMPLES_PER_BIT * .15 + 4) { lab.talk = null; labUi.ask.disabled = labUi.prove.disabled = false; return null; }
+      if (!t.answers && e > TALK.ask.length / SAMPLES_PER_BIT * .15 + 4) return endTalk();
       return said;
     }
     const said = message('answer', e - ANSWER_AFTER);
     // Held 3.5 s after the answer is in, so "Verified" and the check mark can be read.
-    if (said.landed >= 1 && e - ANSWER_AFTER > TALK.answer.length / SAMPLES_PER_BIT * .15 + 3.5) { lab.talk = null; labUi.ask.disabled = labUi.prove.disabled = false; return null; }
+    if (said.landed >= 1 && e - ANSWER_AFTER > TALK.answer.length / SAMPLES_PER_BIT * .15 + 3.5) return endTalk();
     return said;
   }
 
@@ -930,6 +945,12 @@ function intro(experience) {
       let text = plan.text, detail = plan.detail;
       if (plan.talk === 'ask' && talk) { text = plan.asking; detail = plan.askingDetail; }
       else if (plan.talk === 'answer' && msg && !msg.started) { text = plan.waiting; detail = plan.waitingDetail; }
+      // No answer to a question asked of a sleeping chip: still asleep, it has no power; woken since
+      // (brought closer), it missed the start of the question, and a chip only answers one it heard
+      // whole.
+      const unanswered = () => (lab.m.awake
+        ? { text: 'No answer. It woke too late.', detail: 'It missed the start of the question. Ask again.' }
+        : { text: 'No answer. The chip has no power.', detail: 'It needs about 2 volts to wake.' });
       if (plan.lab) {
         // The lab says what the setting does, or how the conversation is going.
         ({ text, detail } = labStatus(lab.set, lab.m));
@@ -937,7 +958,7 @@ function intro(experience) {
           const t = lab.talk, e = t.still ? 99 : clock - t.start, noun = READERS[lab.set.reader].noun;
           const landed = b.message?.dir < 0 && b.message.landed >= 1;
           if (e < proofSeconds('challenge')) { text = `The ${noun} asks: prove you’re real.`; detail = 'It sends a random number, new every time.'; }
-          else if (!t.answers) { text = 'No answer. The chip has no power.'; detail = 'It needs about 2 volts to wake.'; }
+          else if (!t.answers) ({ text, detail } = unanswered());
           else if (e < t.after) { text = 'The chip works out a code.'; detail = 'From the number and its secret key.'; }
           else if (!landed) { text = 'The card answers with its code.'; detail = 'Only the right key gives the right code.'; }
           else if (t.genuine) { text = 'Genuine. The code matches.'; detail = 'The bank checks it with its copy of the key.'; }
@@ -946,7 +967,7 @@ function intro(experience) {
           const e = lab.talk.still ? 99 : clock - lab.talk.start, asked = TALK.ask.length / SAMPLES_PER_BIT * .15;
           const noun = READERS[lab.set.reader].noun;
           if (e < asked) { text = `The ${noun} asks: who are you?`; detail = 'It flicks its field off and on.'; }
-          else if (!lab.talk.answers) { text = 'No answer. The chip has no power.'; detail = 'It needs about 2 volts to wake.'; }
+          else if (!lab.talk.answers) ({ text, detail } = unanswered());
           else if (e < ANSWER_AFTER) { text = 'The chip works out its answer.'; detail = 'In life this takes 86 millionths of a second.'; }
           else if (!(b.message?.dir < 0 && b.message.landed >= 1)) { text = 'The card answers: ' + TALK.answer.words + '.'; detail = `The ${noun} feels a ${(lab.m.dip * 100).toFixed(1)}% change.`; }
           // The whole answer is in: the reader has checked it.
@@ -1337,7 +1358,7 @@ function intro(experience) {
     step = clamp(index, 0, LAST);
     auto.held = auto.after = 0;
     // A conversation started in the lab ends when it is left.
-    if (lab.talk) { lab.talk = null; labUi.ask.disabled = labUi.prove.disabled = false; }
+    if (lab.talk) endTalk();
     // Reaching the lab, the phone (its second reader) loads in the background.
     if (step === LAB && available) scene.usePhone();
     // The card answers by itself, a moment after the step starts; the question waits for Ask.
