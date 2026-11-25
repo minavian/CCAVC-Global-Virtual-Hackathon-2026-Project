@@ -949,7 +949,6 @@ html[data-intro] .stage-light { opacity: 0; }
   gap: .7rem;
   padding: .95rem 1rem 1rem;
   overflow-y: auto;
-  overscroll-behavior: contain;
   color: #f4f1ea;
   background: rgba(22, 20, 17, .74);
   border: 1px solid rgba(255, 255, 255, .1);

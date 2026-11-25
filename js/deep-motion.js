@@ -216,9 +216,10 @@ function sanitizeChapter() {
   }
 }
 
-function runReverseCanvasMorph(fromEl, toEl, { mode = 'default', cut = 430, arrivalEnd = 1040, readHold = 360, onDone } = {}) {
+function runReverseCanvasMorph(fromEl, toEl, { mode = 'default', cut = 430, arrivalEnd = 1040, readHold = 360, onDone, arrivalCopy } = {}) {
   const root = document.documentElement, chapter = fromEl.closest('.deep');
-  const fromWords = fromEl.querySelector('.plate-words'), toWords = toEl.querySelector('.plate-words');
+  const fromWords = fromEl.querySelector('.plate-words')?.children;
+  const toWords = arrivalCopy ?? toEl.querySelector('.plate-words')?.children;
   const fromCanvas = fromEl.querySelector('canvas'), toCanvas = toEl.querySelector('canvas');
   if (!chapter || !fromWords || !toWords) {
     toEl.scrollIntoView({ block: 'start', behavior: 'instant' });
@@ -292,7 +293,7 @@ function runReverseCanvasMorph(fromEl, toEl, { mode = 'default', cut = 430, arri
   chapter.append(copy);
 
   const textBlur = 'blur(3px)';
-  for (const [i, node] of Array.from(fromWords.children).entries()) {
+  for (const [i, node] of Array.from(fromWords).entries()) {
     animations.push(node.animate([
       { opacity: 1, transform: 'none', filter: 'blur(0px)' },
       { opacity: 0, transform: 'translateY(11px)', filter: textBlur },
@@ -320,7 +321,7 @@ function runReverseCanvasMorph(fromEl, toEl, { mode = 'default', cut = 430, arri
     scrollTo({ top: destination, behavior: 'instant' });
     topPin = scrollY;
     toEl.classList.remove('deep-rev-staged');
-    for (const [i, node] of Array.from(toWords.children).entries()) {
+    for (const [i, node] of Array.from(toWords).entries()) {
       if (mode === 'whispering' && i === 1) continue;
       animations.push(node.animate([
         { opacity: 0, transform: 'translateY(-10px)', filter: textBlur },
@@ -684,7 +685,11 @@ function watchFlipping(previous, plate) {
   });
 
   for (const scene of [previous, plate]) {
-    for (const event of ['pointerdown', 'focusin', 'input']) scene.addEventListener(event, cancel);
+    scene.addEventListener('focusin', cancel);
+    scene.addEventListener('input', cancel);
+    scene.addEventListener('pointerdown', event => {
+      if (event.target.closest('.plate-controls, .s6-distance-demo')) cancel();
+    });
   }
   for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, cancel);
   document.addEventListener('visibilitychange', () => { if (document.hidden) cancel(); });
@@ -932,7 +937,8 @@ function watchTuning(previous, plate) {
     },
     reverse() {
       if (!canPlay() || active()) return;
-      revCtrl = runReverseCanvasMorph(plate, previous, { mode: 'tuning' });
+      const arrivalCopy = previous.querySelectorAll('.s7-heading, .s7-scope figcaption, .s7-console, .s7-formula');
+      revCtrl = runReverseCanvasMorph(plate, previous, { mode: 'tuning', arrivalCopy });
     },
     cancel: skip,
     active,
@@ -3756,7 +3762,7 @@ function watchFinale(previous, end) {
 function createChapterDeck(stops, transitions) {
   if (stops.length < 2 || stops.some(stop => !stop)) return;
   const WHEEL_THRESHOLD = 75, TOUCH_THRESHOLD = 48;
-  let accum = 0, accumDir = 0, accumTimer = 0;
+  let accum = 0, accumDir = 0, accumStop = -1;
   let active, cooldownUntil = 0, touchStart;
 
   const canPage = () => !reducedMotion.matches && !document.hidden;
@@ -3775,8 +3781,8 @@ function createChapterDeck(stops, transitions) {
     return false;
   }
 
-  function isInteractiveTarget(target) {
-    return !!target?.closest?.('.s6-card, .s9-metal, .s13-drift-track, .s16-pad-card, .s16-wallet, input[type="range"], [role="slider"]');
+  function ownsVerticalTouch(target) {
+    return !!target?.closest?.('.s9-metal, .s16-pad-card, .s16-wallet, input[type="range"][aria-orientation="vertical"]');
   }
 
   function currentStopIndex() {
@@ -3799,23 +3805,32 @@ function createChapterDeck(stops, transitions) {
     }
     // The Part Two link can start its own handoff.
     if (active) return active;
-    const transition = transitions.find(candidate => candidate?.active());
-    return transition && { transition, dir: 1 };
+    const index = transitions.findIndex(candidate => candidate?.active());
+    if (index >= 0) active = { transition: transitions[index], index, dir: 1, reversal: 0 };
+    return active;
   }
 
   function cancelActive() {
+    accum = 0;
+    accumDir = 0;
     const current = running();
     if (!current) return;
     current.transition.cancel();
     active = undefined;
-    accum = 0;
-    accumDir = 0;
     cooldownUntil = performance.now() + 180;
   }
 
   function changeDirection(current, dir) {
-    if (current.transition.turn?.(dir)) current.dir = dir;
-    else cancelActive();
+    current.reversal = 0;
+    if (current.transition.turn?.(dir)) {
+      current.dir = dir;
+      return;
+    }
+    cancelActive();
+    // If the scene already landed, replay its handoff in the new direction.
+    queueMicrotask(() => {
+      if (currentStopIndex() === current.index + (dir < 0 ? 1 : 0)) trigger(dir, true);
+    });
   }
 
   function trigger(dir, deliberate = false) {
@@ -3824,20 +3839,22 @@ function createChapterDeck(stops, transitions) {
     if (!deliberate && now < cooldownUntil) return true;
     const idx = currentStopIndex();
     if (idx < 0) return false;
-    const transition = transitions[dir > 0 ? idx : idx - 1];
+    const index = dir > 0 ? idx : idx - 1;
+    const transition = transitions[index];
     if (!transition) return false;
+    const top = scrollY;
     if (dir > 0) transition.forward();
     else transition.reverse();
     if (transition.active()) {
-      active = { transition, dir };
+      active = { transition, index, dir, reversal: 0 };
     } else {
+      if (scrollY === top) stops[idx + dir].scrollIntoView({ block: 'start', behavior: 'instant' });
       cooldownUntil = now + 180;
     }
     return true;
   }
 
-  function distanceToEdge(dir) {
-    const idx = currentStopIndex();
+  function distanceToEdge(dir, idx = currentStopIndex()) {
     if (idx < 0) return Infinity;
     if (!transitions[dir > 0 ? idx : idx - 1]) return Infinity;
     const { top, bottom } = stops[idx].getBoundingClientRect();
@@ -3846,7 +3863,7 @@ function createChapterDeck(stops, transitions) {
 
   function enterChapter(dir, distance) {
     const top = stops[0].getBoundingClientRect().top;
-    if (dir < 0 || top <= 1 || top > innerHeight || distance < top) return false;
+    if (dir < 0 || top <= 1 || distance < top) return false;
     stops[0].scrollIntoView({ block: 'start', behavior: 'instant' });
     cooldownUntil = performance.now() + 300;
     return true;
@@ -3862,24 +3879,28 @@ function createChapterDeck(stops, transitions) {
     const current = running();
     if (current) {
       if (event.cancelable) event.preventDefault();
-      if (dir !== current.dir && Math.abs(dy) >= 24) changeDirection(current, dir);
+      current.reversal = dir === current.dir ? 0 : current.reversal + Math.abs(dy);
+      if (current.reversal >= 24) changeDirection(current, dir);
       return;
     }
-    if (canChildScroll(event.target, dir) || isInteractiveTarget(event.target)) return;
+    if (canChildScroll(event.target, dir)) return;
     if (event.cancelable && enterChapter(dir, Math.abs(dy))) {
       event.preventDefault();
       return;
     }
-    const distance = distanceToEdge(dir);
+    const stop = currentStopIndex();
+    const distance = distanceToEdge(dir, stop);
     if (!event.cancelable || Math.abs(dy) <= distance) return;
     event.preventDefault();
     if (distance) scrollTo({ top: scrollY + dir * Math.ceil(distance), behavior: 'instant' });
 
-    if (event.timeStamp < cooldownUntil) return;
-    if (dir !== accumDir) { accum = 0; accumDir = dir; }
+    if (performance.now() < cooldownUntil) return;
+    if (dir !== accumDir || stop !== accumStop) {
+      accum = 0;
+      accumDir = dir;
+      accumStop = stop;
+    }
     accum += dy - dir * distance;
-    clearTimeout(accumTimer);
-    accumTimer = setTimeout(() => { accum = 0; accumDir = 0; }, 180);
     if (Math.abs(accum) >= WHEEL_THRESHOLD) {
       accum = 0;
       accumDir = 0;
@@ -3891,11 +3912,12 @@ function createChapterDeck(stops, transitions) {
     if (!canPage() || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
     const { key } = event;
     if (['Home', 'End', 'Escape'].includes(key)) { cancelActive(); return; }
-    const pagesFromMistakes = ['PageUp', 'PageDown'].includes(key) && event.target.closest?.('#s14');
-    if (!pagesFromMistakes && event.target.closest?.('a, button, input, textarea, select, [role="slider"], [contenteditable]')) return;
+    const pagingKey = key === 'PageUp' || key === 'PageDown';
+    if (event.target.closest?.('input, textarea, select, [role="slider"], [contenteditable]')) return;
+    if (!pagingKey && event.target.closest?.('a, button')) return;
     const dir = (['ArrowUp', 'PageUp'].includes(key) || (key === ' ' && event.shiftKey)) ? -1
       : ['ArrowDown', 'PageDown', ' '].includes(key) ? 1 : 0;
-    if (!dir) return;
+    if (!dir || canChildScroll(event.target, dir)) return;
     const current = running();
     if (current) {
       event.preventDefault();
@@ -3917,26 +3939,28 @@ function createChapterDeck(stops, transitions) {
 
   addEventListener('touchstart', ({ touches, target }) => {
     const finger = touches[0];
-    touchStart = touches.length === 1 && !isInteractiveTarget(target) ? { y: finger.clientY, x: finger.clientX, target } : null;
+    touchStart = touches.length === 1 && !ownsVerticalTouch(target) ? { y: finger.clientY, x: finger.clientX, target } : null;
   }, { passive: true });
+
+  for (const event of ['touchend', 'touchcancel']) addEventListener(event, () => { touchStart = null; }, { passive: true });
 
   addEventListener('touchmove', event => {
     if (event.defaultPrevented || !touchStart || event.touches.length !== 1 || !canPage()) return;
-    if (touchStart.landed) {
-      if (event.cancelable) event.preventDefault();
-      return;
-    }
     const { clientX: x, clientY: y } = event.touches[0];
     const delta = touchStart.y - y;
     if (Math.abs(delta) <= Math.abs(x - touchStart.x)) return;
     const dir = Math.sign(delta);
+    touchStart.x = x;
+    touchStart.y = y;
     const current = running();
     if (current) {
       if (event.cancelable) event.preventDefault();
-      if (dir !== current.dir && Math.abs(delta) >= 24) {
-        touchStart = null;
-        changeDirection(current, dir);
-      }
+      current.reversal = dir === current.dir ? 0 : current.reversal + Math.abs(delta);
+      if (current.reversal >= 24) changeDirection(current, dir);
+      return;
+    }
+    if (touchStart.landed) {
+      if (event.cancelable) event.preventDefault();
       return;
     }
     if (canChildScroll(touchStart.target, dir) || !event.cancelable) return;
@@ -3945,11 +3969,18 @@ function createChapterDeck(stops, transitions) {
       touchStart.landed = true;
       return;
     }
-    if (distanceToEdge(dir) !== 0) return;
-    if (event.cancelable) event.preventDefault();
-    if (Math.abs(delta) >= TOUCH_THRESHOLD) {
-      touchStart = { x, y, target: touchStart.target };
-      trigger(dir);
+    const distance = distanceToEdge(dir);
+    if (!Number.isFinite(distance)) return;
+    event.preventDefault();
+    // Keep the first vertical move cancellable so a tall scene cannot fling past its handoff.
+    const advance = Math.min(Math.abs(delta), distance);
+    if (advance) scrollTo({ top: scrollY + dir * Math.ceil(advance), behavior: 'instant' });
+    if (touchStart.dir !== dir) touchStart.travel = 0;
+    touchStart.dir = dir;
+    touchStart.travel += Math.abs(delta) - advance;
+    if (touchStart.travel >= TOUCH_THRESHOLD) {
+      touchStart.travel = 0;
+      touchStart.landed = trigger(dir);
     }
   }, { passive: false });
 

@@ -57,7 +57,10 @@
 html.deep-blink-hold, html.deep-closer-hold, html.deep-flipping-hold, html.deep-tuning-hold,
 html.deep-metal-hold, html.deep-pauses-hold, html.deep-part-two-hold, html.deep-soaking-hold,
 html.deep-whispering-hold, html.deep-counting-hold, html.deep-mistakes-hold, html.deep-conversation-hold,
-html.deep-twocards-hold, html.deep-carkey-hold, html.deep-finale-hold, html.deep-reverse-hold { overflow-y: hidden; }
+html.deep-twocards-hold, html.deep-carkey-hold, html.deep-finale-hold, html.deep-reverse-hold {
+  overflow-y: hidden;
+  overflow-anchor: none;
+}
 html.deep-whispering-hold, html.deep-whispering-hold body,
 html.deep-counting-hold, html.deep-counting-hold body,
 html.deep-mistakes-hold, html.deep-mistakes-hold body,
@@ -1723,7 +1726,6 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   block-size: clamp(260px, 44vh, 360px);
   overflow-y: auto;
   overflow-x: hidden;
-  overscroll-behavior-y: contain;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
