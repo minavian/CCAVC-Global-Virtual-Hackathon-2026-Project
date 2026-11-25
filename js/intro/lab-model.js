@@ -51,10 +51,11 @@ const readerOf = s => READERS[s.reader] ? s.reader : 'pad';
 // less over the card reader (4.9, 3.7, 2.8 cm); but over the phone, whose own coil is small, the key
 // ring tag reaches a little further than the card (2.5 against 2.4 cm): coils of a size couple best.
 // `scale`: how big the close-up draws the card for it (its coil, as a share of a bank card's).
+// `name`: what the readout calls it.
 export const TAG_SIZES = {
-  card: { label: 'Card', radius: .0357, scale: 1 },
-  fob: { label: 'Key ring', radius: .015, scale: .45 },
-  sticker: { label: 'Sticker', radius: .01, scale: .32 },
+  card: { label: 'Card', name: 'A bank card', radius: .0357, scale: 1 },
+  fob: { label: 'Key ring', name: 'A key ring tag', radius: .015, scale: .45 },
+  sticker: { label: 'Sticker', name: 'A sticker', radius: .01, scale: .32 },
 };
 const tagOf = s => TAG_SIZES[s.tag] ? s.tag : 'card';
 // Where a setting starts for a reader: everything normal, the card at that reader's normal tap.
@@ -310,6 +311,15 @@ export function status(s, m) {
     if (s.metal > 0) return { text: 'Awake, but metal soaks up the field.', detail: reach };
     if (s.drive < 70) return { text: 'Awake, on a weak field.', detail: reach };
     if (Math.abs(s.tune - 13.56) > 3) return { text: 'Awake, though its tuning is off.', detail: reach };
+    // A smaller tag (a key ring tag, a sticker) is named, with how far it reaches against a bank
+    // card's, everything else the same: less over the card reader, a key ring tag a little more
+    // over the phone. Without this the readout often stayed the same when the tag changed (close
+    // to the phone the chip's limiter holds 3.3 V whatever the coil), so the switch seemed dead.
+    if (tagOf(s) !== 'card' && !s.clone) {
+      const card = reachOf({ ...s, tag: 'card' });
+      return { text: `${TAG_SIZES[tagOf(s)].name}: smaller coil, still awake.`,
+        detail: `Up to ${m.reach.toFixed(1)} cm. A bank card: ${card.toFixed(1)} cm.` };
+    }
     // More field than the standard lets a reader make (7.5 A/m): a reader turned up, or a phone
     // right at its camera island. The chip copes, but only because its limiter burns the extra.
     if (m.field > m.H_MAX) return { text: 'Awake, in too strong a field.', detail: `Over the standard’s ${m.H_MAX} A/m. Its limiter burns the extra.` };

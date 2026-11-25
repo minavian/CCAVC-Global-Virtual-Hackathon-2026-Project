@@ -77,7 +77,7 @@ function intro(experience) {
   // The lab (cinema.js `lab` step, lab-model.js): its panel, readings, chart and controls.
   const labUi = {
     panel: $('.try'), plot: $('.try-plot'), tabs: [...experience.querySelectorAll('.try-tabs button')],
-    readings: Object.fromEntries([...experience.querySelectorAll('.try-reading')].map(node => [node.dataset.reading, node])),
+    readings: Object.fromEntries([...experience.querySelectorAll('.try-reading')].map(node => [node.dataset.reading, node])), readingsBox: $('.try-readings'),
     inputs: Object.fromEntries([...experience.querySelectorAll('.try-controls input')].map(input => [input.name, input])),
     outputs: Object.fromEntries([...experience.querySelectorAll('.try-controls output')].map(output => [output.dataset.for, output])),
     id: $('.try-id input'), idNote: $('.try-id-note'), behind: $('.try-behind'), check: $('.try-check b'), ask: $('.try-ask'), prove: $('.try-prove'), reset: $('.try-reset'), presets: $('.try-presets'),
@@ -556,7 +556,10 @@ function intro(experience) {
     const shownBefore = plotNow();
     const before = lab.set.reader, tagBefore = lab.set.tag, cloneBefore = lab.set.clone;
     lab.set = clampSetting({ ...lab.set, ...next });
-    if (lab.set.reader !== before || lab.set.tag !== tagBefore || !labUi.presets.childElementCount) paintReader();
+    const switched = lab.set.reader !== before || lab.set.tag !== tagBefore;
+    if (switched || !labUi.presets.childElementCount) paintReader();
+    // Another reader or another tag: the readings blink once as they change, so it shows.
+    if (switched) pulse(labUi.readingsBox);
     lab.m = measureLab(lab.set);
     // A conversation under way follows what happens to it. With the reader off there is no field
     // to carry it; a chip that falls asleep loses everything it was doing (woken again, it starts
@@ -597,6 +600,14 @@ function intro(experience) {
     paintLabOutputs();
     paintLabPanel();
     invalidate();
+  }
+
+  // Plays a node's one-off animation again from its start (styles.css `.is-pulsed`).
+  function pulse(node) {
+    if (!node || reduce.matches) return;
+    node.classList.remove('is-pulsed');
+    void node.offsetWidth;
+    node.classList.add('is-pulsed');
   }
 
   // Where along each slider the chip would wake, everything else as set: about 250 solves of

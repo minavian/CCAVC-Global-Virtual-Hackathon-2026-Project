@@ -91,6 +91,13 @@ export function labCases(assert, L) {
       assert.ok(reach('phone', 'fob') > reach('phone', 'card'));
       const sticker = L.clampSetting({ ...L.startFor('pad'), tag: 'sticker' });
       assert.match(L.status(sticker, L.measure(sticker)).text, /small a coil/);
+      // Awake, a smaller tag is named, with its reach against a bank card's, so the switch always
+      // shows (on the phone the chip's limiter holds 3.3 V whatever the coil).
+      for (const reader of ['pad', 'phone']) {
+        const fob = L.clampSetting({ ...L.startFor(reader), tag: 'fob' }), st = L.status(fob, L.measure(fob));
+        assert.match(st.text, /^A key ring tag/, `${reader}: "${st.text}"`);
+        assert.ok(st.detail.includes(`A bank card: ${reach(reader, 'card').toFixed(1)} cm`), st.detail);
+      }
     }],
 
     ['turned up, the power it would take to wake the card', () => {
