@@ -49,6 +49,9 @@ export function buildPhone() {
   function load() {
     ready ??= new GLTFLoader().loadAsync(URL_.href).then(gltf => {
       model = gltf.scene;
+      // The same back as on the landing (js/models.js `refinePhone`): its H redrawn from a photo
+      // of the real phone, its back and flash refined. (Loaded by then: models.js comes first.)
+      window.RFIDModels?.refinePhone?.(THREE, model);
       // The NFC chip, so the close-up can point at a real part.
       const chip = new THREE.Mesh(new THREE.BoxGeometry(.004, .004, .0009),
         new THREE.MeshStandardMaterial({ color: 0x1c1d20, roughness: .45, metalness: .2, emissive: 0x3f8cff, emissiveIntensity: 0 }));

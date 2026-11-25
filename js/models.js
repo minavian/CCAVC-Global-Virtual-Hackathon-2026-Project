@@ -518,5 +518,14 @@
     };
   }
 
-  window.RFIDModels = { load, readerPad, metalPlate, RFID_PARTS };
+  // The phone's back as the landing shows it, for the close-up's phone too (js/intro/phone-reader.js):
+  // its decals lifted off the surface under them, its back and flash refined, and the H on its
+  // camera island redrawn from the photo. Without it the close-up showed the model's own H.
+  function refinePhone(T, shell) {
+    liftDecals(T, shell);
+    refineBack(T, shell);
+    redrawH(T, shell);
+  }
+
+  window.RFIDModels = { load, readerPad, metalPlate, RFID_PARTS, refinePhone };
 })();
