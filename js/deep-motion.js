@@ -172,12 +172,12 @@ const ALL_HOLD_CLASSES = [
   'deep-twocards-hold', 'deep-carkey-hold', 'deep-finale-hold', 'deep-reverse-hold',
 ];
 const ALL_STAGED_CLASSES = [
-  's8-awaiting', 's9-awaiting', 's9-entering',
+  's8-awaiting', 's9-entering',
   's10-awaiting', 's10-entering', 's12-staged', 's12-title-in-flight', 's13-staged',
   's15-staged', 's16-staged', 's17-staged', 'deep-end-staged', 'deep-rev-staged',
 ];
 const STRAY_OVERLAY_SELECTOR = [
-  '.deep-rev-copy', '.deep-blink-cover', '.s7-trace-handoff', '.part-two-reveal', '.part-two-reverse-cover',
+  '.deep-rev-copy', '.deep-blink-cover', '.s7-trace-handoff', '.s9-plot-copy', '.part-two-reveal', '.part-two-reverse-cover',
   '.s12-vortex', '.s13-spectrum-copy', '.s14-timing-copy',
   '.s15-handoff-copy', '.s16-handoff-copy', '.s16-title-morph', '.s17-handoff-copy', '.s17-portal-wallet',
 ].join(', ');
@@ -291,7 +291,7 @@ function runReverseCanvasMorph(fromEl, toEl, { mode = 'default', cut = 430, arri
   if (toCanvas) toCanvas.style.opacity = '0';
   chapter.append(copy);
 
-  const textBlur = mode === 'metal' ? 'none' : 'blur(3px)';
+  const textBlur = 'blur(3px)';
   for (const [i, node] of Array.from(fromWords.children).entries()) {
     animations.push(node.animate([
       { opacity: 1, transform: 'none', filter: 'blur(0px)' },
@@ -364,7 +364,7 @@ function runReverseCanvasMorph(fromEl, toEl, { mode = 'default', cut = 430, arri
         ctx.stroke();
         ctx.restore();
       }
-    } else if (mode === 'tuning' || mode === 'metal' || mode === 'pauses') {
+    } else if (mode === 'tuning' || mode === 'pauses') {
       const waveFade = ease(120, 360, elapsed) * (1 - ease(cut + 180, arrivalEnd, elapsed));
       if (waveFade > 0) {
         ctx.save();
@@ -964,213 +964,181 @@ function watchMetal(previous, plate) {
   plot.className = 's9-plot-copy';
   plot.setAttribute('aria-hidden', 'true');
   const ctx = plot.getContext('2d');
-  const end = 2560, readHold = 1000;
-  let layout, frame, previousTop, targetTop, approach, lockedAt, revCtrl;
+  const end = 1580, readHold = 1000;
+  let layout, frame, lockedAt, elapsed, lastFrame, direction, holdUntil;
   const canPlay = () => !reducedMotion.matches && !document.hidden;
-  const active = () => lockedAt !== undefined || !!revCtrl?.active();
+  const active = () => lockedAt !== undefined;
 
-  function settle() {
-    revCtrl?.cancel();
-    plate.classList.remove('s9-awaiting', 's9-entering');
-    if (lockedAt === undefined) return;
+  function settle(land = true) {
+    if (!active()) return;
     cancelAnimationFrame(frame);
     plot.remove();
-    for (const node of [source, outgoing]) node.style.removeProperty('transform');
-    incoming.style.removeProperty('transform');
-    for (const node of [outgoing, incoming]) node.style.removeProperty('clip-path');
-    source.style.removeProperty('--s9-source-opacity');
-    figure.style.removeProperty('opacity');
+    for (const node of [source, figure, outgoing, incoming]) {
+      node.style.removeProperty('transform');
+      node.style.removeProperty('opacity');
+    }
+    plate.classList.remove('s9-entering');
+    if (land) scrollTo({ top: direction > 0 ? layout.metalTop : layout.tuningTop, behavior: 'instant' });
     lockedAt = undefined;
     root.classList.remove('deep-metal-hold');
     scheduleMotion();
   }
 
-  function skip() {
-    settle();
-  }
-
-  function sample(points, index) {
+  function point(points, index) {
     const i = Math.floor(index), [x, y] = points[i], next = points[i + 1];
     return next ? [mix(x, next[0], index - i), mix(y, next[1], index - i)] : [x, y];
   }
 
-  function stroke(pointAt, color, alpha, width) {
-    if (alpha <= 0) return;
+  function stroke(pointAt, color, opacity, width) {
+    if (opacity <= 0) return;
     ctx.strokeStyle = color;
     ctx.lineWidth = width;
-    ctx.globalAlpha = alpha;
+    ctx.globalAlpha = opacity;
     ctx.beginPath();
-    for (let i = 0; i <= 64; i++) {
-      const [x, y] = pointAt(i / 64);
+    for (let i = 0; i <= 96; i++) {
+      const [x, y] = pointAt(i / 96);
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
     ctx.stroke();
   }
 
-  function swapCopy(progress) {
-    if (progress === 0 || progress === 1) {
-      outgoing.style.clipPath = progress === 1 ? 'inset(0 0 0 100%)' : 'none';
-      incoming.style.clipPath = progress === 0 ? 'inset(0 100% 0 0)' : 'none';
-      return;
-    }
-    const edge = mix(-.05, 1.05, progress);
-    const amplitude = .045 * Math.sin(Math.PI * progress);
-    const old = outgoing.getBoundingClientRect(), next = incoming.getBoundingClientRect();
-    const top = Math.min(old.top, next.top), height = Math.max(old.bottom, next.bottom) - top;
-    const sampleFront = (areaTop, areaHeight) => Array.from({ length: 9 }, (_, i) => {
-      const y = areaHeight * i / 8;
-      const phase = (areaTop + y - top) / height * 2 * Math.PI - progress * Math.PI;
-      return [old.left + old.width * (edge + amplitude * Math.sin(phase)), y];
-    });
-    const clip = (area, side) => {
-      const front = sampleFront(area.top, area.height).map(([x, y]) => `${clamp((x - area.left) / area.width) * 100}% ${y}px`);
-      return `polygon(${side}% 0, ${front.join(', ')}, ${side}% 100%)`;
-    };
-    outgoing.style.clipPath = clip(old, 100);
-    incoming.style.clipPath = clip(next, 0);
-  }
-
-  function paint(elapsed) {
-    const { from, to, width, height, curve: { box, points, X, Y, color } } = layout;
-    const cut = (points.length - 1) / 2;
-    const split = ease(110, 440, elapsed);
-    const curl = ease(400, 1110, elapsed);
-    const bloom = stage(1270, 2320, elapsed);
-    const leave = ease(0, 170, elapsed), arrive = ease(2180, end, elapsed);
-    const top = scrollY;
-    source.style.setProperty('--s9-source-opacity', 1 - leave);
+  function paint() {
+    const { from, to, width, height, tuningTop, metalTop } = layout;
+    const curve = source.resonanceCurve, field = target.metalField;
+    const morph = curve && field;
+    const away = ease(0, morph ? 170 : 740, elapsed);
+    const arrive = ease(morph ? 1320 : 630, end, elapsed);
+    source.style.opacity = 1 - away;
     figure.style.opacity = arrive;
-    plot.style.opacity = leave * (1 - arrive);
-    incoming.style.transform = `translateY(${layout.headingShift * (1 - ease(1050, 1600, elapsed))}px)`;
-    swapCopy(ease(325, 1240, elapsed));
+    outgoing.style.opacity = 1 - ease(100, 600, elapsed);
+    incoming.style.opacity = ease(470, 1080, elapsed);
+    outgoing.style.transform = `translate(${-14 * ease(100, 600, elapsed)}px, ${lockedAt - tuningTop}px)`;
+    incoming.style.transform = `translate(${14 * (1 - ease(470, 1080, elapsed))}px, ${lockedAt - metalTop}px)`;
+    plot.style.opacity = away * (1 - arrive);
     ctx.clearRect(0, 0, width, height);
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    if (!morph || !away || arrive === 1) return;
 
-    const peak = points[Math.floor(cut)];
-    const centerX = mix(from.x + X(peak[0]), to.x + to.w / 2, curl);
-    const centerY = mix(from.y + Y(peak[1]) + 34, to.y + to.h * .62 - top, curl);
-    const radius = Math.min(21, to.w * .054);
-    const loop = (side, u) => {
-      const angle = -Math.PI / 2 + side * Math.PI * u;
-      return [centerX + radius * Math.cos(angle), centerY + radius * Math.sin(angle)];
-    };
-
-    const field = target.metalField;
-    if (!bloom || !field) {
-      const gap = 26 * split * (1 - curl);
-      for (const side of [-1, 1]) {
-        stroke(u => {
-          const [frequency, volts] = sample(points, cut + side * cut * u);
-          const [lx, ly] = loop(side, u);
-          const x = from.x + X(frequency) + side * gap * (1 - u * .6);
-          return [mix(x, lx, curl), mix(from.y + Y(volts), ly, curl)];
-        }, color, 1, mix(2.2, 1.8, curl));
-      }
-      return;
-    }
-
+    const { points, X, Y, color } = curve;
+    const middle = (points.length - 1) / 2;
+    const curl = ease(100, 675, elapsed);
+    const open = ease(585, 1410, elapsed);
+    const gap = 12 * ease(60, 330, elapsed) * (1 - curl);
+    const fieldTop = to.y + field.edge;
     const last = field.lines.length - 1;
-    for (let i = last; i >= 0; i--) {
-      const line = field.lines[i];
-      const delay = (last - i) * .12;
-      const growth = ease(delay, .98, bloom);
-      const visibility = i === last ? 1 : ease(delay, delay + .19, bloom);
-      if (!visibility) continue;
-      for (const side of [-1, 1]) {
-        const pointAt = u => {
-          const [rho, z] = sample(line.points, (line.points.length - 1) * u);
-          const [lx, ly] = loop(side, u);
-          return [mix(lx, to.x + field.X(side * rho), growth), mix(ly, to.y + field.Y(z) - top, growth)];
-        };
-        const copper = i === last ? 1 - ease(.15, .75, growth) : 0;
-        stroke(pointAt, color, copper, mix(1.8, 1.4, growth));
-        stroke(pointAt, line.color, visibility * (1 - copper), 1.4);
+    for (const side of [-1, 1]) {
+      const inner = field.lines[last];
+      const [rho, z] = inner.points[0];
+      const center = to.x + field.X(side * rho);
+      const baseline = to.y + field.Y(z);
+      const radius = Math.min(14, to.w * .033);
+      const core = u => {
+        const [frequency, volts] = point(points, middle + side * middle * u);
+        const angle = side * u * Math.PI * 2;
+        const cx = mix(from.x + X(frequency) + side * gap, center + radius * Math.sin(angle), curl);
+        const cy = mix(from.y + Y(volts), baseline - radius + radius * Math.cos(angle), curl);
+        const [r, h] = point(inner.points, (inner.points.length - 1) * u);
+        return [mix(cx, to.x + field.X(side * r), open), mix(cy, to.y + field.Y(h), open)];
+      };
+      const tint = ease(1050, 1430, elapsed);
+      stroke(core, color, 1 - tint, mix(2, 1.4, open));
+      stroke(core, inner.color, tint, 1.4);
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(to.x, fieldTop, to.w, to.y + to.h - fieldTop);
+      ctx.clip();
+      for (let i = last - 1; i >= 0; i--) {
+        const { points: path, color: lineColor } = field.lines[i];
+        const start = 680 + (last - 1 - i) * 115;
+        const length = ease(start, start + 480, elapsed);
+        stroke(u => {
+          const [r, h] = point(path, (path.length - 1) * u * length);
+          return [to.x + field.X(side * r), to.y + field.Y(h)];
+        }, lineColor, ease(start, start + 160, elapsed), 1.4);
       }
+      ctx.restore();
     }
   }
 
-  function begin(event) {
-    if (!ctx || !source.resonanceCurve) {
-      plate.scrollIntoView({ block: 'start', behavior: 'instant' });
-      return;
+  function tick(now) {
+    const next = Math.max(0, Math.min(end, elapsed + (now - lastFrame) * direction));
+    lastFrame = now;
+    if (next !== elapsed) {
+      elapsed = next;
+      paint();
     }
-    event.preventDefault();
-    const origin = scrollY, height = innerHeight;
-    const from = bounds(source, origin), to = bounds(target, origin);
-    const chartOverhang = to.y + to.h + 8 - targetTop - height;
-    const extra = Math.max(0, Math.min(chartOverhang, plate.offsetHeight - height));
-    const oldHeadingTop = outgoing.querySelector('h3').getBoundingClientRect().top;
-    const newHeadingTop = bounds(incoming.querySelector('h3'), origin).y - targetTop;
-    const shift = oldHeadingTop - newHeadingTop;
-    const headingShift = oldHeadingTop >= 0 && Math.abs(shift) < 80 ? shift : 0;
-    layout = { origin, from: { ...from, y: from.y - origin }, to, width: viewportWidth(), height, headingShift, curve: source.resonanceCurve };
-    const dpr = Math.min(devicePixelRatio || 1, 2);
-    plot.width = Math.round(layout.width * dpr);
-    plot.height = Math.round(height * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    root.classList.add('deep-metal-hold');
-    plate.classList.add('s9-entering');
-    scrollTo({ top: targetTop, behavior: 'instant' });
-    lockedAt = scrollY;
-    const pin = `translateY(${lockedAt - origin}px)`;
-    outgoing.style.transform = pin;
-    source.style.transform = pin;
-    chapter.append(plot);
-    paint(0);
-    plate.classList.remove('s9-awaiting');
-
-    const started = performance.now();
-    function tick(now) {
-      const elapsed = now - started;
-      const destination = targetTop + extra * ease(960, 1270, elapsed);
-      if (Math.abs(destination - scrollY) >= .5) {
-        scrollTo({ top: destination, behavior: 'instant' });
-        lockedAt = scrollY;
-      }
-      if (elapsed < end) paint(elapsed);
-      else if (plot.isConnected) {
-        paint(end);
-        plot.remove();
-      }
-      if (elapsed >= end + readHold) return skip();
-      frame = requestAnimationFrame(tick);
+    if (elapsed === (direction > 0 ? end : 0)) {
+      holdUntil ??= now + readHold;
+      if (now >= holdUntil) return settle();
     }
     frame = requestAnimationFrame(tick);
   }
 
+  function begin(dir) {
+    if (!canPlay() || active()) return;
+    const origin = scrollY, height = innerHeight, width = viewportWidth();
+    const from = bounds(source, origin), to = bounds(target, origin);
+    const tuningStart = bounds(previous, origin).y, metalStart = bounds(plate, origin).y;
+    const chartFit = (start, scene, box) => start + Math.max(0, Math.min(box.y + box.h + 8 - start - height, scene.offsetHeight - height));
+    const tuningTop = dir > 0 ? origin : chartFit(tuningStart, previous, from);
+    const metalTop = dir < 0 ? origin : chartFit(metalStart, plate, to);
+    if (!ctx) {
+      scrollTo({ top: dir > 0 ? metalTop : tuningTop, behavior: 'instant' });
+      return;
+    }
+    layout = { from: { ...from, y: from.y - tuningTop }, to: { ...to, y: to.y - metalTop }, width, height, tuningTop, metalTop };
+    direction = dir;
+    elapsed = dir > 0 ? 0 : end;
+    holdUntil = undefined;
+
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    plot.width = Math.round(width * dpr);
+    plot.height = Math.round(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.lineCap = ctx.lineJoin = 'round';
+    root.classList.add('deep-metal-hold');
+    plate.classList.add('s9-entering');
+    scrollTo({ top: metalTop, behavior: 'instant' });
+    lockedAt = scrollY;
+    source.style.transform = `translateY(${lockedAt - tuningTop}px)`;
+    figure.style.transform = `translateY(${lockedAt - metalTop}px)`;
+    chapter.append(plot);
+    paint();
+    lastFrame = performance.now();
+    frame = requestAnimationFrame(tick);
+  }
+
   watchScrollMotion((top, height) => {
-    previousTop = bounds(previous, top).y;
-    targetTop = bounds(plate, top).y;
-    const { y, h } = bounds(source, top);
-    approach = Math.min(targetTop - 2, Math.max(previousTop, y + h + 12 - height));
-    if (!canPlay() || (lockedAt !== undefined && Math.abs(top - lockedAt) > height * .95)) skip();
-    else if (lockedAt !== undefined && Math.abs(top - lockedAt) > 1) scrollTo({ top: lockedAt, behavior: 'instant' });
+    if (!active()) return;
+    if (!canPlay() || Math.abs(top - lockedAt) > height * .95) settle(false);
+    else if (Math.abs(top - lockedAt) > 1) scrollTo({ top: lockedAt, behavior: 'instant' });
   });
 
-  for (const node of [previous.querySelector('.plate-controls'), figure]) {
-    for (const event of ['focusin', 'pointerdown', 'input']) node.addEventListener(event, skip);
+  for (const [node, dir] of [[previous.querySelector('.plate-controls'), -1], [figure, 1]]) {
+    for (const event of ['focusin', 'pointerdown', 'input']) {
+      node.addEventListener(event, () => {
+        if (!active()) return;
+        direction = dir;
+        settle();
+      });
+    }
   }
-  for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, skip);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) skip(); });
-  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) skip(); });
+  addEventListener('resize', () => settle());
+  for (const event of ['hashchange', 'pagehide']) addEventListener(event, () => settle(false));
+  document.addEventListener('visibilitychange', () => { if (document.hidden) settle(); });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) settle(); });
 
   return {
-    forward() {
-      if (!canPlay() || active()) return;
-      previousTop = bounds(previous, scrollY).y;
-      targetTop = bounds(plate, scrollY).y;
-      const { y, h } = bounds(source, scrollY);
-      approach = Math.min(targetTop - 2, Math.max(previousTop, y + h + 12 - innerHeight));
-      if (Math.abs(scrollY - approach) > 2) scrollTo({ top: approach, behavior: 'instant' });
-      begin({ preventDefault() {} });
+    forward: () => begin(1),
+    reverse: () => begin(-1),
+    turn(dir) {
+      if (!active()) return false;
+      direction = dir;
+      holdUntil = undefined;
+      return true;
     },
-    reverse() {
-      if (!canPlay() || active()) return;
-      revCtrl = runReverseCanvasMorph(plate, previous, { mode: 'metal' });
-    },
-    cancel: skip,
+    cancel: settle,
     active,
   };
 }

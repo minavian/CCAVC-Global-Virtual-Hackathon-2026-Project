@@ -507,7 +507,6 @@
         scale = (coilY - restY) / (d + park / 1000);
         nearestY = coilY - (d + .001) * scale;
         metal.style.setProperty('--s9-metal-width', `${.16 * k}px`);
-        figure.style.setProperty('--s9-stop-y', `${nearestY}px`);
         geometry = { width: p.w, height: p.h };
       }
       if (travel) {
@@ -533,7 +532,7 @@
       const metalPosition = `${edge}px`;
       if (metal.style.getPropertyValue('--s9-metal-y') !== metalPosition) metal.style.setProperty('--s9-metal-y', metalPosition);
       const X = rho => p.w / 2 + rho * k, Y = z => coilY - z * scale;
-      p.canvas.metalField = { lines: model.lines, X, Y };
+      p.canvas.metalField = { lines: model.lines, X, Y, edge };
       ctx.save();
       ctx.beginPath();
       ctx.rect(0, edge, p.w, p.h - edge);
