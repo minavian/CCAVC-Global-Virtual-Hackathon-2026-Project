@@ -3761,7 +3761,7 @@ function watchFinale(previous, end) {
 
 function createChapterDeck(stops, transitions) {
   if (stops.length < 2 || stops.some(stop => !stop)) return;
-  const WHEEL_THRESHOLD = 75, TOUCH_THRESHOLD = 48;
+  const WHEEL_THRESHOLD = 48, TOUCH_THRESHOLD = 32, KEY_EDGE_THRESHOLD = 75;
   const ENTRY_HOLD = 850, NATIVE_SCROLL_GAP = 350;
   const opener = stops[0], root = document.documentElement;
   let accum = 0, accumDir = 0, accumStop = -1;
@@ -3979,7 +3979,7 @@ function createChapterDeck(stops, transitions) {
     if (distance < step) {
       event.preventDefault();
       if (distance) scrollTo({ top: scrollY + dir * Math.ceil(distance), behavior: 'instant' });
-      if (!distance || step - distance >= WHEEL_THRESHOLD) trigger(dir, !event.repeat);
+      if (!distance || step - distance >= KEY_EDGE_THRESHOLD) trigger(dir, !event.repeat);
     }
   });
 
