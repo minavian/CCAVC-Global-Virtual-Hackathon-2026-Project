@@ -1124,6 +1124,33 @@ function intro(experience) {
         : (va + vb) / 2 >= 2 && reachable ? '#ffb52e' : 'rgba(255,181,46,.35)';
       g.beginPath(); g.moveTo(X(a), Y(va)); g.lineTo(X(b), Y(vb)); g.stroke();
     }
+    // On Tuning, the card's own peak named: where its circuit resonates. Metal behind the card
+    // moves it up (2 mm of metal: about 17 MHz), off the reader's 13.56; a card tuned to match
+    // peaks on the reader's line.
+    if (tuning && drawn >= 1) {
+      const peak = points.reduce((best, p) => (p[1] > best[1] ? p : best), points[0]);
+      const matched = Math.abs(peak[0] - 13.56) < .25;
+      const words = matched ? 'tuned to the reader' : `card peaks at ${peak[0].toFixed(1)} MHz`;
+      g.save();
+      g.font = '600 9px "Inter Tight", system-ui, sans-serif';
+      const width = g.measureText(words).width, px = X(peak[0]), py = Y(Math.min(peak[1], yMax));
+      const x = Math.min(W - right - width / 2, Math.max(left + width / 2, px));
+      let y = Math.max(top + 8, py - 7);
+      // Never on the "wakes" label at the right end of the 2 V line: above it instead.
+      const wakesWidth = g.measureText('wakes').width + 8, wakesY = Y(2) - 4;
+      if (x + width / 2 > W - right - wakesWidth && Math.abs(y - 2 - wakesY) < 11) y = wakesY - 11;
+      g.strokeStyle = 'rgba(244,241,234,.45)';
+      g.lineWidth = 1;
+      g.beginPath(); g.moveTo(px, py - 1); g.lineTo(px, py - 4); g.stroke();
+      g.textAlign = 'center';
+      g.lineJoin = 'round';
+      g.strokeStyle = 'rgba(20,18,16,.75)';
+      g.lineWidth = 3;
+      g.strokeText(words, x, y - 2);
+      g.fillStyle = 'rgba(244,241,234,.7)';
+      g.fillText(words, x, y - 2);
+      g.restore();
+    }
     // Where the setting is now (once the curve is in, growing to its size).
     const nowX = now.dot.x, nowV = now.dot.v, dotSize = 4 * smoother(.85, 1, drawn);
     g.fillStyle = lab.m.awake ? '#ffffff' : '#ff8f7a';
