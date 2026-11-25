@@ -792,7 +792,10 @@
     calm = reduced.matches;
     if (calm) { finishIntro(false); flight = null; phase = Math.round(phase); velocity = twist = 0; }
   });
-  // Keep the browser's position for chapter links and Back. Scrolling ends the opening.
+  // Scrolling plays the story. Every visit starts at the top, and scrolling (even by
+  // dragging the scrollbar) ends the opening first.
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  scrollTo(0, 0);
   // The story starts where its track starts: after the everyday taps (js/taps.js) and the card intro (js/intro/).
   const track = document.querySelector('.track');
   addEventListener('scroll', () => {

@@ -1,5 +1,5 @@
 /*
- * Checks for the simulation in js/rfid. The same list runs in Node (`node --test tests/`)
+ * Checks for the simulation in js/rfid. The same list runs in Node (`node --test`, in the project's folder)
  * and in the browser (tests/index.html). Each case is [name, fn]; fn throws to fail.
  */
 (function (root, factory) {

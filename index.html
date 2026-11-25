@@ -11,7 +11,7 @@
     // Decide before the first paint whether the opening plays, so nothing flashes.
     (function () {
       var root = document.documentElement;
-      if (location.hash || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
       root.setAttribute('data-intro', '');
       // If the page script never starts, show the finished page instead of a blank one.
       setTimeout(function () { if (!window.__heroStarted) root.removeAttribute('data-intro'); }, 6000);
@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
-  <link rel="stylesheet" href="styles.css?v=21">
+  <link rel="stylesheet" href="styles.css?v=51">
   <link rel="stylesheet" href="take-apart/style.css?v=part-two-wave-1">
   <script type="importmap">
     {"imports": {
@@ -45,7 +45,7 @@
   <script src="js/landing.js?v=9" defer></script>
   <script src="js/present.js?v=5" defer></script>
   <script type="module" src="js/taps.js"></script>
-  <script type="module" src="js/intro/main.js?v=49"></script>
+  <script type="module" src="js/intro/main.js?v=104"></script>
 </head>
 <body>
   <main class="hero">
@@ -141,10 +141,13 @@
            feels it (js/intro/effects.js draws the field as rings that carry it). -->
       <div class="cine">
         <section class="readout" aria-label="What is happening now">
-          <div class="readout-words" aria-live="polite">
+          <div class="readout-words">
             <p class="readout-text"></p>
             <p class="readout-detail"></p>
           </div>
+          <!-- What a screen reader hears: each new sentence with its small print, not every change
+               of a number in the small print while a slider moves. -->
+          <p class="visually-hidden readout-say" aria-live="polite"></p>
           <div class="readout-meters" aria-hidden="true">
             <p class="readout-meter readout-frequency"><small>Radio frequency</small><b>13.56 MHz</b><i class="readout-wave"></i></p>
             <p class="readout-meter readout-middle"><small>Distance</small><b>10.0 cm</b><i></i></p>
@@ -166,6 +169,8 @@
           <span class="cine-label" data-part="cardCoil">Card’s coil</span>
           <span class="cine-label" data-part="cardChip">Chip</span>
           <span class="cine-label" data-part="metal">Metal</span>
+          <span class="cine-label" data-part="phoneCoil">Phone’s NFC coil</span>
+          <span class="cine-label" data-part="reach">Works up to here</span>
         </div>
         <!-- The lab (cinema.js `lab` step, js/intro/lab-model.js, main.js): change the tap and
              watch it respond. Every number is worked out live by js/rfid/physics.js. -->
@@ -173,42 +178,70 @@
           <h3 class="try-title" id="try-title">Try it yourself</h3>
           <dl class="try-readings">
             <div class="try-reading" data-reading="field">
-              <dt>Field at the card</dt><dd><b>0 A/m</b><i class="try-bar"><span></span><em title="The standard’s minimum"></em></i></dd>
+              <dt title="How strong the reader’s magnetic field is where the card is (amperes per metre).">Field at the card</dt><dd><b>0 A/m</b><i class="try-bar"><span></span><em title="The standard’s minimum: 1.5 A/m"></em><em class="try-max" title="The standard’s maximum: 7.5 A/m"></em></i></dd>
             </div>
             <div class="try-reading" data-reading="volts">
-              <dt>Voltage at the chip</dt><dd><b>0 V</b><i class="try-bar"><span></span><em title="What the chip needs to wake"></em></i></dd>
+              <dt title="What the field makes in the card’s coil. The chip wakes at 2 volts.">Voltage at the chip</dt><dd><b>0 V</b><i class="try-bar"><span></span><em title="What the chip needs to wake"></em></i><small class="try-watts">0 mW</small></dd>
             </div>
-            <div class="try-reading" data-reading="reach"><dt>Works up to</dt><dd><b>0 cm</b></dd></div>
-            <div class="try-reading" data-reading="answer"><dt>Answer strength</dt><dd><b>None</b></dd></div>
+            <div class="try-reading" data-reading="reach"><dt title="The farthest the chip still wakes, with everything else as set.">Works up to</dt><dd><b>0 cm</b></dd></div>
+            <div class="try-reading" data-reading="answer"><dt title="How much the card’s answer changes the reader’s own current. That change is all the reader hears.">Answer strength</dt><dd><b>None</b></dd></div>
           </dl>
           <div class="try-chart">
             <div class="try-tabs" role="group" aria-label="Chart">
               <button type="button" data-chart="distance" aria-pressed="true">Distance</button>
               <button type="button" data-chart="tuning" aria-pressed="false">Tuning</button>
+              <button type="button" data-chart="answer" aria-pressed="false">Answer</button>
+              <button type="button" data-chart="map" aria-pressed="false">Map</button>
             </div>
             <canvas class="try-plot" role="img" aria-label="Voltage at the chip against distance"></canvas>
           </div>
+          <div class="try-reader" role="group" aria-label="Reader">
+            <button type="button" data-reader="pad" aria-pressed="true">Card reader</button>
+            <button type="button" data-reader="phone" aria-pressed="false">Phone</button>
+          </div>
+          <div class="try-reader try-tag" role="group" aria-label="Tag size">
+            <button type="button" data-tag="card" aria-pressed="true">Card</button>
+            <button type="button" data-tag="fob" aria-pressed="false">Key ring</button>
+            <button type="button" data-tag="sticker" aria-pressed="false">Sticker</button>
+          </div>
+          <p class="try-legend"><i aria-hidden="true"></i>Amber line: where the chip wakes.</p>
           <div class="try-controls">
-            <label class="try-control"><span>Distance</span><output data-for="distance">3.0 cm</output>
-              <input type="range" name="distance" min="0.5" max="10" step="0.1" value="3"></label>
-            <label class="try-control"><span>Card’s angle</span><output data-for="angle">0°</output>
-              <input type="range" name="angle" min="0" max="90" step="1" value="0"></label>
-            <label class="try-control"><span>Metal behind the card</span><output data-for="metal">None</output>
-              <input type="range" name="metal" min="0" max="4" step="1" value="0"></label>
-            <label class="try-control"><span>Reader’s power</span><output data-for="drive">100%</output>
-              <input type="range" name="drive" min="0" max="150" step="1" value="100"></label>
-            <label class="try-control"><span>Card tuned to</span><output data-for="tune">13.56 MHz</output>
-              <input type="range" name="tune" min="0" max="1000" step="1" value="499"></label>
+            <label class="try-control" for="try-distance"><span id="try-distance-name">Distance</span><output data-for="distance">3.0 cm</output>
+              <input id="try-distance" aria-labelledby="try-distance-name" type="range" name="distance" min="0.5" max="10" step="0.1" value="3"></label>
+            <label class="try-control" for="try-angle"><span id="try-angle-name">Card’s angle</span><output data-for="angle">0°</output>
+              <input id="try-angle" aria-labelledby="try-angle-name" type="range" name="angle" min="0" max="90" step="1" value="0"></label>
+            <label class="try-control" for="try-metal"><span id="try-metal-name">Metal behind the card</span><output data-for="metal">None</output>
+              <input id="try-metal" aria-labelledby="try-metal-name" type="range" name="metal" min="0" max="4" step="1" value="0"></label>
+            <label class="try-control try-control-drive" for="try-drive"><span id="try-drive-name">Reader’s power</span><output data-for="drive">100%</output>
+              <input id="try-drive" aria-labelledby="try-drive-name" type="range" name="drive" min="0" max="150" step="1" value="100"></label>
+            <label class="try-control" for="try-tune"><span id="try-tune-name">Card tuned to</span><output data-for="tune">13.56 MHz</output>
+              <input id="try-tune" aria-labelledby="try-tune-name" type="range" name="tune" min="0" max="1000" step="1" value="499"></label>
           </div>
           <div class="try-id">
-            <label><span>Card’s ID</span><input type="text" name="id" value="04 7B 21 9E" maxlength="11" spellcheck="false" autocomplete="off" aria-describedby="try-check"></label>
+            <label><span>Card’s ID</span><input type="text" name="id" value="04 7B 21 9E" maxlength="11" spellcheck="false" autocomplete="off" aria-describedby="try-check try-id-note"></label>
             <p class="try-check" id="try-check">Check byte <b>C0</b></p>
-          </div>
-          <div class="try-actions">
-            <button class="try-ask" type="button">Ask the card</button>
-            <button class="try-reset" type="button">Reset</button>
+            <p class="try-id-note" id="try-id-note" role="status"></p>
           </div>
           <div class="try-presets" role="group" aria-label="Try a situation"></div>
+          <details class="try-behind">
+            <summary>The numbers behind it</summary>
+            <dl>
+              <div><dt>Coupling, k</dt><dd data-behind="k"></dd></div>
+              <div><dt>Mutual inductance</dt><dd data-behind="mutual"></dd></div>
+              <div><dt>Induced in the card’s coil</dt><dd data-behind="emf"></dd></div>
+              <div><dt>Card’s circuit resonates at</dt><dd data-behind="resonance"></dd></div>
+              <div><dt>Reader’s coil current</dt><dd data-behind="current"></dd></div>
+              <div><dt>Coils (reader, card)</dt><dd data-behind="coils"></dd></div>
+              <div><dt>Answer changes that current by</dt><dd data-behind="dip"></dd></div>
+            </dl>
+            <p class="try-behind-proof">The same engine is checked against Faraday’s law, Maxwell’s formula and the standard’s own examples: <a href="tests/" target="_blank" rel="noopener">see the checks run</a>.</p>
+          </details>
+          <!-- Last, and pinned to the panel's bottom edge, so they never scroll out of reach. -->
+          <div class="try-actions">
+            <button class="try-ask" type="button" aria-label="Ask the card">Ask<span class="try-long"> the card</span></button>
+            <button class="try-prove" type="button">Prove it</button>
+            <button class="try-reset" type="button">Reset</button>
+          </div>
         </section>
         <!-- It plays by itself until the visitor steps in; this pauses or plays it again. -->
         <button class="cine-auto is-on" type="button" aria-pressed="true" hidden><i aria-hidden="true"></i><span class="cine-auto-text">Pause</span></button>
@@ -228,6 +261,7 @@
         <svg class="cine-check" viewBox="0 0 64 64" aria-hidden="true">
           <circle cx="32" cy="32" r="27" pathLength="1"/>
           <path d="M20 33.5l8.5 8.5L45 24.5" pathLength="1"/>
+          <path class="cine-cross" d="M23 23l18 18M41 23L23 41" pathLength="1"/>
         </svg>
         <div class="cine-explain">
           <p class="status" role="status"></p>
@@ -236,7 +270,6 @@
           <p>No battery. No contact. All in about five thousandths of a second.</p>
           <p class="cine-fine">The card never broadcasts. It answers by taking more or less of the reader’s field, and the reader feels the change.</p>
           <div class="feedback">
-            <a class="continue-chapter" href="#take-apart" hidden>Take it apart</a>
             <button class="replay" type="button" hidden>Watch again</button>
             <button class="retry" type="button" hidden>Try again</button>
           </div>

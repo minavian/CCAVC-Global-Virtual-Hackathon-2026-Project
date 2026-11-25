@@ -9,8 +9,8 @@ import { autoplay } from './autoplay.js?v=16';
 import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose, clamp, ease, mix, measureStage, restingFrame, scrollTime } from './timeline.js?v=3';
 import { renderSignals } from './signals.js?v=2';
 import { ANSWER_AFTER, APPROACH_DETAIL, APPROACH_TEXT, ASK, SAMPLES_PER_BIT, CARD_ID, IDLE, LAB, LAST, NEAREST, REAL_MS, SHOTS, STEPS, TALK, approach, approachBand, approachView, centimetres,
-  checkByte, hex, message, power, setCardId, talkLevels, view } from './cinema.js';
-import { LAB_START, PRESETS, clampSetting, curve, labLevels, measure as measureLab, parseId, status as labStatus } from './lab-model.js';
+  checkByte, chipShare, hex, message, proofSeconds, proofTalk, setCardId, talkLevels, view } from './cinema.js';
+import { LAB_START, PRESETS, READERS, clampSetting, curve, labLevels, measure as measureLab, parseId, idProblem, proofCode, startFor, status as labStatus, wakes, chipPower, wakeMap, behind, nearestFor } from './lab-model.js';
 
 // Resolves once the landing's opening is over (js/landing.js), the visitor scrolls, or
 // `fallback` ms pass, whichever is first: the moment to load 3D without stuttering it.
@@ -42,21 +42,25 @@ function intro(experience) {
   const reader = $('.reader');
   const dropButton = $('.drag-card');
   const retry = $('.retry');
-  const chapterLink = $('.continue-chapter');
   const status = $('.status');
   const scrollGuide = $('.scroll-guide');
   const labels = [$('.antenna-label'), $('.chip-label')];
   const panels = Object.fromEntries(['meaning', 'definition', 'question', 'instruction']
     .map(name => [name, $('.' + name)]));
-  const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+  // With `?debug&calm` in the address the close-up behaves as with reduced motion, so that path
+  // can be checked in a browser that can't be set to it.
+  const query = new URLSearchParams(location.search);
+  const reduce = query.has('debug') && query.has('calm')
+    ? { matches: true, addEventListener() {}, removeEventListener() {} }
+    : matchMedia('(prefers-reduced-motion: reduce)');
   const hud = $('.hud');
   // The close-up's words and marks: the readout (one sentence at a time and a line of small
   // print, with the radio frequency, the distance or the real time, and the chip's power),
   // the check mark and the explanation at the end.
   const film = {
-    readout: $('.readout'), words: $('.readout-words'), text: $('.readout-text'), detail: $('.readout-detail'),
+    readout: $('.readout'), words: $('.readout-words'), text: $('.readout-text'), detail: $('.readout-detail'), said: $('.readout-say'),
     middleLabel: $('.readout-middle small'), middleValue: $('.readout-middle b'), middleBar: $('.readout-middle i'),
-    powerValue: $('.readout-power b'), powerBar: $('.readout-power i'),
+    power: $('.readout-power'), powerValue: $('.readout-power b'), powerBar: $('.readout-power i'),
     frequency: $('.readout-frequency'), frequencyValue: $('.readout-frequency b'),
     nav: $('.readout-nav'), back: $('.readout-back'), next: $('.readout-next'), count: $('.readout-count'),
     dotList: $('.readout-dots'), dots: [],
@@ -76,8 +80,21 @@ function intro(experience) {
     readings: Object.fromEntries([...experience.querySelectorAll('.try-reading')].map(node => [node.dataset.reading, node])),
     inputs: Object.fromEntries([...experience.querySelectorAll('.try-controls input')].map(input => [input.name, input])),
     outputs: Object.fromEntries([...experience.querySelectorAll('.try-controls output')].map(output => [output.dataset.for, output])),
-    id: $('.try-id input'), check: $('.try-check b'), ask: $('.try-ask'), reset: $('.try-reset'), presets: $('.try-presets'),
+    id: $('.try-id input'), idNote: $('.try-id-note'), behind: $('.try-behind'), check: $('.try-check b'), ask: $('.try-ask'), prove: $('.try-prove'), reset: $('.try-reset'), presets: $('.try-presets'),
+    // (Only the buttons that name a reader: the tag's switch shares the reader switch's look.)
+    readers: [...experience.querySelectorAll('.try-reader button[data-reader]')], driveLabel: $('.try-control-drive span'),
+    tags: [...experience.querySelectorAll('.try-tag button')],
   };
+  // Under each slider, a thin line: amber where along it the chip would wake, with everything
+  // else as set (`paintZones`).
+  labUi.zones = Object.fromEntries(Object.entries(labUi.inputs).map(([name, input]) => {
+    const bar = document.createElement('i');
+    bar.className = 'try-zone';
+    bar.setAttribute('aria-hidden', 'true');
+    bar.title = 'Amber: where the chip wakes, with everything else as set.';
+    input.after(bar);
+    return [name, bar];
+  }));
   // A dot for each step, as a button that jumps to it.
   film.dots = STEPS.slice(0, LAST).map((plan, i) => {
     const dot = document.createElement('li'), button = document.createElement('button');
@@ -122,6 +139,10 @@ function intro(experience) {
   // The step's own tilt, before the hand's: the drag's tilt stops where the view stops.
   let shotTilt = 1;
   let orbitDrag = null, orbited = false;
+  // In the lab the card itself can be dragged up or down, closer to the reader or away (`cardDrag`);
+  // `cardMoved` once it has been, so the hint that says so can go; then it says the chart can be
+  // pressed too, until it has been (`chartPressed`).
+  let cardDrag = null, cardMoved = false, chartPressed = false;
   // Autoplay. Until the visitor does anything, the close-up plays by itself: once the card is
   // ready it is carried to the reader, every step holds for its `hold` (cinema.js), and Ask
   // is pressed for them. The moment they touch, click, drag or press a key, it stops and
@@ -134,14 +155,30 @@ function intro(experience) {
   // question went out, and whether the chip was awake to answer it).
   const lab = { set: { ...LAB_START }, m: null, chart: 'distance', points: [], talk: null, dirty: true };
   const DEFAULT_ID = CARD_ID;
+  // The card's secret key, made up fresh for each visit (its bank holds a copy), and a copy's,
+  // which can't be the same: whoever copied the card read its ID, never its key.
+  const random = n => [...crypto.getRandomValues(new Uint8Array(n))];
+  const CARD_KEY = random(16), COPY_KEY = random(16);
   // Played by itself, the lab shows its controls at work: the card moved away until the chip
-  // sleeps and back, turned side-on and back, then a metal plate slid behind it and away.
+  // sleeps; there the reader turned all the way up, and still too far (the readout says how
+  // much more power it would take: nearly 5 times), and back down; the card brought back, turned
+  // side-on and back, then a metal plate slid behind it and away.
   // Keyframes: [seconds into the step, { setting }]; each value glides between its keyframes.
   const DEMO = [
-    [0, { distance: 3, angle: 0, metal: 0 }], [1.6, { distance: 3 }], [5.2, { distance: 7.2 }], [6.6, { distance: 7.2 }],
-    [8.8, { distance: 2.2 }], [9.4, { angle: 0 }], [11.8, { angle: 82 }], [13, { angle: 82 }], [14.6, { angle: 0 }],
-    [15, { metal: 0 }], [15.1, { metal: 4 }], [17.6, { metal: 4 }], [17.7, { metal: 0 }],
+    [0, { distance: 3, angle: 0, metal: 0, drive: 100 }], [1.6, { distance: 3 }], [5.2, { distance: 7.2 }],
+    [5.6, { drive: 100 }], [6.6, { drive: 150 }], [8.4, { drive: 150 }], [9.1, { drive: 100 }], [9.1, { distance: 7.2 }],
+    [11.3, { distance: 2.2 }], [11.9, { angle: 0 }], [14.3, { angle: 82 }], [15.5, { angle: 82 }], [17.1, { angle: 0 }],
+    [17.5, { metal: 0 }], [17.6, { metal: 4 }], [20.1, { metal: 4 }], [20.2, { metal: 0 }],
+    // Then the phone: the pad slides away and the phone comes in, the card lowers to a phone's
+    // tap (1 cm), is taken out past its reach (2.4 cm) and back, then the pad returns.
+    [20.3, { distance: 2.2 }], [20.9, { distance: 3 }], [21.3, { distance: 1 }], [23.3, { distance: 1 }],
+    [26.5, { distance: 3.4 }], [27.7, { distance: 3.4 }], [29.7, { distance: 1 }], [31.9, { distance: 1 }], [32.5, { distance: 3 }],
   ];
+  // Which reader the demo uses, from when.
+  const DEMO_READER = [[0, 'pad'], [21.3, 'phone'], [31.9, 'pad']];
+  // Last, from when to when: the card becomes a copy and is asked to prove itself, and the reader
+  // turns it down (about 9 s), so a demo shows why copying the ID isn't enough.
+  const DEMO_COPY = [33.5, 43.5];
   const shown = Object.fromEntries(Object.keys(IDLE).map(key => [key, spring(IDLE[key])]));
   let lens = null;
   let lastLevels = null;   // what the close-up drew last (the debug hook reads it)
@@ -180,6 +217,9 @@ function intro(experience) {
     signal?.setTransform(ratio, 0, 0, ratio, 0, 0);
     if (available) scene.resize(w, h);
     place(reader, layout.reader.x, layout.reader.y, layout.reader.width, layout.reader.height);
+    // The lab's chart is drawn to its own size: redrawn at the new one, or it stayed stretched
+    // (or squeezed) from the old until the next change of setting.
+    if (!labUi.panel.hidden) { paintPlot(); paintTabsPill(); }
     needsMeasure = false;
     return true;
   }
@@ -297,7 +337,18 @@ function intro(experience) {
     const grow = Math.min(b.view.zoom, 1.3);
     const faceWidth = pose.width * Math.cos(pose.yaw) * grow;
     const faceHeight = pose.width * .63 * Math.cos(pose.pitch) * grow;
-    place(poster, pose.x, pose.y, faceWidth, faceHeight, -pose.roll);
+    // Without 3D, once the card is down, its picture stands in for the close-up. It was drawn at
+    // the 3D shot's size and ran under the readout; it keeps its top and shrinks to end just
+    // above the readout instead.
+    // (Measured by its tilted outline, which is taller than the picture itself.)
+    let fit = 1;
+    const tall = faceWidth * Math.abs(Math.sin(pose.roll)) + faceHeight * Math.abs(Math.cos(pose.roll));
+    if (!available && b.dock > .5) {
+      const top = pose.y - tall / 2;
+      const room = film.readout.getBoundingClientRect().top - stage.getBoundingClientRect().top - 20 - top;
+      fit = clamp(room / tall, .35, 1);
+    }
+    place(poster, pose.x, pose.y - tall * (1 - fit) / 2, faceWidth * fit, faceHeight * fit, -pose.roll);
     poster.style.setProperty('--xray', Math.max(pose.xray, b.xray));
     poster.style.opacity = b.card;
     place(shadow, pose.x + 10, pose.y + pose.width * .33 * grow, pose.width * .87 * grow, pose.width * .15 * grow);
@@ -316,12 +367,20 @@ function intro(experience) {
   };
 
   // Swaps the readout's sentence and its small print, fading the new ones in.
+  const SENTENCE_HOLD = 180;   // ms a new lab sentence must hold before it shows (see below)
   function say(text, detail = '') {
     if (text === shownText && detail === film.detail.textContent) return;
+    // Only a new sentence comes in. New small print under the same sentence (a number following a
+    // slider: "It runs on 9.8 mW") just changes; it used to replay the entrance at every step, so
+    // the readout blinked all the way along a drag.
+    const fresh = text !== shownText;
     shownText = text;
     film.text.textContent = text;
     film.detail.textContent = detail;
-    if (!reduce.matches && text) {
+    // Spoken only for a new sentence (with its small print as it is then): a screen reader heard
+    // every step of a number in the small print as a slider moved.
+    if (fresh) film.said.textContent = detail ? `${text} ${detail}` : text;
+    if (fresh && !reduce.matches && text) {
       film.words.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }],
         { duration: 420, easing: 'cubic-bezier(.2, .7, .2, 1)' });
     }
@@ -332,18 +391,17 @@ function intro(experience) {
   // gap. The answer: the field at the reader, with a dip each time the card's switch closes
   // (drawn far deeper than the few percent it really is, and flickering with the 847.5 kHz
   // subcarrier). The line is laid out once per message and drawn up to now; each byte
-  // appears once the receiving chip has read it.
+  // appears once the receiving chip has read it. `strength`: in the lab, the answer's strength
+  // there as a share of a normal tap's (`answerScale`), so a faint answer dips less, as the 3D
+  // shows it; in steps of 5%, so the line is laid out again only when that visibly changes.
   const traceY = (dir, level) => 3 + (1 - level) * 18;
-  function paintTrace(said) {
+  function paintTrace(said, strength = 1) {
     const { length, dir } = said;
+    const depth = .6 * Math.round(Math.min(1, strength) * 20) / 20;
     if (film.traceFor !== said.name) {
       film.traceFor = said.name;
+      film.traceDepth = null;
       film.trace.setAttribute('viewBox', `0 0 ${length} 24`);
-      let d = '';
-      for (let n = 0; n < length; n++) {
-        d += `${n ? 'L' : 'M'}${n} ${traceY(dir, dir > 0 ? said.signal[n] : 1 - .6 * said.raw[n]).toFixed(2)}`;
-      }
-      film.traceLine.setAttribute('d', d);
       film.traceTrack.setAttribute('d', `M0 3H${length}`);
       // Each byte sits under its 8 bits (bit k is the frame's bit time k + 1; a byte's ninth
       // bit is its check bit).
@@ -351,13 +409,21 @@ function intro(experience) {
         const label = document.createElement('span');
         label.textContent = byte.toString(16).toUpperCase().padStart(2, '0');
         label.style.left = `${(1 + 9 * k + 4) * SAMPLES_PER_BIT / length * 100}%`;
-        label.classList.toggle('is-check', dir < 0 && k === said.bytes.length - 1);
+        label.classList.toggle('is-check', dir < 0 && said.name === 'answer' && k === said.bytes.length - 1);
         return label;
       }));
     }
+    if (film.traceDepth !== depth) {
+      film.traceDepth = depth;
+      let d = '';
+      for (let n = 0; n < length; n++) {
+        d += `${n ? 'L' : 'M'}${n} ${traceY(dir, dir > 0 ? said.signal[n] : 1 - depth * said.raw[n]).toFixed(2)}`;
+      }
+      film.traceLine.setAttribute('d', d);
+    }
     const now = Math.min(length, Math.max(0, said.n));
     film.traceClip.setAttribute('width', now);
-    const level = dir > 0 ? said.exact : 1 - .6 * said.exact;
+    const level = dir > 0 ? said.exact : 1 - depth * said.exact;
     film.traceDot.style.left = `${now / length * 100}%`;
     film.traceDot.style.top = `${traceY(dir, level) / 24 * 100}%`;
     film.traceDot.style.opacity = said.n >= length ? 0 : 1;
@@ -371,6 +437,12 @@ function intro(experience) {
   const leaderLines = new Map();
   function paintLabels3D(names) {
     const middle = names.length ? scene.anchor('middle') : null;
+    // Beside the lab's panel (on a wide screen it covers the stage's right side), labels stay
+    // left of it.
+    let right = layout.width;
+    if (names.length && !labUi.panel.hidden && !layout.compact) {
+      right = Math.min(right, labUi.panel.getBoundingClientRect().left - stage.getBoundingClientRect().left - 8);
+    }
     for (const [part, label] of Object.entries(film.labels)) {
       const name = part === 'cardChip' ? 'chip' : part;
       const shown = names.includes(name);
@@ -378,6 +450,8 @@ function intro(experience) {
       let line = leaderLines.get(part);
       if (!line) {
         line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        // Measured as 100 whatever its length, so styles.css can draw it out from the part.
+        line.setAttribute('pathLength', '100');
         film.leaders.append(line);
         leaderLines.set(part, line);
       }
@@ -389,7 +463,10 @@ function intro(experience) {
       dx /= length; dy /= length;
       if (length < 20) { dx = 0; dy = -1; }
       const reach = layout.compact ? 44 : 66;
-      const x = clamp(at.x + dx * reach, 70, layout.width - 70), y = clamp(at.y + dy * reach - 6, 60, layout.height - 200);
+      // Kept whole on the screen, by its own width (a long one, like the phone's coil, ran off
+      // a phone's edge when only its middle was kept 70 px in).
+      const half = (label.offsetWidth || 120) / 2 + 10;
+      const x = clamp(at.x + dx * reach, half, right - half), y = clamp(at.y + dy * reach - 6, 60, layout.height - 200);
       label.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
       line.setAttribute('x1', at.x.toFixed(1));
       line.setAttribute('y1', at.y.toFixed(1));
@@ -450,7 +527,7 @@ function intro(experience) {
     } else if (plan.lab) {
       // The demo: each control glides through its keyframes.
       const next = {};
-      for (const key of ['distance', 'angle', 'metal']) {
+      for (const key of ['distance', 'angle', 'metal', 'drive']) {
         const frames = DEMO.filter(([, set]) => key in set);
         let value = frames[0][1][key];
         for (let i = 1; i < frames.length; i++) {
@@ -460,7 +537,20 @@ function intro(experience) {
         }
         next[key] = key === 'metal' ? Math.round(value) : Math.round(value * 10) / 10;
       }
-      if (Object.keys(next).some(key => next[key] !== lab.set[key])) setLab(next);
+      next.reader = DEMO_READER.filter(([t]) => auto.held >= t).at(-1)[1];
+      const copying = auto.held >= DEMO_COPY[0] && auto.held < DEMO_COPY[1];
+      next.clone = copying;
+      if (auto.held < DEMO_COPY[0]) lab.demoProved = false;
+      // What the demo doesn't move stays normal, whatever the visitor set before pressing Play
+      // (a card left tuned to 6 MHz made the whole demo say it was tuned wrong).
+      next.tune = LAB_START.tune;
+      next.tag = LAB_START.tag;
+      if (next.reader === 'phone' && available) scene.usePhone();
+      // Only once the phone is there to show (still loading, or failed to: the pad stays).
+      if (next.reader === 'phone' && !(available && scene.phoneLoaded())) next.reader = 'pad';
+      const want = clampSetting({ ...lab.set, ...next });
+      if (Object.keys(next).some(key => want[key] !== lab.set[key])) setLab(next);
+      if (copying && !lab.talk && !lab.demoProved && auto.held > DEMO_COPY[0] + .6) { lab.demoProved = true; labAsk(true); }
       if (auto.held >= plan.hold) go(step + 1);
     } else if (auto.held >= plan.hold) go(step + 1);
   }
@@ -473,17 +563,147 @@ function intro(experience) {
 
   // A new setting: work it out, and show it on the controls (when it did not come from them).
   function setLab(next, fromControl) {
+    // What the chart shows now, before anything changes: it glides from there to the new curve.
+    const shownBefore = plotNow();
+    const before = lab.set.reader, tagBefore = lab.set.tag, cloneBefore = lab.set.clone;
     lab.set = clampSetting({ ...lab.set, ...next });
+    if (lab.set.reader !== before || lab.set.tag !== tagBefore || !labUi.presets.childElementCount) paintReader();
     lab.m = measureLab(lab.set);
-    lab.points = curve(lab.set, lab.chart);
-    if (!fromControl) syncControls();
+    // A conversation under way follows what happens to it. With the reader off there is no field
+    // to carry it; a chip that falls asleep loses everything it was doing (woken again, it starts
+    // from nothing and waits for a new question); another reader or another card was never part
+    // of it. Any of these ends it at once, and the readout says why (the setting's own sentence).
+    // A chip that wakes during a question it slept through still does not answer it: it never
+    // heard the start.
+    if (lab.talk && (!lab.m.on || (lab.talk.answers && !lab.m.awake) || lab.set.reader !== before
+      || lab.set.tag !== tagBefore || lab.set.clone !== cloneBefore)) endTalk();
+    // (Only within one chart: the x of its points stay put.)
+    lab.morph = shownBefore && shownBefore.chart === lab.chart ? { ...shownBefore, start: performance.now() } : null;
+    // The Map chart is a grid of where the chip wakes, not a curve. The last one stays a moment,
+    // fading out under the new one, so a change cross-fades instead of jumping.
+    // At most one map every 50 ms (about 2,500 solves each: a few milliseconds here, several times
+    // that on a slow phone), and once more when a drag stops; the dot follows every step anyway.
+    const mapDue = lab.chart === 'map' && (!lab.map || performance.now() - (lab.mapAt ?? 0) >= MAP_EVERY);
+    if (lab.chart === 'map' && !mapDue) {
+      clearTimeout(lab.mapLater);
+      lab.mapLater = setTimeout(() => setLab({}), MAP_EVERY);
+    } else if (lab.chart === 'map') {
+      clearTimeout(lab.mapLater);
+      lab.mapAt = performance.now();
+      if (lab.map && !reduce.matches) lab.mapFade = { map: lab.map, start: performance.now() };
+      lab.map = wakeMap(lab.set);
+      // The other reader's, everything else the same, for its outline (coarser: about 500 solves).
+      lab.otherMap = { reader: lab.set.reader === 'phone' ? 'pad' : 'phone', map: wakeMap({ ...lab.set, reader: lab.set.reader === 'phone' ? 'pad' : 'phone' }, 19, 20) };
+    } else lab.map = lab.mapFade = lab.otherMap = null;
+    lab.points = lab.chart === 'map' ? [] : curve(lab.set, lab.chart);
+    // The other reader's curve, everything else the same, drawn faintly behind (not for tuning,
+    // where both readers send 13.56 MHz): the two readers compared at a glance.
+    const other = lab.set.reader === 'phone' ? 'pad' : 'phone';
+    lab.other = lab.chart === 'tuning' || lab.chart === 'map' ? null : { reader: other, points: curve({ ...lab.set, reader: other }, lab.chart) };
+    lab.pointsChart = lab.chart;
+    paintZones();
+    // Always: turning the card can lift it (a tilted card's edge rests on the reader), so the
+    // distance can change while the angle is moved.
+    syncControls();
     paintLabOutputs();
     paintLabPanel();
     invalidate();
   }
 
+  // Where along each slider the chip would wake, everything else as set: about 250 solves of
+  // the physics (well under a millisecond), drawn as amber stretches on a thin line under it.
+  function paintZones() {
+    if (!labUi.zones) return;
+    const s = lab.set;
+    for (const [name, input] of Object.entries(labUi.inputs)) {
+      const min = +input.min, max = +input.max, n = name === 'metal' ? max - min : 60;
+      const on = [];
+      for (let i = 0; i <= n; i++) {
+        const at = min + (max - min) * i / n, value = name === 'tune' ? sliderToTune(at) : at;
+        const real = clampSetting({ ...s, [name]: value });
+        // Closer than a turned card can come: neither amber nor dim, just the track.
+        on.push(name === 'distance' && real.distance > value + .05 ? null : wakes(real));
+      }
+      // Each sample stands for the stretch of the track around it.
+      const stops = [];
+      const edge = i => (i <= 0 ? 0 : i > n ? 100 : (i - .5) / n * 100);
+      let from = 0;
+      for (let i = 1; i <= n + 1; i++) {
+        if (i <= n && on[i] === on[from]) continue;
+        const color = on[from] === null ? 'rgba(255, 255, 255, 0)' : on[from] ? 'rgba(255, 181, 46, .9)' : 'rgba(255, 255, 255, .09)';
+        stops.push(`${color} ${edge(from).toFixed(2)}%`, `${color} ${edge(i).toFixed(2)}%`);
+        from = i;
+      }
+      labUi.zones[name].style.background = `linear-gradient(90deg, ${stops.join(', ')})`;
+    }
+  }
+
+  // The chart as it shows right now: its curve and dot, partway through a glide.
+  function plotNow() {
+    if (!lab.points.length || !lab.m) return null;
+    const k = lab.morph ? smoother(0, 1, (performance.now() - lab.morph.start) / 380) : 1;
+    const dot = { x: lab.pointsChart === 'tuning' ? 13.56 : lab.set.distance, v: lab.pointsChart === 'answer' ? lab.m.dip * 100 : lab.m.raw };
+    if (!lab.morph || k >= 1) return { chart: lab.pointsChart, points: lab.points, dot, k: 1 };
+    const { points: before, dot: was } = lab.morph;
+    return {
+      chart: lab.pointsChart, k,
+      points: lab.points.map(([x, v], i) => [x, mix(before[i]?.[1] ?? v, v, k)]),
+      dot: { x: mix(was.x, dot.x, k), v: mix(was.v, dot.v, k) },
+    };
+  }
+
+  // The reader's switch, and what depends on the reader: the nearest the card can come (the
+  // phone's camera island), the power control's name, and the situations to try.
+  function paintReader() {
+    const reader = lab.set.reader, info = READERS[reader];
+    for (const button of labUi.readers) button.setAttribute('aria-pressed', String(button.dataset.reader === reader));
+    for (const button of labUi.tags) button.setAttribute('aria-pressed', String(button.dataset.tag === lab.set.tag));
+    // Where each switch's sliding highlight sits (styles.css): which of its buttons is pressed.
+    for (const buttons of [labUi.readers, labUi.tags]) {
+      const at = buttons.findIndex(button => button.getAttribute('aria-pressed') === 'true');
+      buttons[0]?.parentElement.style.setProperty('--at', Math.max(0, at));
+      buttons[0]?.parentElement.style.setProperty('--count', buttons.length);
+    }
+    labUi.inputs.distance.min = info.nearest;
+    labUi.driveLabel.textContent = reader === 'phone' ? 'Phone’s power' : 'Reader’s power';
+    labUi.presets.replaceChildren(...Object.values(PRESETS[reader]).map(preset => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = preset.label;
+      const { label, ...set } = preset;
+      button.preset = set;
+      button.setAttribute('aria-pressed', 'false');
+      button.addEventListener('click', event => {
+        if (event.isTrusted) takeOver();
+        // (A situation is for a bank card: "Normal tap" at 3 cm would leave a sticker asleep.)
+        setLab(set);
+      });
+      return button;
+    }));
+  }
+
+  // The visitor picks a reader: the phone loads the first time (its button says so meanwhile),
+  // then the card goes to that reader's normal tap distance and the readers swap.
+  async function chooseReader(reader) {
+    if (reader === lab.set.reader) return;
+    if (reader === 'phone' && available) {
+      const button = labUi.readers.find(b => b.dataset.reader === 'phone');
+      button.setAttribute('aria-busy', 'true');
+      const loaded = await scene.usePhone();
+      button.removeAttribute('aria-busy');
+      // If the phone could not load, the card reader stays: its field would show with no phone.
+      if (!loaded) {
+        button.disabled = true;
+        button.title = 'The phone could not load.';
+        return;
+      }
+    }
+    setLab({ reader, distance: READERS[reader].start });
+  }
+
   function syncControls() {
     const { inputs } = labUi;
+    inputs.distance.min = READERS[lab.set.reader].nearest;
     inputs.distance.value = lab.set.distance;
     inputs.angle.value = lab.set.angle;
     inputs.metal.value = Math.round(lab.set.metal);
@@ -491,7 +711,29 @@ function intro(experience) {
     inputs.tune.value = tuneToSlider(lab.set.tune);
   }
 
+  // The numbers behind it (`behind` in lab-model.js), when that list is open. Units chosen so
+  // every value reads at a glance: nH, µH, V, MHz, mA, %.
+  function paintBehind() {
+    if (!labUi.behind?.open) return;
+    const n = behind(lab.set);
+    if (!n) return;
+    const text = {
+      k: n.k.toFixed(n.k < .01 ? 4 : 3),
+      mutual: `${(n.mutual * 1e9).toFixed(n.mutual < 1e-8 ? 2 : 1)} nH`,
+      emf: `${n.emf.toFixed(2)} V`,
+      resonance: `${(n.resonance / 1e6).toFixed(2)} MHz`,
+      current: `${Math.round(n.current * 1000)} mA`,
+      coils: `${(n.readerInductance * 1e6).toFixed(2)} µH, ${(n.tagInductance * 1e6).toFixed(2)} µH`,
+      dip: n.dip ? `${(n.dip * 100).toFixed(1)}%` : 'no answer',
+    };
+    for (const dd of labUi.behind.querySelectorAll('dd')) {
+      const value = text[dd.dataset.behind];
+      if (dd.textContent !== value) dd.textContent = value;
+    }
+  }
+
   function paintLabOutputs() {
+    paintBehind();
     const { outputs, inputs } = labUi, s = lab.set;
     outputs.distance.textContent = s.distance.toFixed(1) + ' cm';
     outputs.angle.textContent = Math.round(s.angle) + '°';
@@ -512,24 +754,328 @@ function intro(experience) {
     const { readings } = labUi;
     const reading = (name, text, good, bar, need) => {
       const node = readings[name];
-      node.querySelector('b').textContent = text;
+      if (!lab.tweens) node.querySelector('b').textContent = text;
       node.classList.toggle('is-good', good === true);
       node.classList.toggle('is-low', good === false);
       const barNode = node.querySelector('.try-bar');
       if (barNode) { barNode.style.setProperty('--to', clamp(bar)); barNode.style.setProperty('--need', need); }
     };
-    reading('field', m.field.toFixed(2) + ' A/m', m.field >= m.H_MIN, m.field / 7.5, m.H_MIN / 7.5);
+    // The standard's window, 1.5 to 7.5 A/m, both marked on a 0 to 10 A/m bar. Over 7.5 the
+    // reading turns red: the card is in a stronger field than it must cope with (its limiter
+    // takes the extra).
+    const over = m.field > m.H_MAX;
+    reading('field', m.field.toFixed(2) + ' A/m', over ? false : m.field >= m.H_MIN, m.field / 10, m.H_MIN / 10);
+    const fieldNode = labUi.readings.field;
+    fieldNode.classList.toggle('is-over', over);
+    fieldNode.querySelector('.try-max').style.left = `${m.H_MAX / 10 * 100}%`;
+    fieldNode.title = over ? 'Over the standard’s 7.5 A/m: the chip’s limiter takes the extra.' : '';
     reading('volts', m.volts.toFixed(2) + ' V', m.awake, m.volts / m.clamp, m.wake / m.clamp);
     reading('reach', m.reach < .05 ? 'Nowhere' : m.reach.toFixed(1) + ' cm', m.reach >= lab.set.distance);
-    reading('answer', m.awake ? (m.dip * 100).toFixed(1) + '%' : 'None', m.awake ? m.dip > .01 : false);
+    reading('answer', m.awake ? (m.dip * 100).toFixed(1) + '%' : 'None', m.awake ? m.dip >= .02 : false);
+    // The numbers glide to their new values (paintLabNumbers, every frame), so a change reads as
+    // a change, not a flicker.
+    lab.targets = { field: m.field, volts: m.volts, reach: m.reach, answer: m.awake ? m.dip * 100 : null, watts: m.watts * 1000 };
+    // The situation that is set now, if it is one of the list.
+    const s = lab.set;
+    for (const button of labUi.presets.children) {
+      const p = button.preset;
+      const same = p && p.reader === s.reader && p.tag === s.tag && Math.abs(p.distance - s.distance) < .05 && Math.abs(p.angle - s.angle) < .5
+        && Math.round(p.metal) === Math.round(s.metal) && Math.abs(p.drive - s.drive) < .5 && Math.abs(p.tune - s.tune) < .01
+        && Boolean(p.clone) === Boolean(s.clone);
+      button.setAttribute('aria-pressed', String(Boolean(same)));
+    }
     paintPlot();
-    labUi.ask.disabled = Boolean(lab.talk) || !m.on;
-    labUi.ask.title = m.on ? '' : 'The reader is off: no field to ask with.';
+    labUi.ask.disabled = labUi.prove.disabled = Boolean(lab.talk) || !m.on;
+    labUi.ask.title = labUi.prove.title = m.on ? ''
+      : lab.set.reader === 'phone' ? 'The phone’s NFC is off: no field to ask with.' : 'The reader is off: no field to ask with.';
+  }
+
+  // The readings' numbers, gliding to their targets (each frame while the lab shows).
+  function paintLabNumbers(dt) {
+    const t = lab.targets;
+    if (!t) return;
+    lab.tweens ??= { ...t };
+    const k = reduce.matches ? 1 : 1 - Math.exp(-dt * 14);
+    let moving = false;
+    for (const key of ['field', 'volts', 'reach', 'answer', 'watts']) {
+      const to = t[key];
+      if (to === null) { lab.tweens[key] = null; continue; }
+      const from = lab.tweens[key] ?? 0;
+      const next = Math.abs(to - from) < 1e-3 ? to : from + (to - from) * k;
+      lab.tweens[key] = next;
+      moving ||= next !== to;
+    }
+    const v = lab.tweens, set = (name, text) => {
+      const node = labUi.readings[name].querySelector('b');
+      if (node.textContent !== text) node.textContent = text;
+    };
+    set('field', v.field.toFixed(2) + ' A/m');
+    set('volts', v.volts.toFixed(2) + ' V');
+    set('reach', t.reach < .05 ? 'Nowhere' : v.reach.toFixed(1) + ' cm');
+    set('answer', v.answer === null ? 'None' : v.answer.toFixed(1) + '%');
+    // Under the voltage: the power the chip gets, and what it needs to wake; its limiter, once on.
+    const watts = labUi.readings.volts.querySelector('.try-watts');
+    const need = (lab.m.needs * 1000).toFixed(1);
+    const line = lab.m.limited ? `${v.watts.toFixed(1)} mW, its limiter holds 3.3 V` : `${v.watts.toFixed(1)} mW, needs ${need} mW`;
+    if (watts.textContent !== line) watts.textContent = line;
+    // The chart's entrance, and its glide, at the same time.
+    if (lab.reveal) {
+      paintPlot();
+      if (performance.now() - lab.reveal > 1000) { lab.reveal = null; paintPlot(); }
+    }
+    if (lab.morph) {
+      paintPlot();
+      if (performance.now() - lab.morph.start > 400) { lab.morph = null; paintPlot(); }
+    }
+    if (lab.mapFade) {
+      paintPlot();
+      if (performance.now() - lab.mapFade.start > MAP_FADE) { lab.mapFade = null; paintPlot(); }
+    }
+    if (lab.tabFade) paintPlot();
+    return moving || Boolean(lab.morph) || Boolean(lab.reveal) || Boolean(lab.mapFade) || Boolean(lab.tabFade);
+  }
+
+  const MAP_FADE = 260, MAP_EVERY = 50;
+  // The rule a payment terminal is built to (EMV contactless): it must read a card anywhere up to
+  // 4 cm from its face. On the card reader's distance charts and Map, a dotted line there, named
+  // at its top, so its 4.9 cm reach can be seen to clear it (and metal, say, not to).
+  const TERMINAL_CM = 4;
+  function paintTerminalRule(g, X, top, bottom, H) {
+    if (lab.set.reader !== 'pad') return;
+    g.save();
+    const x = Math.round(X(TERMINAL_CM)) + .5;
+    g.strokeStyle = 'rgba(244,241,234,.35)';
+    g.lineWidth = 1;
+    g.setLineDash([1, 3]);
+    g.beginPath(); g.moveTo(x, top); g.lineTo(x, H - bottom); g.stroke();
+    g.setLineDash([]);
+    g.font = '600 9px "Inter Tight", system-ui, sans-serif';
+    g.textAlign = 'left';
+    g.lineJoin = 'round';
+    g.strokeStyle = 'rgba(20,18,16,.75)';
+    g.lineWidth = 3;
+    g.strokeText('must reach 4 cm', x + 3, top + 8);
+    g.fillStyle = 'rgba(244,241,234,.6)';
+    g.fillText('must reach 4 cm', x + 3, top + 8);
+    g.restore();
+  }
+  // The charts' frame inside the canvas (px): room for the scale on the left and along the bottom.
+  const PLOT = { left: 30, right: 8, top: 8, bottom: 18 };
+  // One Map drawn (see `paintMap`): faint grey where no card can be (closer than a card turned
+  // that far can come), a faint amber wash where it can be but sleeps, amber where it wakes. Each
+  // region is one shape through the bands' edges (one fill, so no seams between bands, and a
+  // sloped edge rather than steps). Where metal splits a band's waking into two stretches, the
+  // amber is drawn band by band instead, each a strip as tall as its share of the angles.
+  function drawMap(g, map, X, Y, alpha) {
+    const bands = map.bands, last = bands.length - 1;
+    g.globalAlpha = alpha;
+    const shape = (fill, points) => {
+      g.fillStyle = fill;
+      g.beginPath();
+      points.forEach(([d, a], i) => (i ? g.lineTo(X(d), Y(a)) : g.moveTo(X(d), Y(a))));
+      g.closePath();
+      g.fill();
+    };
+    // Where no card can be, and where one can: either side of the line of the bands' starts.
+    const starts = bands.map(band => [band.rest, band.angle]);
+    shape('rgba(244,241,234,.04)', [[map.near, 0], ...starts, [map.near, 90]]);
+    shape('rgba(255,181,46,.1)', [...starts, [map.far, 90], [map.far, 0]]);
+    // Where it wakes: one shape when it is one stretch in each band, from face-on up (closed half
+    // a band above the last that wakes); else band by band.
+    const outline = mapOutline(map);
+    if (outline) shape('rgba(255,181,46,.82)', outline);
+    else if (bands.some(band => band.spans.length)) {
+      const half = 45 / last;
+      g.fillStyle = 'rgba(255,181,46,.82)';
+      g.beginPath();
+      for (const band of bands) {
+        const y0 = Y(Math.min(90, band.angle + half)), y1 = Y(Math.max(0, band.angle - half));
+        for (const [from, to] of band.spans) g.rect(X(from), y0, X(to) - X(from), y1 - y0);
+      }
+      g.fill();
+    }
+    g.globalAlpha = 1;
+  }
+
+  // The outline of where a map wakes, as points (cm, degrees): up its near edges, over its top,
+  // down its far edges. Only for a region of one stretch a band from face-on up (else null).
+  function mapOutline(map) {
+    const bands = map.bands, top = bands.reduce((at, band, j) => (band.spans.length ? j : at), -1);
+    if (top < 0 || !bands.every((band, j) => (j <= top ? band.spans.length === 1 : !band.spans.length))) return null;
+    const lid = Math.min(90, bands[top].angle + 45 / (bands.length - 1)), [from, to] = bands[top].spans[0];
+    return [
+      ...bands.slice(0, top + 1).map(band => [band.spans[0][0] <= band.start ? band.rest : band.spans[0][0], band.angle]),
+      [(from + to) / 2, lid],
+      ...bands.slice(0, top + 1).reverse().map(band => [band.spans[0][1], band.angle]),
+    ];
+  }
+
+  // Where "wakes" can sit on the Map: in the amber, clear of the dot of the setting, and wide
+  // enough over the word's whole height (the waking region narrows as the card turns).
+  function mapWordAt(map, X, Y, avoid, H, top, bottom) {
+    const [dotX, dotY] = avoid[0];
+    const clear = (x, y) => avoid.every(([ax, ay, aw = 0]) => Math.abs(x - ax) > 18 + aw / 2 + 2 || Math.abs(y - ay) > 12);
+    const bands = map.bands, highest = bands.reduce((at, band, j) => (band.spans.length ? j : at), -1);
+    if (highest < 0) return null;
+    const covers = (band, x0, x1) => band.spans.some(([from, to]) => X(from) <= x0 && X(to) >= x1);
+    for (const share of [.35, .2, .55, .1, .7]) {
+      const j = Math.round(highest * share), band = bands[j], y = Y(band.angle) + 4;
+      if (y > H - bottom - 2 || y - 10 < top) continue;
+      // The band at the word's top: its angle where the word's top edge is.
+      const above = bands[Math.min(bands.length - 1, Math.round((90 * (1 - (y - 10 - top) / (H - top - bottom))) / (90 / (bands.length - 1))))];
+      for (const [from, to] of band.spans) {
+        const a = X(from), b = X(to);
+        // The stretch whole, or either side of the dot when it sits in it.
+        const parts = dotX > a && dotX < b && Math.abs(y - 4 - dotY) < 14 ? [[a, dotX - 9], [dotX + 9, b]] : [[a, b]];
+        for (const [p, q] of parts.sort((m, n) => (n[1] - n[0]) - (m[1] - m[0]))) {
+          const x = (p + q) / 2;
+          if (q - p < 40 || !covers(above, x - 18, x + 18) || Math.hypot(x - dotX, y - 4 - dotY) < 18 || !clear(x, y - 4)) continue;
+          return { x, y };
+        }
+      }
+    }
+    return null;
+  }
+
+  // The Map chart: where the chip wakes, across distance (along) and the card's angle (up), with
+  // the setting as a dot. The other charts' frame, scale along the bottom and entrance; a change
+  // cross-fades from the last map to the new one.
+  function paintMap(g, W, H, left, right, top, bottom) {
+    const map = lab.map;
+    if (!map || !lab.m) return;
+    const X = d => left + (W - left - right) * (d - map.near) / (map.far - map.near);
+    const Y = a => top + (H - top - bottom) * (1 - a / 90);
+    g.font = '600 10px "Inter Tight", system-ui, sans-serif';
+    g.fillStyle = 'rgba(244,241,234,.5)';
+    g.strokeStyle = 'rgba(255,255,255,.1)';
+    g.lineWidth = 1;
+    for (const a of H < 90 ? [0, 90] : [0, 45, 90]) {
+      g.beginPath(); g.moveTo(left, Y(a) + .5); g.lineTo(W - right, Y(a) + .5); g.stroke();
+      g.fillText(a + '°', 2, Y(a) + 3);
+    }
+    const ticks = W < 270 ? [2, 5, 10] : [2, 4, 6, 8, 10];
+    for (const v of ticks) {
+      const last = v === ticks[ticks.length - 1];
+      g.textAlign = last ? 'right' : 'center';
+      g.fillText(v + ' cm', last ? W - right : X(v), H - 4);
+    }
+    g.textAlign = 'left';
+    // On the panel's entrance it sweeps in from the left, as the curves do.
+    const drawn = lab.reveal ? smoother(0, 1, (performance.now() - lab.reveal) / 800) : 1;
+    g.save();
+    g.beginPath(); g.rect(left, top, (W - left - right) * drawn, H - top - bottom); g.clip();
+    const fade = lab.mapFade ? smoother(0, 1, (performance.now() - lab.mapFade.start) / MAP_FADE) : 1;
+    if (fade < 1) drawMap(g, lab.mapFade.map, X, Y, 1 - fade);
+    drawMap(g, map, X, Y, fade);
+    // The other reader's waking region, as a faint dashed outline over it: the two compared.
+    const outline = lab.otherMap && mapOutline(lab.otherMap.map);
+    if (outline) {
+      g.strokeStyle = 'rgba(244,241,234,.5)';
+      g.lineWidth = 1.2;
+      g.setLineDash([3, 3]);
+      g.beginPath();
+      outline.forEach(([d, a], i) => (i ? g.lineTo(X(d), Y(a)) : g.moveTo(X(d), Y(a))));
+      g.closePath();
+      g.stroke();
+      g.setLineDash([]);
+    }
+    g.restore();
+    if (drawn >= 1) paintTerminalRule(g, X, top, bottom, H);
+    const dotX = X(lab.set.distance), dotY = Y(lab.set.angle), avoid = [[dotX, dotY]];
+    // Two labels never overlap if their boxes (centre x, middle y, width, ±6 px high) don't.
+    const overlaps = ([ax, ay, aw], [bx, by, bw]) => Math.abs(ax - bx) < (aw + bw) / 2 + 4 && Math.abs(ay - by) < 12;
+    // The grey corner named first, where it is wide enough at the top: a card turned that far,
+    // that close, would have to pass through the reader.
+    let corner = null;
+    if (drawn >= 1) {
+      g.font = '600 9px "Inter Tight", system-ui, sans-serif';
+      const words = 'no room to turn', width = g.measureText(words).width;
+      if (X(map.bands.at(-1).rest) - X(map.near) > width + 10) {
+        corner = [X(map.near) + 4 + width / 2, top + 5, width];
+        g.fillStyle = 'rgba(244,241,234,.45)';
+        g.textAlign = 'left';
+        g.fillText(words, X(map.near) + 4, top + 9);
+        avoid.push(corner);
+      }
+    }
+    if (outline && drawn >= 1) {
+      // Named just over its peak (or beside it, at the chart's top), clear of the dot and of the
+      // grey corner's words: light, with a dark halo, so it reads on the amber and off it alike.
+      const name = lab.otherMap.reader === 'phone' ? 'phone' : 'card reader';
+      g.font = '600 10px "Inter Tight", system-ui, sans-serif';
+      const width = g.measureText(name).width, peak = outline[outline.length >> 1];
+      const fit = x => Math.min(W - right - width / 2, Math.max(left + width / 2, x));
+      let x = fit(X(peak[0])), y = Y(peak[1]) - 4;
+      if (y - 9 < top) { y = Y(peak[1]) + 12; x = fit(X(peak[0]) + width / 2 + 8); }
+      if (Math.hypot(x - dotX, y - 4 - dotY) < 16 + width / 2) x = fit(dotX + width / 2 + 10);
+      if (corner && overlaps([x, y - 4, width], corner)) x = fit(corner[0] + corner[2] / 2 + width / 2 + 8);
+      g.textAlign = 'center';
+      g.lineJoin = 'round';
+      g.strokeStyle = 'rgba(20,18,16,.75)';
+      g.lineWidth = 3;
+      g.strokeText(name, x, y);
+      g.fillStyle = 'rgba(244,241,234,.85)';
+      g.fillText(name, x, y);
+      g.textAlign = 'left';
+      avoid.push([x, y - 4, width]);
+    }
+    // "wakes", in the amber, where the word fits and clear of the dot and the other's name.
+    const word = drawn >= 1 ? mapWordAt(map, X, Y, avoid, H, top, bottom) : null;
+    if (word) {
+      g.font = '650 10px "Inter Tight", system-ui, sans-serif';
+      g.textAlign = 'center';
+      g.fillStyle = 'rgba(20,18,16,.8)';
+      g.fillText('wakes', word.x, word.y);
+      g.textAlign = 'left';
+    }
+    // Where the setting is now.
+    const dotSize = 4 * smoother(.85, 1, drawn);
+    if (dotSize > .2) {
+      g.fillStyle = lab.m.awake ? '#ffffff' : '#ff8f7a';
+      g.strokeStyle = 'rgba(20,18,16,.85)';
+      g.lineWidth = 1.5;
+      g.beginPath(); g.arc(dotX, dotY, dotSize, 0, Math.PI * 2); g.fill(); g.stroke();
+    }
+    // Said in words: how far it wakes face-on, and how far it can be turned where it is.
+    const d = lab.set.distance, at = `At ${d.toFixed(1)} cm`;
+    const faceOn = map.bands[0].spans.at(-1)?.[1];
+    const fits = map.bands.filter(band => band.start <= d + .05);
+    const turned = fits.filter(band => band.spans.some(([from, to]) => d >= from - .05 && d <= to + .05)).at(-1);
+    labUi.plot.setAttribute('aria-label', 'Where the chip wakes, by distance and the card’s angle. '
+      + (faceOn === undefined ? 'Like this, it wakes nowhere.'
+        : `Face-on it wakes up to ${faceOn.toFixed(1)} cm. `
+        + (!turned ? `${at} it sleeps at any angle.`
+          : fits.length === 1 ? `${at} only a flat card fits, and it wakes.`
+          : turned.angle === 0 ? `${at} it wakes only face-on.`
+          : `${at} it still wakes turned up to ${Math.round(turned.angle)}°.`))
+      + ` Now it is ${lab.m.awake ? 'awake' : 'asleep'}.`);
   }
 
   // The chart: the voltage at the chip across distance or across tuning, everything else as
-  // set, with the chip's need (2 V) and where the setting is now.
+  // set, with the chip's need (2 V) and where the setting is now. While a tab has just been
+  // switched, the last chart fades out as the new one fades in (`lab.tabFade`, TAB_FADE).
+  const TAB_FADE = 220;
+  const copyOf = canvas => {
+    const copy = document.createElement('canvas');
+    copy.width = canvas.width; copy.height = canvas.height;
+    if (canvas.width && canvas.height) copy.getContext('2d').drawImage(canvas, 0, 0);
+    return copy;
+  };
   function paintPlot() {
+    drawPlot();
+    const fade = lab.tabFade, canvas = labUi.plot;
+    if (!fade) return;
+    const k = smoother(0, 1, (performance.now() - fade.start) / TAB_FADE);
+    if (k >= 1 || fade.image.width !== canvas.width || fade.image.height !== canvas.height) { lab.tabFade = null; return; }
+    const fresh = copyOf(canvas), g = canvas.getContext('2d');
+    g.save();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, canvas.width, canvas.height);
+    g.globalAlpha = 1 - k; g.drawImage(fade.image, 0, 0);
+    g.globalAlpha = k; g.drawImage(fresh, 0, 0);
+    g.restore();
+  }
+  function drawPlot() {
     const canvas = labUi.plot, box = canvas.getBoundingClientRect();
     if (!box.width) return;
     const ratio = Math.min(devicePixelRatio || 1, 2);
@@ -537,24 +1083,32 @@ function intro(experience) {
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
     const g = canvas.getContext('2d');
     g.setTransform(ratio, 0, 0, ratio, 0, 0);
-    const W = box.width, H = box.height, left = 30, right = 8, top = 8, bottom = 18;
+    const W = box.width, H = box.height, { left, right, top, bottom } = PLOT;
     g.clearRect(0, 0, W, H);
-    const points = lab.points, tuning = lab.chart === 'tuning';
+    if (lab.chart === 'map') { paintMap(g, W, H, left, right, top, bottom); return; }
+    const now = plotNow();
+    if (!now) return;
+    const points = now.points, tuning = lab.chart === 'tuning', answer = lab.chart === 'answer';
     if (!points.length) return;
     const xs = points.map(p => p[0]);
     const x0 = xs[0], x1 = xs[xs.length - 1];
-    const yMax = 8;
+    // Volts for Distance and Tuning (the chip needs 2), the answer's strength (%) for Answer.
+    const yMax = answer ? 12 : 8, unit = answer ? '%' : ' V';
     const X = v => tuning ? left + (W - left - right) * Math.log(v / x0) / Math.log(x1 / x0) : left + (W - left - right) * (v - x0) / (x1 - x0);
     const Y = v => top + (H - top - bottom) * (1 - Math.min(v, yMax) / yMax);
     g.font = '600 10px "Inter Tight", system-ui, sans-serif';
     g.fillStyle = 'rgba(244,241,234,.5)';
     g.strokeStyle = 'rgba(255,255,255,.1)';
     g.lineWidth = 1;
-    for (const v of [0, 2, 4, 6, 8]) {
+    // A short chart (a laptop screen) keeps every other line, so its labels never crowd.
+    const short = H < 90;
+    for (const v of answer ? (short ? [0, 6, 12] : [0, 4, 8, 12]) : (short ? [0, 4, 8] : [0, 2, 4, 6, 8])) {
       g.beginPath(); g.moveTo(left, Y(v) + .5); g.lineTo(W - right, Y(v) + .5); g.stroke();
-      g.fillText(v + ' V', 2, Y(v) + 3);
+      g.fillText(v + unit, 2, Y(v) + 3);
     }
-    const ticks = tuning ? [5, 10, 13.56, 20, 30] : [2, 4, 6, 8, 10];
+    // A narrow chart (a narrow panel) keeps fewer labels along the bottom, so they never collide.
+    const narrow = W < 270;
+    const ticks = tuning ? (narrow ? [5, 13.56, 30] : [5, 10, 13.56, 20, 30]) : (narrow ? [2, 5, 10] : [2, 4, 6, 8, 10]);
     // Each under its place; the last one ends at the chart's edge, so it is never cut off.
     for (const v of ticks) {
       const last = v === ticks[ticks.length - 1];
@@ -562,56 +1116,154 @@ function intro(experience) {
       g.fillText(tuning ? (last ? v + ' MHz' : String(v)) : v + ' cm', last ? W - right : X(v), H - 4);
     }
     g.textAlign = 'left';
-    // What the chip needs to wake.
-    g.strokeStyle = 'rgba(244,241,234,.75)';
-    g.setLineDash([3, 3]);
-    g.beginPath(); g.moveTo(left, Y(2)); g.lineTo(W - right, Y(2)); g.stroke();
-    g.setLineDash([]);
-    g.fillStyle = 'rgba(244,241,234,.8)';
-    g.textAlign = 'right';
-    g.fillText('wakes', W - right, Y(2) - 4);
-    g.textAlign = 'left';
+    // What the chip needs to wake (not on the answer's chart).
+    if (!answer) {
+      g.strokeStyle = 'rgba(244,241,234,.75)';
+      g.setLineDash([3, 3]);
+      g.beginPath(); g.moveTo(left, Y(2)); g.lineTo(W - right, Y(2)); g.stroke();
+      g.setLineDash([]);
+      g.fillStyle = 'rgba(244,241,234,.8)';
+      g.textAlign = 'right';
+      g.fillText('wakes', W - right, Y(2) - 4);
+      g.textAlign = 'left';
+    }
+    const nearest = tuning ? 0 : nearestFor(lab.set);
     if (tuning) {
       // The reader's frequency.
       g.strokeStyle = 'rgba(74,147,255,.7)';
       g.beginPath(); g.moveTo(X(13.56), top); g.lineTo(X(13.56), H - bottom); g.stroke();
+    } else {
+      // Closer than the card can come (a phone's camera island, or a turned card's edge resting
+      // on the reader), shaded as the Map's grey corner is: the curve there is where no card is.
+      if (nearest > x0 + .05) {
+        g.fillStyle = 'rgba(244,241,234,.06)';
+        g.fillRect(X(x0), top, X(nearest) - X(x0), H - top - bottom);
+      }
+      paintTerminalRule(g, X, top, bottom, H);
     }
+    // The other reader's curve, faint and dashed, named at its near end, just under its line,
+    // where the curve in use never is (the label used to land on the dot of the setting).
+    let otherName = null;
+    if (lab.other && lab.other.points.length) {
+      const pts = lab.other.points;
+      g.strokeStyle = 'rgba(244,241,234,.3)';
+      g.lineWidth = 1.2;
+      g.setLineDash([3, 3]);
+      g.beginPath();
+      pts.slice(0, Math.max(1, Math.ceil(pts.length * (lab.reveal ? smoother(0, 1, (performance.now() - lab.reveal) / 800) : 1))))
+        .forEach(([x, v], i) => (i ? g.lineTo(X(x), Y(v)) : g.moveTo(X(x), Y(v))));
+      g.stroke();
+      g.setLineDash([]);
+      const [x0, v0] = pts[0], name = lab.other.reader === 'phone' ? 'phone' : 'card reader';
+      const nameY = Math.min(H - bottom - 3, Y(Math.min(v0, yMax)) + 11), nameWidth = g.measureText(name).width;
+      g.fillStyle = 'rgba(244,241,234,.6)';
+      g.fillText(name, X(x0) + 3, nameY);
+      otherName = [X(x0) + 3 + nameWidth / 2, nameY - 4, nameWidth];
+    }
+    // On the panel's entrance the curves draw in from the left over 0.8 s, then the dot appears.
+    const drawn = lab.reveal ? smoother(0, 1, (performance.now() - lab.reveal) / 800) : 1;
+    const shownTo = Math.ceil(points.length * drawn);
     // The curve: warm where the chip wakes, dim where it does not.
     g.lineWidth = 2;
-    for (let i = 1; i < points.length; i++) {
+    for (let i = 1; i < shownTo; i++) {
       const [a, va] = points[i - 1], [b, vb] = points[i];
-      g.strokeStyle = (va + vb) / 2 >= 2 ? '#ffb52e' : 'rgba(255,181,46,.35)';
+      // The answer in blue, its colour in the close-up; nothing where the chip sleeps. Faint too
+      // where no card can be (closer than its nearest).
+      const reachable = (a + b) / 2 >= nearest - .05;
+      g.strokeStyle = answer ? (va > 0 && vb > 0 && reachable ? '#4a93ff' : 'rgba(74,147,255,.25)')
+        : (va + vb) / 2 >= 2 && reachable ? '#ffb52e' : 'rgba(255,181,46,.35)';
       g.beginPath(); g.moveTo(X(a), Y(va)); g.lineTo(X(b), Y(vb)); g.stroke();
     }
-    // Where the setting is now.
-    const nowX = tuning ? 13.56 : lab.set.distance, nowV = lab.m.raw;
+    // The peak named. On Tuning, where the card's own circuit resonates: metal behind the card
+    // moves it up (2 mm of metal: about 17 MHz), off the reader's 13.56, and a card tuned to
+    // match peaks on the reader's line. On Answer, where the answer is strongest: in between,
+    // not closest (about 2.5 cm over the card reader).
+    const peak = points.reduce((best, p) => (p[1] > best[1] ? p : best), points[0]);
+    if ((tuning || (answer && peak[1] > 0)) && drawn >= 1) {
+      const matched = tuning && Math.abs(peak[0] - 13.56) < .25;
+      const words = answer ? `strongest at ${peak[0].toFixed(1)} cm`
+        : matched ? 'tuned to the reader' : `card peaks at ${peak[0].toFixed(1)} MHz`;
+      g.save();
+      g.font = '600 9px "Inter Tight", system-ui, sans-serif';
+      const width = g.measureText(words).width, px = X(peak[0]), py = Y(Math.min(peak[1], yMax));
+      const fit = x => Math.min(W - right - width / 2, Math.max(left + width / 2, x));
+      // Where it may go, in order: just over the peak, just under it, then beside it. The first
+      // clear of the dot of the setting, the other reader's name and (on Tuning) the "wakes"
+      // label at the right end of the 2 V line. Boxes: [middle x, middle y, width].
+      const dot = [X(now.dot.x), Y(Math.min(now.dot.v, yMax)), 10];
+      const wakes = answer ? null : [W - right - 14, Y(2) - 8, 30];
+      const rule = !tuning && lab.set.reader === 'pad' ? [X(TERMINAL_CM) + 38, top + 4, 72] : null;
+      const clear = box => [dot, otherName, wakes, rule].every(other => !other
+        || Math.abs(box[0] - other[0]) > (box[2] + other[2]) / 2 + 3 || Math.abs(box[1] - other[1]) > 10);
+      const spots = [[fit(px), Math.max(top + 6, py - 9)], [fit(px), Math.min(H - bottom - 6, py + 12)],
+        [fit(px + width / 2 + 10), Math.max(top + 6, py - 4)], [fit(px - width / 2 - 10), Math.max(top + 6, py - 4)]];
+      // None clear (a short chart, crowded): left out; the chart's label for screen readers and
+      // the readings still say it.
+      const spot = spots.find(([sx, sy]) => clear([sx, sy, width]));
+      if (spot) {
+        const [x, middle] = spot, y = middle + 4;
+        g.strokeStyle = 'rgba(244,241,234,.45)';
+        g.lineWidth = 1;
+        g.beginPath(); g.moveTo(px, py - 1); g.lineTo(px, py - 4); g.stroke();
+        g.textAlign = 'center';
+        g.lineJoin = 'round';
+        g.strokeStyle = 'rgba(20,18,16,.75)';
+        g.lineWidth = 3;
+        g.strokeText(words, x, y);
+        g.fillStyle = 'rgba(244,241,234,.7)';
+        g.fillText(words, x, y);
+      }
+      g.restore();
+    }
+    // Where the setting is now (once the curve is in, growing to its size).
+    const nowX = now.dot.x, nowV = now.dot.v, dotSize = 4 * smoother(.85, 1, drawn);
     g.fillStyle = lab.m.awake ? '#ffffff' : '#ff8f7a';
-    g.beginPath(); g.arc(X(nowX), Y(nowV), 4, 0, Math.PI * 2); g.fill();
+    if (dotSize > .2) { g.beginPath(); g.arc(X(nowX), Y(nowV), dotSize, 0, Math.PI * 2); g.fill(); }
     // Above the scale (very close, or a strong reader): a small peak over the dot, and the value.
     if (nowV > yMax) {
       const x = X(nowX);
       g.beginPath(); g.moveTo(x - 4, top + 5); g.lineTo(x, top - 1); g.lineTo(x + 4, top + 5); g.fill();
       g.textAlign = x > W / 2 ? 'right' : 'left';
-      g.fillText(nowV.toFixed(0) + ' V', x + (x > W / 2 ? -8 : 8), top + 8);
+      g.fillText(nowV.toFixed(0) + unit, x + (x > W / 2 ? -8 : 8), top + 8);
       g.textAlign = 'left';
     }
-    canvas.setAttribute('aria-label', tuning
-      ? `Voltage at the chip against the reader's frequency, with the card tuned to ${lab.set.tune.toFixed(2)} MHz. At 13.56 MHz it gets ${lab.m.raw.toFixed(1)} volts; it needs 2.`
-      : `Voltage at the chip against distance. At ${lab.set.distance.toFixed(1)} cm it gets ${lab.m.raw.toFixed(1)} volts; it needs 2. It works up to ${lab.m.reach.toFixed(1)} cm.`);
+    canvas.setAttribute('aria-label', answer
+      ? `The answer's strength against distance: it rises as the card comes in, then falls very close. At ${lab.set.distance.toFixed(1)} cm it is ${(lab.m.dip * 100).toFixed(1)}%.${peak[1] > 0 ? ` It is strongest at ${peak[0].toFixed(1)} cm.` : ''}`
+      : tuning
+      ? `Voltage at the chip against the ${READERS[lab.set.reader].noun}'s frequency, with the card tuned to ${lab.set.tune.toFixed(2)} MHz. At 13.56 MHz it gets ${lab.m.raw.toFixed(1)} volts; it needs 2. Its circuit peaks at ${points.reduce((best, p) => (p[1] > best[1] ? p : best), points[0])[0].toFixed(1)} MHz.`
+      : `Voltage at the chip against distance. At ${lab.set.distance.toFixed(1)} cm it gets ${lab.m.raw.toFixed(1)} volts; it needs 2. It works up to ${lab.m.reach.toFixed(1)} cm.`
+        + (lab.set.reader === 'pad' ? ` A payment terminal must read a card up to ${TERMINAL_CM} cm away.` : '')
+        + (nearest > .55 ? ` Closer than ${nearest.toFixed(1)} cm, the card can’t be.` : ''));
   }
 
   // Ask in the lab: the question goes out; the card answers only if its chip is awake.
-  function labAsk() {
+  function labAsk(proof = false) {
     // A reader that is off makes no field, so it has no way to ask.
     if (step !== LAB || lab.talk || !lab.m?.on) return;
-    lab.talk = { start: clock, answers: Boolean(lab.m?.awake), still: reduce.matches };
-    labUi.ask.disabled = true;
+    lab.talk = { start: clock, answers: Boolean(lab.m?.awake), still: reduce.matches, proof };
+    if (proof) {
+      // A random challenge, new every time; the card answers with the code from its key (a copy's
+      // key is wrong), and the bank works out what the right code would be, to compare.
+      const challenge = random(4);
+      lab.talk.after = proofTalk(challenge, proofCode(lab.set.clone ? COPY_KEY : CARD_KEY, challenge));
+      lab.talk.genuine = !lab.set.clone;
+    }
+    film.traceFor = null;   // a new message, even if it has the same name as the last
+    labUi.ask.disabled = labUi.prove.disabled = true;
     // With reduced motion the clock stands still: the outcome shows, still, for a while.
     if (reduce.matches) {
       const asked = lab.talk;
-      setTimeout(() => { if (lab.talk === asked) { lab.talk = null; labUi.ask.disabled = false; invalidate(); } }, 5000);
+      setTimeout(() => { if (lab.talk === asked) { endTalk(); invalidate(); } }, 5000);
     }
     invalidate();
+  }
+
+  // The lab's conversation is over (or cut short): Ask and Prove it can be pressed again, if the
+  // reader is on.
+  function endTalk() {
+    lab.talk = null;
+    labUi.ask.disabled = labUi.prove.disabled = !lab.m?.on;
+    return null;
   }
 
   // The lab's conversation now (cinema.js `message`), or null once it is over.
@@ -619,15 +1271,27 @@ function intro(experience) {
     const t = lab.talk;
     if (!t) return null;
     const e = clock - t.start;
+    if (t.proof) {
+      // The proof: the challenge, then (only from an awake chip) the code.
+      if (reduce.matches) return t.answers ? message('response', 99) : message('challenge', 99);
+      if (!t.answers || e < t.after) {
+        if (!t.answers && e > proofSeconds('challenge') + 4) return endTalk();
+        return message('challenge', e);
+      }
+      const said = message('response', e - t.after);
+      if (said.landed >= 1 && e - t.after > proofSeconds('response') + 3.5) return endTalk();
+      return said;
+    }
     if (reduce.matches) return t.answers ? message('answer', 99) : message('ask', 99);
     if (!t.answers || e < ANSWER_AFTER) {
       const said = message('ask', e);
       // No answer comes: the readout says so for a few seconds, then it is over.
-      if (!t.answers && e > TALK.ask.length / SAMPLES_PER_BIT * .15 + 4) { lab.talk = null; labUi.ask.disabled = false; return null; }
+      if (!t.answers && e > TALK.ask.length / SAMPLES_PER_BIT * .15 + 4) return endTalk();
       return said;
     }
     const said = message('answer', e - ANSWER_AFTER);
-    if (said.landed >= 1 && e - ANSWER_AFTER > TALK.answer.length / SAMPLES_PER_BIT * .15 + 2) { lab.talk = null; labUi.ask.disabled = false; return null; }
+    // Held 3.5 s after the answer is in, so "Verified" and the check mark can be read.
+    if (said.landed >= 1 && e - ANSWER_AFTER > TALK.answer.length / SAMPLES_PER_BIT * .15 + 3.5) return endTalk();
     return said;
   }
 
@@ -662,18 +1326,51 @@ function intro(experience) {
       let text = plan.text, detail = plan.detail;
       if (plan.talk === 'ask' && talk) { text = plan.asking; detail = plan.askingDetail; }
       else if (plan.talk === 'answer' && msg && !msg.started) { text = plan.waiting; detail = plan.waitingDetail; }
+      // No answer to a question asked of a sleeping chip: still asleep, it has no power; woken since
+      // (brought closer), it missed the start of the question, and a chip only answers one it heard
+      // whole.
+      const unanswered = () => (lab.m.awake
+        ? { text: 'No answer. It woke too late.', detail: 'It missed the start of the question. Ask again.' }
+        : { text: 'No answer. The chip has no power.', detail: 'It needs about 2 volts to wake.' });
       if (plan.lab) {
         // The lab says what the setting does, or how the conversation is going.
         ({ text, detail } = labStatus(lab.set, lab.m));
-        if (lab.talk) {
+        if (lab.talk?.proof) {
+          const t = lab.talk, e = t.still ? 99 : clock - t.start, noun = READERS[lab.set.reader].noun;
+          const landed = b.message?.dir < 0 && b.message.landed >= 1;
+          if (e < proofSeconds('challenge')) { text = `The ${noun} asks: prove you’re real.`; detail = 'It sends a random number, new every time.'; }
+          else if (!t.answers) ({ text, detail } = unanswered());
+          else if (e < t.after) { text = 'The chip works out a code.'; detail = 'From the number and its secret key.'; }
+          else if (!landed) { text = 'The card answers with its code.'; detail = 'Only the right key gives the right code.'; }
+          else if (t.genuine) { text = 'Genuine. The code matches.'; detail = 'The bank checks it with its copy of the key.'; }
+          else { text = 'Rejected: the code is wrong.'; detail = 'A copy has the ID, but not the key.'; }
+        } else if (lab.talk) {
           const e = lab.talk.still ? 99 : clock - lab.talk.start, asked = TALK.ask.length / SAMPLES_PER_BIT * .15;
-          if (e < asked) { text = 'The reader asks: who are you?'; detail = 'It flicks its field off and on.'; }
-          else if (!lab.talk.answers) { text = 'No answer. The chip has no power.'; detail = 'It needs about 2 volts to wake.'; }
+          const noun = READERS[lab.set.reader].noun;
+          if (e < asked) { text = `The ${noun} asks: who are you?`; detail = 'It flicks its field off and on.'; }
+          else if (!lab.talk.answers) ({ text, detail } = unanswered());
           else if (e < ANSWER_AFTER) { text = 'The chip works out its answer.'; detail = 'In life this takes 86 millionths of a second.'; }
-          else { text = 'The card answers: ' + TALK.answer.words + '.'; detail = `The reader feels a ${(lab.m.dip * 100).toFixed(1)}% change.`; }
+          else if (!(b.message?.dir < 0 && b.message.landed >= 1)) { text = 'The card answers: ' + TALK.answer.words + '.'; detail = `The ${noun} feels a ${(lab.m.dip * 100).toFixed(1)}% change.`; }
+          // The whole answer is in: the reader has checked it.
+          else { text = `Verified. The ${noun} has the ID.`; detail = 'Its check byte matches the four ID bytes.'; }
+        }
+      }
+      // In the lab, a new sentence for the setting waits until it has held for a moment, so a
+      // slider swept through a passing state (a card turned past "Awake, but only just") doesn't
+      // flash that state's sentence on its way. Conversations speak at once.
+      // (A sentence that comes back before then cancels the wait.)
+      if (plan.lab && !lab.talk && text && shownText) {
+        const now = performance.now();
+        if (text === shownText) lab.nextText = null;
+        else {
+          if (lab.nextText !== text) { lab.nextText = text; lab.nextSince = now; setTimeout(invalidate, SENTENCE_HOLD + 20); }
+          if (now - lab.nextSince < SENTENCE_HOLD) text = '';
         }
       }
       if (text) say(text, detail);
+      // The closing explanation has no line of its own: the readout empties as it fades, so a
+      // screen reader never finds the last thing it said (a copy "Rejected", say) still there.
+      else if (plan.explain) say('', '');
       film.middleLabel.textContent = plan.lab ? 'Distance' : 'Real time';
       const said = b.message?.started && !b.message.done ? b.message : null;
       // While a message is on the air, the real time it has taken so far (in µs steps), so
@@ -691,9 +1388,12 @@ function intro(experience) {
       }
       // The chip's own power: none at the start of the tap, full once the current reaches it.
       // In the lab, the physics' own number (the level shown is still gliding toward it).
-      const charge = plan.lab && lab.m ? Math.min(1, lab.m.raw / lab.m.wake) : b.charge;
+      const charge = plan.lab && lab.m ? chipPower(lab.m) : b.charge;
       film.powerValue.textContent = Math.round(charge * 100) + '%';
       film.powerBar.style.setProperty('--to', charge);
+      // In the lab, power short of what the chip needs is shown as short (red): "68%" with the
+      // chip asleep is 68% of what it needs, not 68% working.
+      film.power.classList.toggle('is-short', Boolean(plan.lab && lab.m && !lab.m.awake));
       // The radio frequency: off with the lab's reader, and its wave stops.
       const off = Boolean(plan.lab && lab.m && !lab.m.on);
       if (film.frequency.classList.contains('is-off') !== off) {
@@ -711,9 +1411,10 @@ function intro(experience) {
       film.middleValue.textContent = cm.toFixed(1) + ' cm';
       film.middleBar.style.setProperty('--from', 0);
       film.middleBar.style.setProperty('--to', 1 - (cm - NEAREST) / (10 - NEAREST));
-      const share = power(cm);
+      const share = chipShare(cm);
       film.powerValue.textContent = Math.round(share * 100) + '%';
       film.powerBar.style.setProperty('--to', share);
+      film.power.classList.remove('is-short');
     }
 
     // The arrows and where you are, after the drop. In the ask step the right arrow is Ask.
@@ -743,16 +1444,37 @@ function intro(experience) {
     // While the card's chip works out its answer, its label points to it.
     const working = docked && STEPS[step].talk === 'answer' && b.message && !b.message.started;
     const inLab = docked && step === LAB;
-    const names = working ? ['chip'] : inLab ? ['chip', ...(lab.set.metal > 0 ? ['metal'] : [])] : STEPS[step]?.labels ?? [];
+    const names = working ? ['chip'] : inLab
+      ? ['chip', ...(lab.set.metal > 0 ? ['metal'] : []), ...(b.phone > .97 ? ['phoneCoil'] : []), ...(b.reachShow > .5 ? ['reach'] : [])]
+      : STEPS[step]?.labels ?? [];
     paintLabels3D(docked && available ? names : []);
-    // The lab's panel shows only in its step, once the readout is in.
+    // The lab's panel shows only in its step, once the readout is in. It is shown, leaving (fading
+    // and sliding out, already inert so nothing in it keeps the focus), or hidden.
     const labShown = inLab && b.panel > .5;
-    if (labUi.panel.hidden === labShown) {
-      labUi.panel.hidden = !labShown;
-      if (labShown) requestAnimationFrame(() => { labUi.panel.classList.add('is-shown'); paintPlot(); });
-      else labUi.panel.classList.remove('is-shown');
+    const panelState = labUi.panel.hidden ? 'hidden' : labUi.panel.inert ? 'leaving' : 'shown';
+    if (labShown && panelState !== 'shown') {
+      clearTimeout(lab.leaving);
+      labUi.panel.hidden = labUi.panel.inert = false;
+      // Its entrance, from hidden: the readings count up from nothing, the chart's curves draw in
+      // from the left and then its dot appears, and the amber lines under the sliders sweep in
+      // (styles.css). Called back while leaving, it simply comes back as it is.
+      if (panelState === 'hidden' && !reduce.matches) {
+        lab.tweens = { field: 0, volts: 0, reach: 0, answer: lab.targets?.answer === null ? null : 0, watts: 0 };
+        lab.reveal = performance.now();
+      }
+      requestAnimationFrame(() => { labUi.panel.classList.add('is-shown'); paintPlot(); paintTabsPill(); });
+    } else if (!labShown && panelState === 'shown') {
+      // Its exit: the same fade and slide as its entrance, backwards (.45 s), then hidden. A focus
+      // left in it goes to the readout's Next (to the explanation, `focusWhenDone` sees to it).
+      if (labUi.panel.contains(document.activeElement) && step !== LAST) film.next.focus({ preventScroll: true });
+      labUi.panel.classList.remove('is-shown');
+      labUi.panel.inert = true;
+      if (reduce.matches) labUi.panel.hidden = true;
+      else lab.leaving = setTimeout(() => { labUi.panel.hidden = true; }, 460);
     }
     stage.classList.toggle('is-lab', inLab);
+    if (labShown) paintLabNumbers(Math.min(.05, (performance.now() - (lab.paintedAt ?? performance.now())) / 1000));
+    lab.paintedAt = performance.now();
 
     // The lights going down: the backdrop, and the readout turning dark with it.
     film.backdrop.style.opacity = b.dark;
@@ -769,9 +1491,11 @@ function intro(experience) {
     const said = b.message;
     if (docked && said?.started && (said.landed < 1 || reduce.matches)) {
       const asking = said.dir > 0;
+      const device = STEPS[step].lab && lab.set.reader === 'phone' ? 'Phone' : 'Reader';  // (the proof too)
       tag = {
         kind: asking ? 'ask' : 'answer', text: said.words,
-        note: `${asking ? 'Reader → card' : 'Card → reader'} · ${said.bits.length} bits · ${said.frameMs.toFixed(2)} ms`,
+        // (In the lab with the phone, the phone is the reader.)
+        note: `${asking ? `${device} → card` : `Card → ${device.toLowerCase()}`} · ${said.bits.length} bits · ${said.frameMs.toFixed(2)} ms`,
       };
     } else if (docked && available && STEPS[step].shot === 'read') {
       tag = { kind: 'check', text: CARD_ID, note: '', at: scene.anchor('readerChip') };
@@ -784,27 +1508,35 @@ function intro(experience) {
       }
       film.tag.dataset.kind = tag.kind;
       film.tag.style.transform = tag.at ? `translate3d(${tag.at.x}px, ${tag.at.y}px, 0)` : '';
-      if (tag.kind !== 'check') paintTrace(said);
+      if (tag.kind !== 'check') paintTrace(said, STEPS[step].lab ? b.answerScale ?? 1 : 1);
     }
     // Not while it plays by itself: then there is nothing to do but watch.
-    film.hint.classList.toggle('is-shown', docked && b.dark > .6 && !orbited && !auto.on);
+    // In the lab the hint says the card can be moved, then that the chart can be dragged too;
+    // elsewhere, that the view can be turned.
+    const hint = inLab ? (cardMoved ? 'Drag on the chart too.' : 'Drag the card to move it.') : 'Drag to look around';
+    if (film.hint.textContent !== hint) film.hint.textContent = hint;
+    // (Not without 3D: neither the card nor the view can be dragged then.)
+    film.hint.classList.toggle('is-shown', available && docked && b.dark > .6 && !auto.on && (inLab ? !(cardMoved && chartPressed) : !orbited));
 
     // The check mark, drawn over the reader, and the explanation at the end.
     const top = available ? scene.anchor('readerTop') : { x: layout.reader.x, y: layout.reader.y - layout.reader.height * .3 };
     film.check.style.transform = `translate(${top.x}px, ${top.y - layout.reader.width * .16}px) translate(-50%, -100%)`;
-    film.check.style.opacity = Math.min(1, b.check * 3) * (1 - b.explain);
-    film.check.style.setProperty('--draw', b.check);
+    // A check mark for a card read (or found genuine), a red cross for a copy turned down.
+    const deny = (b.deny || 0) > b.check, mark = Math.max(b.check, b.deny || 0);
+    if (film.check.classList.contains('is-deny') !== deny) film.check.classList.toggle('is-deny', deny);
+    film.check.style.opacity = Math.min(1, mark * 3) * (1 - b.explain);
+    film.check.style.setProperty('--draw', mark);
     // The explanation comes in once the readout has gone, so they never show together.
     const explain = b.explain * (1 - smoother(.3, .45, b.panel));
     show(film.explain, explain, 16);
     film.explain.classList.toggle('is-shown', explain > .02);
     if (docked && step >= LAST - 1 && b.check > .5 && status.textContent === '') status.textContent = 'Card detected.';
     const done = docked && step === LAST && explain > .3;
-    if (chapterLink.hidden === done) chapterLink.hidden = retry.hidden = film.replay.hidden = !done;
-    // Whoever pressed Next to get here can continue straight into the lesson.
+    if (retry.hidden === done) retry.hidden = film.replay.hidden = !done;
+    // Whoever pressed Next to get here lands on Watch again once it shows.
     if (done && focusWhenDone) {
       focusWhenDone = false;
-      chapterLink.focus({ preventScroll: true });
+      film.replay.focus({ preventScroll: true });
     }
   }
 
@@ -881,15 +1613,27 @@ function intro(experience) {
         // The lab: what the setting makes of the tap, and its own conversation.
         if (!lab.m) setLab({});
         said = labMessage();
-        const levels = { ...plan.levels, ...labLevels(lab.set, lab.m), reply: lab.talk?.answers ? 1 : 0 };
+        // The card's answer only once it answers: while the reader still asks, nothing comes back
+        // (it used to show the answer coming down from the moment Ask was pressed).
+        const levels = { ...plan.levels, ...labLevels(lab.set, lab.m), reply: lab.talk?.answers && said?.dir < 0 ? 1 : 0 };
+        // Once the whole answer is in, the reader confirms it, as in the tap's last step: the check
+        // mark over it, the pad's light (or the phone's screen) turning green.
+        if (lab.talk?.answers && said?.dir < 0 && said.landed >= 1) {
+          // A proof's code that is wrong (a copy) is turned down: the light goes red, no check mark.
+          if (lab.talk.proof && !lab.talk.genuine) levels.deny = 1;
+          else levels.check = 1;
+        }
         goal = said ? talkLevels(levels, said) : levels;
         if (said && reduce.matches && said.dir < 0) goal = { ...goal, reply: 1 };
       }
       // With reduced motion the answer's one still frame keeps it on its way down to the
       // reader, so the picture still shows which way it goes.
-      if (said && reduce.matches && said.dir < 0) goal = { ...goal, reply: plan.levels.reply };
+      // (Not in the lab, whose own still frame above already keeps it: this used to set it back to
+      // the lab step's own level, none, so the lab's answer never showed with reduced motion.)
+      if (said && reduce.matches && said.dir < 0 && !plan.lab) goal = { ...goal, reply: plan.levels.reply };
       // Aim where the card is going, so the camera and the card arrive together.
       look = view(plan.shot, goal.gap, rest, layout.compact);
+      if (plan.lab) look.zoom *= 1 - .1 * shown.phone.value;
       if (plan.talk && !reduce.matches) {
         // While they talk the camera never quite stops: a slight, slow drift.
         look.spin += Math.sin(clock * .19) * .035;
@@ -918,6 +1662,8 @@ function intro(experience) {
       // second and a half, like lights dimming in a cinema: at the same pace as the rest
       // the whole page swung from paper to dark in half a second.
       const omega = key === 'dark' ? Math.min(pace, 2.4) : pace;
+      // With reduced motion the lab's readers swap at once, without sliding.
+      if (key === 'phone' && reduce.matches) { shown[key].value = goal[key]; shown[key].velocity = 0; }
       chase(shown[key], goal[key], omega, dt, key === 'gap' ? 1e-5 : .0008);
       settled &&= resting(shown[key], goal[key]);
     }
@@ -987,7 +1733,7 @@ function intro(experience) {
     unturn();
     status.textContent = '';
     focusWhenDone = false;
-    chapterLink.hidden = retry.hidden = film.replay.hidden = true;
+    retry.hidden = film.replay.hidden = true;
     film.nav.hidden = true;
     dropButton.hidden = !canDrop;
     invalidate();
@@ -1016,7 +1762,13 @@ function intro(experience) {
     step = clamp(index, 0, LAST);
     auto.held = auto.after = 0;
     // A conversation started in the lab ends when it is left.
-    if (lab.talk) { lab.talk = null; labUi.ask.disabled = false; }
+    if (lab.talk) endTalk();
+    // From the tap's third step on, the phone (the lab's second reader) is made ready in the
+    // background: the landing page has usually fetched its 3 MB model already, but reading it and
+    // preparing it to draw takes a moment, so it is done well before the lab's demo turns to the
+    // phone (21.3 s in). Made ready only on reaching the lab, a slow device could miss that, and
+    // the demo kept the card reader.
+    if (step >= 2 && available) scene.usePhone();
     // The card answers by itself, a moment after the step starts; the question waits for Ask.
     talk = STEPS[step].talk === 'answer' ? { name: 'answer', start: Math.max(answerAt ?? 0, clock + .2) } : null;
     unturn();
@@ -1050,46 +1802,106 @@ function intro(experience) {
   }
   for (const tab of labUi.tabs) {
     tab.addEventListener('click', () => {
+      if (tab.dataset.chart !== lab.chart && !reduce.matches) lab.tabFade = { image: copyOf(labUi.plot), start: performance.now() };
       lab.chart = tab.dataset.chart;
       for (const other of labUi.tabs) other.setAttribute('aria-pressed', String(other === tab));
+      paintPlotPress();
       setLab({}, true);
     });
   }
-  // Situations to try, one click each.
-  labUi.presets.replaceChildren(...Object.entries(PRESETS).map(([key, preset]) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = preset.label;
+  // The chart is a control too: press or drag on it to set what its axes show. On Distance and
+  // Answer, the distance; on the Map, the distance and the angle at once; on Tuning, the card's
+  // tuning (its peak goes where you press). A press where no card can be (the Map's grey) leaves
+  // it as near as it can come. The sliders stay, for the keyboard.
+  let plotHeld = null;
+  function plotPress(event) {
+    const box = labUi.plot.getBoundingClientRect();
+    const fx = clamp((event.clientX - box.left - PLOT.left) / (box.width - PLOT.left - PLOT.right));
+    const fy = clamp((event.clientY - box.top - PLOT.top) / (box.height - PLOT.top - PLOT.bottom));
+    const distance = Math.round((.5 + 9.5 * fx) * 10) / 10;
+    if (lab.chart === 'tuning') setLab({ tune: sliderToTune(tuneToSlider(5 * 6 ** fx)) });
+    else if (lab.chart === 'map') setLab({ distance, angle: Math.round(90 * (1 - fy)) });
+    else setLab({ distance });
+  }
+  // What a press on the chart does, said on it, and how a touch on it moves: the Map takes every
+  // direction; the others only across, so a swipe up or down still scrolls the panel.
+  // The chart tabs' sliding highlight (styles.css): the pressed tab's place and width, measured,
+  // as the tabs differ in width. Again whenever the layout may have changed (`measure`).
+  function paintTabsPill() {
+    const tab = labUi.tabs.find(button => button.getAttribute('aria-pressed') === 'true');
+    if (!tab || !tab.offsetWidth) return;
+    tab.parentElement.style.setProperty('--pill-x', tab.offsetLeft + 'px');
+    tab.parentElement.style.setProperty('--pill-w', tab.offsetWidth + 'px');
+  }
+  function paintPlotPress() {
+    paintTabsPill();
+    labUi.plot.title = { tuning: 'Press or drag to tune the card', map: 'Press or drag to move and turn the card' }[lab.chart]
+      ?? 'Press or drag to move the card';
+    labUi.plot.style.touchAction = lab.chart === 'map' ? 'none' : 'pan-y';
+  }
+  paintPlotPress();
+  labUi.plot.addEventListener('pointerdown', event => {
+    if (event.button !== 0 || step !== LAB) return;
+    takeOver();
+    chartPressed = true;
+    plotHeld = event.pointerId;
+    labUi.plot.setPointerCapture(event.pointerId);
+    labUi.plot.classList.add('is-held');
+    plotPress(event);
+  });
+  labUi.plot.addEventListener('pointermove', event => { if (event.pointerId === plotHeld) plotPress(event); });
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+    labUi.plot.addEventListener(type, event => {
+      if (event.pointerId !== plotHeld) return;
+      plotHeld = null;
+      labUi.plot.classList.remove('is-held');
+    });
+  }
+  // The tag's size: a bank card, a key ring tag or a sticker.
+  for (const button of labUi.tags) {
     button.addEventListener('click', event => {
       if (event.isTrusted) takeOver();
-      const { label, ...set } = preset;
-      setLab(set);
+      setLab({ tag: button.dataset.tag });
     });
-    return button;
-  }));
+  }
+  // Which reader: the card reader or a phone.
+  for (const button of labUi.readers) {
+    button.addEventListener('click', event => {
+      if (event.isTrusted) takeOver();
+      chooseReader(button.dataset.reader);
+    });
+  }
+  // Opened, the numbers behind it are filled in at once (and kept up while it stays open).
+  labUi.behind?.addEventListener('toggle', paintBehind);
   // The card's ID: four bytes in hex. Its check byte follows as it is typed, and its answer
-  // carries the new ID.
+  // carries the new ID. One that can't be a card's says why under the field: at once for an ID
+  // starting with 88 (the cascade tag), and for one that isn't four bytes only once the field is
+  // left, so it doesn't scold every half-typed ID.
   labUi.id.addEventListener('input', event => {
     if (event.isTrusted) takeOver();
-    const bytes = parseId(labUi.id.value);
-    labUi.id.setAttribute('aria-invalid', String(!bytes));
-    if (!bytes) { labUi.check.textContent = '··'; return; }
+    const bytes = parseId(labUi.id.value), problem = idProblem(labUi.id.value);
+    labUi.id.setAttribute('aria-invalid', String(Boolean(problem)));
+    labUi.idNote.textContent = bytes && problem ? problem : '';
+    if (problem) { labUi.check.textContent = '··'; return; }
     setCardId(bytes);
     labUi.check.textContent = hex([checkByte(bytes)]);
   });
   labUi.id.addEventListener('blur', () => {
     const bytes = parseId(labUi.id.value);
     if (bytes) labUi.id.value = hex(bytes);
+    labUi.idNote.textContent = idProblem(labUi.id.value) ?? '';
   });
   labUi.ask.addEventListener('click', event => { if (event.isTrusted) takeOver(); labAsk(); });
+  labUi.prove.addEventListener('click', event => { if (event.isTrusted) takeOver(); labAsk(true); });
   labUi.reset.addEventListener('click', event => {
     if (event.isTrusted) takeOver();
     const bytes = parseId(DEFAULT_ID);
     setCardId(bytes);
     labUi.id.value = DEFAULT_ID;
     labUi.id.setAttribute('aria-invalid', 'false');
+    labUi.idNote.textContent = '';
     labUi.check.textContent = hex([checkByte(bytes)]);
-    setLab({ ...LAB_START });
+    setLab({ ...startFor('pad') });
   });
   setLab({});
   film.back.addEventListener('click', event => { if (event.isTrusted) takeOver(); go(step - 1); });
@@ -1142,7 +1954,9 @@ function intro(experience) {
       levels: () => lastLevels && Object.fromEntries(Object.entries(lastLevels).filter(([, value]) => typeof value === 'number')),
       lab: () => ({ set: { ...lab.set }, m: lab.m && { ...lab.m }, talk: Boolean(lab.talk) }),
       setLab: next => setLab(next),
+      reader: reader => chooseReader(reader),
       ask: () => labAsk(),
+      prove: () => labAsk(true),
       shots: SHOTS,
       scene: () => scene,
     };
@@ -1162,7 +1976,27 @@ function intro(experience) {
   stage.addEventListener('dragstart', event => event.preventDefault());
   stage.addEventListener('selectstart', event => { if (detected) event.preventDefault(); });
 
-  // After the drop, dragging anywhere on the stage (not on a button) turns the camera.
+  // Whether a point on the stage (in its own pixels) is on the card, as it lies over the reader:
+  // the card's outline worked out from where its chip and the end of its coil are on screen.
+  function overCard(x, y) {
+    if (!available || step !== LAB) return false;
+    const chip = scene.anchor('chip'), end = scene.anchor('cardCoil');
+    const dx = end.x - chip.x, dy = end.y - chip.y, length = Math.hypot(dx, dy) || 1;
+    // The chip sits 27.7 mm left of the card's middle and the coil's end 40.2 mm right of it; the
+    // card is 85.6 by 54 mm. Along the card from its middle, and across it, in card millimetres.
+    const mm = length / 67.9, mid = { x: chip.x + dx * 27.7 / 67.9, y: chip.y + dy * 27.7 / 67.9 };
+    const along = ((x - mid.x) * dx + (y - mid.y) * dy) / length / mm;
+    const across = Math.abs((y - mid.y) * dx - (x - mid.x) * dy) / length;
+    return Math.abs(along) < 46 && across < Math.max(34, 30 * mm);
+  }
+  const stagePoint = event => {
+    const rect = stage.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  };
+
+  // After the drop, dragging anywhere on the stage (not on a button) turns the camera. In the lab,
+  // dragging the card itself moves it instead: up takes it away from the reader, down brings it in,
+  // and everything follows the physics as it goes (as the distance slider does).
   stage.addEventListener('pointerdown', event => {
     if (!detected || step < 0 || step >= LAST || event.button !== 0) return;
     if (event.target.closest('button, a, input, .readout, .cine-explain, .try')) return;
@@ -1171,11 +2005,28 @@ function intro(experience) {
     // take over the next one, and the view would stop turning.
     event.preventDefault();
     getSelection()?.removeAllRanges();
+    const at = stagePoint(event);
+    if (overCard(at.x, at.y)) {
+      // About a fortieth of the stage's height a centimetre: the whole 10 cm in a quarter of it.
+      cardDrag = { id: event.pointerId, y: event.clientY, from: lab.set.distance, perCm: stage.clientHeight / 40 };
+      try { stage.setPointerCapture(event.pointerId); } catch {}
+      stage.classList.add('is-moving-card');
+      return;
+    }
     orbitDrag = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: 0 };
     try { stage.setPointerCapture(event.pointerId); } catch {}
     stage.classList.add('is-orbiting');
   });
+  // The docked stage lets a vertical swipe scroll the page (styles.css `touch-action: pan-y`), so
+  // on a touch screen a finger moving the card would scroll instead: while the card is held, its
+  // touch doesn't scroll. (A swipe that starts off the card still scrolls, as before.)
+  stage.addEventListener('touchmove', event => { if (cardDrag && event.cancelable) event.preventDefault(); }, { passive: false });
   stage.addEventListener('pointermove', event => {
+    if (cardDrag?.id === event.pointerId) {
+      const distance = Math.round((cardDrag.from + (cardDrag.y - event.clientY) / cardDrag.perCm) * 10) / 10;
+      if (distance !== lab.set.distance) { setLab({ distance }); cardMoved = true; }
+      return;
+    }
     if (orbitDrag?.id !== event.pointerId) return;
     // Each move adds only what the pointer moved since the last one, so a drag that runs past
     // the tilt's end, or far off the stage, never leaves slack to undo: turning back answers
@@ -1193,6 +2044,12 @@ function intro(experience) {
   });
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
     stage.addEventListener(type, event => {
+      if (cardDrag?.id === event.pointerId) {
+        cardDrag = null;
+        stage.classList.remove('is-moving-card');
+        wake();
+        return;
+      }
       if (orbitDrag?.id !== event.pointerId) return;
       orbitDrag = null;
       stage.classList.remove('is-orbiting');
@@ -1204,6 +2061,11 @@ function intro(experience) {
     if (event.pointerType !== 'mouse') {
       clearMouseTilt();
       return;
+    }
+    // Over the card in the lab, the pointer says it can be moved up and down.
+    if (!event.buttons) {
+      const at = stagePoint(event), over = detected && overCard(at.x, at.y);
+      if (stage.classList.contains('is-over-card') !== over) stage.classList.toggle('is-over-card', over);
     }
     if (event.buttons || reduce.matches) return;
     const rect = stage.getBoundingClientRect();

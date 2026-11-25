@@ -15,6 +15,7 @@
 import * as THREE from 'three';
 import { squarePoint, COIL_Z, COIL_HALF, COIL_RADIUS, CHIP as READER_CHIP } from './reader-model.js';
 import { HOVER } from './cinema.js';
+import { PHONE_COIL, PHONE_CHIP } from './phone-reader.js';
 
 const WARM = new THREE.Color('#ffb52e');   // electricity, while power comes in
 const COOL = new THREE.Color('#2f7dff');   // the card's answer
@@ -36,17 +37,19 @@ function glowTexture() {
 }
 
 // A band in the shape of the reader's coil, `band` metres wide, centred on its outer
-// turn: one ring of the field (a thin bright core, and a wide faint halo round it).
+// turn: one ring of the field (a thin bright core, and a wide faint halo round it). The phone's
+// coil is round: a rounded square whose corners are as big as its half-width.
 const RING_HALF = COIL_HALF - .002;
-function ringGeometry(band) {
+const PHONE_HALF = PHONE_COIL.radius - .001;
+function ringGeometry(band, ringHalf = RING_HALF, corner = COIL_RADIUS - .002) {
   const outer = new THREE.Shape(), inner = new THREE.Path();
-  const steps = 160, half = RING_HALF + band / 2, radius = COIL_RADIUS - .002 + band / 2;
+  const steps = 160, half = ringHalf + band / 2, radius = corner + band / 2;
   for (let i = 0; i <= steps; i++) {
     const [x, y] = squarePoint(half, radius, i / steps);
     if (i) outer.lineTo(x, y); else outer.moveTo(x, y);
   }
   for (let i = steps; i >= 0; i--) {
-    const [x, y] = squarePoint(half - band, radius - band, i / steps);
+    const [x, y] = squarePoint(half - band, Math.max(1e-5, radius - band), i / steps);
     if (i === steps) inner.moveTo(x, y); else inner.lineTo(x, y);
   }
   outer.holes.push(inner);
@@ -141,9 +144,10 @@ const AT_CARD = {
 const SPREAD = { x: 0, y: 0, sx: 1.22, sy: 1.22, spin: 0 };
 const lerp = (a, b, k) => a + (b - a) * k;
 // The reader's field at height z (m) over its coil, as a share of its strength at the coil:
-// on the axis of a loop of radius R it falls as (R² / (R² + z²))^1.5.
-const R2 = .035 ** 2;
-const fieldAt = z => (R2 / (R2 + z * z)) ** 1.5;
+// on the axis of a loop of radius R it falls as (R² / (R² + z²))^1.5. The phone's coil is
+// smaller (21 mm in the physics engine, js/rfid/physics.js), so its field dies away sooner.
+const fieldAt = (z, R = .035) => (R * R / (R * R + z * z)) ** 1.5;
+const PHONE_R = .021;
 const blendShape = (a, b, k, out) => {
   for (const key of ['x', 'y', 'sx', 'sy', 'spin']) out[key] = lerp(a[key], b[key], k);
   return out;
@@ -154,9 +158,11 @@ export function buildEffects() {
   const onCard = new THREE.Group();  // in the card's frame
   const glow = glowTexture();
 
-  // The field's rings: enough of each to fill the gap. Each is a core and a halo.
+  // The field's rings: enough of each to fill the gap. Each is a core and a halo. The phone's
+  // are round, the size of its coil.
   const core = ringGeometry(.0013), halo = ringGeometry(.0055);
-  const makeRings = color => Array.from({ length: Math.ceil(CROSS / EVERY) + 1 }, () => {
+  const phoneCore = ringGeometry(.0013, PHONE_HALF, PHONE_HALF), phoneHalo = ringGeometry(.0055, PHONE_HALF, PHONE_HALF);
+  const makeRings = (color, core, halo) => Array.from({ length: Math.ceil(CROSS / EVERY) + 1 }, () => {
     const mesh = new THREE.Mesh(core, new THREE.MeshBasicMaterial({
       color, transparent: true, opacity: 0, depthWrite: false, depthTest: false, side: THREE.DoubleSide, toneMapped: false,
     }));
@@ -168,7 +174,12 @@ export function buildEffects() {
     table.add(mesh);
     return mesh;
   });
-  const up = makeRings(UP_COLOR), down = makeRings(COOL);
+  const up = makeRings(UP_COLOR, core, halo), down = makeRings(COOL, core, halo);
+  const phoneUp = makeRings(UP_COLOR, phoneCore, phoneHalo), phoneDown = makeRings(COOL, phoneCore, phoneHalo);
+  // The phone's rings start the size of its coil, and reach the card's coil in its shape.
+  const PHONE_CARD = { ...AT_CARD, sx: .0402 / PHONE_HALF, sy: .0246 / PHONE_HALF };
+  const phoneCard = { ...PHONE_CARD };
+  const PHONE_SPREAD = { x: 0, y: 0, sx: 1.22, sy: 1.22, spin: 0 }, phoneLanding = { ...PHONE_SPREAD };
   const landing = { ...AT_CARD }, cardShape = { ...AT_CARD };
   // How far the beads on each wire have run. It adds up frame by frame, so a change of
   // speed or of direction never makes them jump: they slow, stop and turn round.
@@ -206,6 +217,12 @@ export function buildEffects() {
   const readerBand = currentWire(Array.from({ length: 240 }, (_, i) => [...squarePoint(COIL_HALF - .0004, COIL_RADIUS - .0002, i / 240), COIL_Z + .0004]),
     { radius: .0008, closed: true, count: 6, base: .05 });
   table.add(readerBand.mesh);
+  // The same round the phone's coil: its outer turn, just over the antenna.
+  const phoneBand = currentWire(Array.from({ length: 240 }, (_, i) => {
+    const a = i / 240 * Math.PI * 2;
+    return [PHONE_COIL.radius * Math.cos(a), PHONE_COIL.radius * Math.sin(a), PHONE_COIL.z + .0006];
+  }), { radius: .0007, closed: true, count: 5, base: .05 });
+  table.add(phoneBand.mesh);
 
   // The current in the card, drawn over its copper: round the big coil's outer turn (where
   // the rings land), round the chip module's coil, and along the module's two wires into the
@@ -231,7 +248,14 @@ export function buildEffects() {
   // right now as the card feels it (`amp`, 0 in a gap), the card's switch (`load`), how
   // strong the current in the reader's coil is (`reader`) and how far it has turned blue
   // as it takes the answer in (`reading`).
+  // `padShift`, `phoneShift` ({ x, z }, metres): where each reader is while the lab swaps them,
+  // so its field and its current travel with it instead of waiting in the middle.
+  const NO_SHIFT = { x: 0, z: 0 };
+  const padFrom = { ...AT_READER }, phoneFrom = { x: 0, y: 0, sx: 1, sy: 1, spin: 0 };
   function update(b, cardZ, talk = { amp: 1, load: 0, reader: 0, reading: 0 }) {
+    const padShift = talk.padShift || NO_SHIFT, phoneShift = talk.phoneShift || NO_SHIFT;
+    padFrom.x = padShift.x;
+    phoneFrom.x = phoneShift.x;
     const any = b.field + b.reply + b.thinking + b.power + b.blink + b.read + b.receive + talk.reader;
     table.visible = onCard.visible = any > .003;
     // The clock is kept even while nothing shows, so the beads carry on from where they were
@@ -247,8 +271,20 @@ export function buildEffects() {
     // Where the rings land: spread while the card is in the hand, on the card's coil once it
     // is down, blending between the two as it docks so nothing jumps.
     // The card's coil as the rings meet it: narrower when the card is turned away (the lab).
-    cardShape.sy = AT_CARD.sy * Math.max(.05, Math.cos(b.tilt || 0));
-    const to = blendShape(SPREAD, cardShape, smoothstep(0, 1, b.dock), landing);
+    const facing = Math.abs(Math.cos(b.tilt || 0)), size = 1 + ((b.tagScale ?? 1) - 1) * (b.dock || 0);
+    // The card's coil, as big as the lab's tag (a key ring tag's is smaller), and narrower turned away.
+    cardShape.sx = AT_CARD.sx * size;
+    cardShape.sy = AT_CARD.sy * size * Math.max(.05, facing);
+    phoneCard.sx = PHONE_CARD.sx * size;
+    phoneCard.sy = PHONE_CARD.sy * size * Math.max(.05, facing);
+    // The rings take the card's coil's shape only as far as the card faces the reader: turned
+    // side-on, little of the field goes through its coil, so they keep spreading past it rather
+    // than closing onto it (they used to land on it even at 80°).
+    const to = blendShape(SPREAD, cardShape, smoothstep(0, 1, b.dock) * facing, landing);
+    const phoneTo = blendShape(PHONE_SPREAD, phoneCard, facing, phoneLanding);
+    // Which reader (the lab): the pad's field fades out over the first half of the swap, the
+    // phone's comes in over the second, so the two never show together.
+    const phone = b.phone || 0, padShare = 1 - smoothstep(0, .5, phone), phoneShare = smoothstep(.5, 1, phone);
     const top = cardZ + .00034;
     // In the lab the rings fade as they rise, as the field does with height, and a metal
     // plate behind the card soaks up what would reach it.
@@ -256,20 +292,28 @@ export function buildEffects() {
     // (The metal's share is taken away over the upper half of the climb, so the rings visibly
     // die out before they reach the plate.)
     const upFade = (p, z) => lerp(1, fieldAt(z - COIL_Z), falloff) * (1 - soak * smoothstep(.15, .7, p));
+    const phoneUpFade = (p, z) => lerp(1, fieldAt(z - COIL_Z, PHONE_R), falloff) * (1 - soak * smoothstep(.15, .7, p));
     // The card's answer is a change in the field near its coil, weaker by the reader.
     const downFade = (p, z) => lerp(1, fieldAt(top - z), falloff * .7);
     // On the light page, while the card is still in the hand, the rings are lighter.
     const paper = 1 - (b.dark || 0), halo = b.dark || 0;
-    stream(up, t, b.field * (said?.dir > 0 ? .12 + .88 * amp : 1) * (1 - .5 * paper), AT_READER, to, COIL_Z + .0004, top, halo, upFade);
+    const upLevel = b.field * (said?.dir > 0 ? .12 + .88 * amp : 1) * (1 - .5 * paper);
+    stream(up, t, upLevel * padShare, padFrom, to, COIL_Z + .0004 + padShift.z, top, halo, upFade);
+    stream(phoneUp, t, upLevel * phoneShare, phoneFrom, phoneTo, COIL_Z + .0006 + phoneShift.z, top, halo, phoneUpFade);
     // Down: the answer, from the card's coil to the reader's. It swells each time the card
     // closes its switch.
     // (Once the answer has landed, full strength: then only a still frame, with reduced
     // motion, still shows it; blended over the landing, so nothing jumps.)
-    stream(down, t, b.reply * (b.answerScale ?? 1) * (said?.dir < 0 ? lerp(.35 + .65 * load, 1, said.landed) : 1), cardShape, AT_READER, top, COIL_Z + .0004, halo, downFade);
+    const downLevel = b.reply * (b.answerScale ?? 1) * (said?.dir < 0 ? lerp(.35 + .65 * load, 1, said.landed) : 1);
+    stream(down, t, downLevel * padShare, cardShape, padFrom, top, COIL_Z + .0004 + padShift.z, halo, downFade);
+    stream(phoneDown, t, downLevel * phoneShare, phoneCard, phoneFrom, top, COIL_Z + .0006 + phoneShift.z, halo, downFade);
 
     // The reader's chip beats while it checks, and flashes as it reads each byte of the answer.
     const beat = .5 + .5 * Math.sin(t * Math.PI * 2 * 1.4);
     const readFlash = said && said.dir < 0 ? said.beat : 0;
+    // Over the reader's chip, or the phone's.
+    const chipAt = phone > .5 ? PHONE_CHIP : READER_CHIP, chipShift = phone > .5 ? phoneShift : padShift;
+    think.position.set(chipAt.x + chipShift.x, chipAt.y, chipAt.z + .002 + chipShift.z);
     think.material.opacity = Math.min(.9, b.thinking * (.45 + .4 * beat) + b.read * .15 + readFlash * .8);
     think.scale.setScalar(.014 + .008 * b.thinking * beat + .01 * readFlash);
     think.visible = think.material.opacity > .004;
@@ -281,12 +325,15 @@ export function buildEffects() {
     // `way`: +1 into the chip, -1 out of it; it turns over with the colour.
     const tint = smoothstep(.4, .6, share), way = 1 - 2 * tint;
     const sent = b.reply * (.45 + .55 * load);
-    readerBand.uniforms.uAmount.value = talk.reader;
     // Round the same way as the copper's comets under it, and back the other way as the
     // reader takes the answer in. As fast as its current is strong (the lab's reader power).
-    readerBand.uniforms.uPhase.value += dt * 1.5 * (1 - 2 * talk.reading) * (b.readerPace ?? 1);
-    readerBand.uniforms.uColor.value.copy(WARM).lerp(COOL, talk.reading);
-    readerBand.mesh.visible = talk.reader > .003;
+    for (const [band, share, shift] of [[readerBand, padShare, padShift], [phoneBand, phoneShare, phoneShift]]) {
+      band.mesh.position.set(shift.x, 0, shift.z);
+      band.uniforms.uAmount.value = talk.reader * share;
+      band.uniforms.uPhase.value += dt * 1.5 * (1 - 2 * talk.reading) * (b.readerPace ?? 1);
+      band.uniforms.uColor.value.copy(WARM).lerp(COOL, talk.reading);
+      band.mesh.visible = talk.reader * share > .003;
+    }
     // The light runs as fast as the current is strong (the lab: a weak current crawls); the
     // card's answer always runs at its own pace.
     const pace = lerp(b.cardPace ?? 1, 1, tint);
@@ -310,5 +357,33 @@ export function buildEffects() {
     die.visible = die.material.opacity > .004;
   }
 
-  return { table, onCard, update, WARM, COOL };
+  // The lab's reach: a dashed outline of the card, lying as the card lies, at the farthest height
+  // the chip still wakes (`b.reachZ`, from lab-model.js `reachOf`), so you can see where the
+  // reader's power runs out, and the card go past it.
+  const reachGeometry = new THREE.BufferGeometry().setFromPoints(Array.from({ length: 121 }, (_, i) => {
+    const [x, y] = rectPoint(.0428, .027, .0032, i / 120);
+    return new THREE.Vector3(x, y, 0);
+  }));
+  const reachLine = new THREE.Line(reachGeometry, new THREE.LineDashedMaterial({
+    color: 0xf4f1ea, dashSize: .003, gapSize: .002, transparent: true, opacity: 0, depthTest: false, depthWrite: false, toneMapped: false,
+  }));
+  reachLine.computeLineDistances();
+  reachLine.renderOrder = 10;
+  reachLine.frustumCulled = false;
+  reachLine.rotation.z = HOVER.spin;
+  table.add(reachLine);
+
+  const baseUpdate = update;
+  function updateAll(b, cardZ, talk) {
+    baseUpdate(b, cardZ, talk);
+    const show = (b.reachShow || 0) * (1 - (b.phone > .02 && b.phone < .98 ? 1 : 0));
+    reachLine.visible = show > .01;
+    if (!reachLine.visible) return;
+    // As far over the coil as the card's coil can be and still wake it.
+    reachLine.position.set(HOVER.x, HOVER.y, COIL_Z + (b.reachZ || 0));
+    reachLine.scale.setScalar(b.tagScale ?? 1);
+    reachLine.material.opacity = .55 * show;
+  }
+
+  return { table, onCard, update: updateAll, WARM, COOL, reach: () => reachLine.position };
 }

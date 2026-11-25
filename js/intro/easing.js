@@ -73,3 +73,10 @@ export function settle(p) {
   const swing = 1 - Math.exp(-zeta * omega * p) * (Math.cos(wd * p) + zeta * omega / wd * Math.sin(wd * p));
   return mix(swing, 1, smoother(.6, 1, p));
 }
+
+// How bright the close-up draws a current that carries `share` of a normal tap's power (the drag,
+// cinema.js `approach`; the lab, lab-model.js `labLevels`): as bright as its power, but nothing
+// below about a twentieth, fading in to full by a fifth. Such a current is real but negligible (the
+// chip needs about ten times it to wake), and on the dark close-up even 5% still showed as faint
+// moving specks: the card seemed to carry electricity too far from the reader.
+export const shownPower = share => Math.min(1.15, share) * smoother(.04, .2, share);

@@ -89,7 +89,11 @@ export function autoplay({ experience, stage, reduce }) {
       // The taps, framed. On a phone their panels stack taller than the screen: one stop per
       // screen, so none is skipped.
       const first = top(taps), last = first + Math.max(0, taps.offsetHeight - view);
-      for (let y = first; ; y += view * .9) {
+      // (Not while the page has no height yet, in a hidden tab: a step of 0.9 × 0 px used to make
+      // this loop forever, adding stops until the browser gave up. The stops are read again once
+      // the page has a size.)
+      if (view < 100) rests.push({ from: first, to: first });
+      else for (let y = first; ; y += view * .9) {
         const at = Math.min(y, last);
         rests.push({ from: at, to: at });
         if (at >= last) break;
@@ -150,7 +154,7 @@ export function autoplay({ experience, stage, reduce }) {
     const k = dir > 0 ? i : i + 1;
     const a = k > 0 ? rests[k - 1].to : 0, b = rests[k].from;
     const whole = Math.max(1, span(path(a, b)));
-    const time = rests[k].time ?? Math.min(PLAIN_MAX, Math.max(PLAIN_MIN, PER_SCREEN * (b - a) / innerHeight));
+    const time = rests[k].time ?? Math.min(PLAIN_MAX, Math.max(PLAIN_MIN, PER_SCREEN * (b - a) / Math.max(1, innerHeight)));
     const pieces = path(from, to), total = span(pieces);
     // Over the still stretch at once. This also stops the browser's own smooth scroll, if one
     // (scrolling up) is still running, so it can't pull the page away from the glide.

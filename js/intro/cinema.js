@@ -13,10 +13,8 @@
 // Both give a set of target levels (`IDLE` lists them) and a camera (`view`); main.js
 // glides what is shown toward them, card-scene.js draws the 3D, and effects.js the rings
 // and the current.
-import { clamp, smoother } from './easing.js';
+import { clamp, shownPower, smoother } from './easing.js';
 import { TOP, COIL_Z, CHIP as READER_CHIP } from './reader-size.js';
-
-export const MHZ = '13.56';   // the carrier of bank and metro cards (ISO 14443), in MHz
 
 // Where the card lies over the reader (metres, in the reader's frame), and the reader's
 // resting angle: tipped back to show its top and front.
@@ -28,9 +26,18 @@ export const TALK_GAP = .03;
 
 // Distance. The drag happens on a flat screen, so how far the card is from the reader's
 // centre (`zone`: 1 is the edge of the drop zone) is turned into centimetres. The drop
-// zone's edge is about 4 cm, where a real card wakes up; the nearest is half a centimetre.
-export const NEAREST = .5, FARTHEST = 10, WAKE_CM = 4;
+// zone's edge is about 4 cm, inside where a real card wakes up; the nearest is half a centimetre.
+export const NEAREST = .5, FARTHEST = 10;
 export const centimetres = zone => clamp(NEAREST + (zone - .25) * 4.75, NEAREST, FARTHEST);
+
+// The drag runs on the same physics as the lab (js/rfid/physics.js, lab-model.js): the card
+// reader at full power, the card facing it. `padAt(cm)` solves it; `NORMAL_VOLTS` is what a
+// normal 3 cm tap induces (the close-up's full strength); `WAKE_CM` is where the chip wakes,
+// about 4.9 cm. Without the engine (it failed to load), the old curve below stands in.
+const physics = globalThis.RFID?.physics;
+const padAt = cm => physics.solve({ tag: 'card', reader: 'pad', distance: cm / 100 });
+const NORMAL_VOLTS = physics ? padAt(3).rawVolts : 4.2;
+export const WAKE_CM = physics ? physics.range({ tag: 'card', reader: 'pad' }, .2) * 100 : 4.9;
 
 // The power that reaches the card at `cm`, as a share of what it gets lying on the reader.
 // On the axis of a round coil of radius R, the field falls as (R² / (R² + d²))^1.5, and the
@@ -38,7 +45,7 @@ export const centimetres = zone => clamp(NEAREST + (zone - .25) * 4.75, NEAREST,
 const R2 = 3.5 ** 2;
 const field = cm => (R2 / (R2 + cm * cm)) ** 1.5;
 export const power = cm => (field(cm) / field(NEAREST)) ** 2;
-export const WAKE = power(WAKE_CM);   // about 9%: the chip needs this much to start
+const WAKE = power(4);   // the old curve's wake, about 9% (only without the physics engine)
 
 // Every level main.js glides, at rest. Opacities and strengths run 0 to 1.
 // dock: the card's place, free (0) or lying over the reader (1); gap: its height above
@@ -59,19 +66,37 @@ export const WAKE = power(WAKE_CM);   // about 9%: the chip needs this much to s
 //   the field it takes away at the card. falloff: the field's rings fade as they rise, as
 //   the real field does with height. answerScale: how strong the card's answer is.
 //   readerPace, cardPace: how fast the light runs round the reader's coil and the card's, as
-//   a share of a normal tap's (the lab's: a weak current runs slowly).
+//   a share of a normal tap's (the lab's: a weak current runs slowly). phone: which reader the
+//   lab uses, the card reader (0) or a phone (1); it glides, so the two swap places smoothly.
+//   deny: the reader turning a copied card down (its light, or the phone's screen, goes red).
+//   reachZ, reachShow: the lab's reach, drawn as a dashed outline that high over the coil (m).
+//   tagScale: how big the lab draws the card, for the size of its coil (a key ring tag's is smaller).
 export const IDLE = {
   dock: 0, gap: .034, card: 1, xray: 0, copper: 1, reader: 1, shell: 1,
   emit: 0, field: 0, receive: 0, power: 0, blink: 0, reply: 0, read: 0, thinking: 0,
   check: 0, page: 1, panel: 0, explain: 0, charge: 0, dark: 0,
-  tilt: 0, metal: 0, plate: .02, shield: 0, falloff: 0, answerScale: 1, readerPace: 1, cardPace: 1,
+  tilt: 0, metal: 0, plate: .02, shield: 0, falloff: 0, answerScale: 1, readerPace: 1, cardPace: 1, phone: 0,
+  deny: 0, reachZ: 0, reachShow: 0, tagScale: 1,
 };
 const DIM = .12;   // what is not being shown fades to this
 
-// While the card is dragged: the levels at `cm` from the reader.
+// The chip's power as the readout shows it at `cm`: the power it gets as a share of what it needs
+// to wake (power goes as the voltage squared: (V / 2 V)²), so 100% is awake, and half the voltage
+// is a quarter of the power. The lab means the same (`chipPower` in lab-model.js).
+export function chipShare(cm) {
+  if (!physics) return clamp(power(cm) / WAKE);
+  const r = padAt(cm);
+  return clamp((r.rawVolts / r.wake) ** 2);
+}
+
+// While the card is dragged: the levels at `cm` from the reader. As in the lab, the card's current
+// is drawn as bright as the power it carries and runs as fast as it is strong, and the chip lights
+// only once the physics says it is awake: far away, the card shows next to nothing.
 export function approach(cm) {
   const reach = smoother(9, 6.5, cm);          // the close-up comes in as the card comes near
-  const share = power(cm);
+  const r = physics ? padAt(cm) : null;
+  const current = r ? r.rawVolts / NORMAL_VOLTS : clamp(Math.sqrt(power(cm)) * 1.5);
+  const awake = r ? r.awake : cm <= WAKE_CM;
   return {
     ...IDLE,
     page: 1 - (1 - DIM) * reach,
@@ -80,9 +105,11 @@ export function approach(cm) {
     emit: reach,
     field: reach,
     xray: smoother(7.5, 5, cm),                 // the card shows its coil
-    receive: clamp(Math.sqrt(share) * 1.5) * smoother(8, 5.5, cm),
-    power: smoother(WAKE * .75, WAKE * 2.2, share),
-    blink: smoother(.5, .85, share) * .6,
+    receive: shownPower(current * current) * smoother(8, 5.5, cm),
+    cardPace: Math.min(1.5, current),
+    power: awake ? 1 : 0,
+    // The chip starts working as it wakes, a little more the closer it comes.
+    blink: awake ? .25 + .35 * smoother(3, 1, cm) : 0,
   };
 }
 
@@ -197,6 +224,20 @@ export function setCardId(bytes) {
   CARD_ID = hex(bytes);
   TALK.answer = say(-1, 'ID ' + CARD_ID, [...bytes, checkByte(bytes)]);
 }
+// Proving it is genuine (the lab's "Prove it's real"): the reader sends a random challenge, four
+// bytes new every time, and the card answers with a code worked out from it and a secret key
+// that only it and its bank hold (lab-model.js `proofCode`). Both go on the air exactly like the
+// ID's frames, shown a little faster (PROOF_BIT seconds a bit), so the proof takes about 9 s.
+// Returns when the card's answer starts (seconds after the challenge starts).
+export const PROOF_BIT = .07;
+export function proofTalk(challenge, code) {
+  TALK.challenge = { ...say(1, 'Prove it: ' + hex(challenge), challenge), bitSeconds: PROOF_BIT };
+  TALK.response = { ...say(-1, 'Code ' + hex(code), code), bitSeconds: PROOF_BIT };
+  const bits = TALK.challenge.bits, wait = iso ? iso.answerDelay(bits[bits.length - 1]) : 300;
+  return (TALK.challenge.lastGap + wait) / BIT * PROOF_BIT;
+}
+export const proofSeconds = name => TALK[name] ? TALK[name].length / BIT * PROOF_BIT : 0;
+
 // The card answers the standard's wait after the reader's last gap (in samples: about 86 µs).
 const DELAY = iso ? iso.answerDelay(TALK.ask.bits[TALK.ask.bits.length - 1]) : 300;
 // As shown: seconds from the question's start to the answer's, on the same clock.
@@ -217,7 +258,7 @@ export const TALK_MS = {
 // to 1 just after. `realMs`: how far into the frame, in real time; `frameMs`: the whole frame.
 export function message(name, seconds) {
   const talk = TALK[name], { length, signal, soft, dir } = talk;
-  const n = seconds / BIT_SECONDS * BIT;
+  const n = seconds / (talk.bitSeconds ?? BIT_SECONDS) * BIT;
   const i = Math.floor(n), idle = dir > 0 ? 1 : 0;
   const at = values => (n < 0 || n >= length - 1 ? idle : values[i] + (values[i + 1] - values[i]) * (n - i));
   const now = at(soft);
@@ -297,7 +338,7 @@ export const STEPS = [
   // card's tuning, its ID) and watches it respond, worked out live (lab-model.js). Its
   // levels come from there; these are only where it starts.
   { text: 'Now you try. Change anything.', detail: 'Everything here is worked out live.',
-    ms: [0, 5], shot: 'lab', lab: true, labels: ['chip'], hold: 20,
+    ms: [0, 5], shot: 'lab', lab: true, labels: ['chip'], hold: 43.5,
     levels: { falloff: 1, emit: 1, field: 1, receive: 1, power: 1, charge: 1 } },
   { text: '', ms: [5, 5], shot: 'rest', explain: true,
     levels: { gap: .0016, xray: 0, shell: 1, check: 1, page: 1, panel: 0, explain: 1, charge: 1, dark: 0 } },
