@@ -200,16 +200,16 @@
           </div>
           <p class="try-legend"><i aria-hidden="true"></i>Amber line: where the chip wakes.</p>
           <div class="try-controls">
-            <label class="try-control"><span>Distance</span><output data-for="distance">3.0 cm</output>
-              <input type="range" name="distance" min="0.5" max="10" step="0.1" value="3"></label>
-            <label class="try-control"><span>Card’s angle</span><output data-for="angle">0°</output>
-              <input type="range" name="angle" min="0" max="90" step="1" value="0"></label>
-            <label class="try-control"><span>Metal behind the card</span><output data-for="metal">None</output>
-              <input type="range" name="metal" min="0" max="4" step="1" value="0"></label>
-            <label class="try-control try-control-drive"><span>Reader’s power</span><output data-for="drive">100%</output>
-              <input type="range" name="drive" min="0" max="150" step="1" value="100"></label>
-            <label class="try-control"><span>Card tuned to</span><output data-for="tune">13.56 MHz</output>
-              <input type="range" name="tune" min="0" max="1000" step="1" value="499"></label>
+            <label class="try-control" for="try-distance"><span id="try-distance-name">Distance</span><output data-for="distance">3.0 cm</output>
+              <input id="try-distance" aria-labelledby="try-distance-name" type="range" name="distance" min="0.5" max="10" step="0.1" value="3"></label>
+            <label class="try-control" for="try-angle"><span id="try-angle-name">Card’s angle</span><output data-for="angle">0°</output>
+              <input id="try-angle" aria-labelledby="try-angle-name" type="range" name="angle" min="0" max="90" step="1" value="0"></label>
+            <label class="try-control" for="try-metal"><span id="try-metal-name">Metal behind the card</span><output data-for="metal">None</output>
+              <input id="try-metal" aria-labelledby="try-metal-name" type="range" name="metal" min="0" max="4" step="1" value="0"></label>
+            <label class="try-control try-control-drive" for="try-drive"><span id="try-drive-name">Reader’s power</span><output data-for="drive">100%</output>
+              <input id="try-drive" aria-labelledby="try-drive-name" type="range" name="drive" min="0" max="150" step="1" value="100"></label>
+            <label class="try-control" for="try-tune"><span id="try-tune-name">Card tuned to</span><output data-for="tune">13.56 MHz</output>
+              <input id="try-tune" aria-labelledby="try-tune-name" type="range" name="tune" min="0" max="1000" step="1" value="499"></label>
           </div>
           <div class="try-id">
             <label><span>Card’s ID</span><input type="text" name="id" value="04 7B 21 9E" maxlength="11" spellcheck="false" autocomplete="off" aria-describedby="try-check"></label>
@@ -323,8 +323,8 @@
         <h3 id="s6-title">Closer is stronger</h3>
         <p>The field fades very fast with distance. A bigger coil catches more of it, which is why the card’s coil runs around its whole edge.</p>
         <div class="plate-controls">
-          <label>Distance from the phone <output data-for="s6-distance"></output><input id="s6-distance" type="range" min="2" max="80" value="20"></label>
-          <label>Size of the card’s coil <output data-for="s6-radius"></output><input id="s6-radius" type="range" min="12" max="45" value="36"></label>
+          <label for="s6-distance">Distance from the phone <output data-for="s6-distance"></output><input id="s6-distance" type="range" min="2" max="80" value="20"></label>
+          <label for="s6-radius">Size of the card’s coil <output data-for="s6-radius"></output><input id="s6-radius" type="range" min="12" max="45" value="36"></label>
         </div>
         <p class="plate-readout" aria-live="polite"></p>
         <p class="plate-real">Real name: inductive coupling. A card must work in a field from 1.5 to 7.5 A/m (ISO/IEC 14443-2).</p>
@@ -338,7 +338,7 @@
         <h3 id="s7-title">It has to keep flipping</h3>
         <p>Only a changing field makes electricity. The reader’s field flips 13.56 million times a second.</p>
         <div class="plate-controls">
-          <label>How fast the field flips <output data-for="s7-speed"></output><input id="s7-speed" type="range" min="0" max="100" value="100"></label>
+          <label for="s7-speed">How fast the field flips <output data-for="s7-speed"></output><input id="s7-speed" type="range" min="0" max="100" value="100"></label>
         </div>
         <p class="plate-readout" aria-live="polite"></p>
         <p class="plate-real">Real name: Faraday’s law of induction. The voltage is the speed of the change: V = ω · M · I.</p>
@@ -352,7 +352,7 @@
         <h3 id="s8-title">The tuning trick</h3>
         <p>The coil and the tiny capacitor beside it swing together, like a child on a swing pushed at just the right moment. Tuned right, a weak field is enough.</p>
         <div class="plate-controls">
-          <label>Capacitor <output data-for="s8-cap"></output><input id="s8-cap" type="range" min="0" max="100" value="50"></label>
+          <label for="s8-cap">Capacitor <output data-for="s8-cap"></output><input id="s8-cap" type="range" min="0" max="100" value="50"></label>
           <label class="plate-check"><input id="s8-remove" type="checkbox"> Take the capacitor out</label>
           <span class="plate-switch" role="radiogroup" aria-label="Tag"><label><input type="radio" name="s8-tag" value="card" checked> Card</label><label><input type="radio" name="s8-tag" value="key"> Car key</label></span>
         </div>
@@ -368,7 +368,7 @@
         <h3 id="s9-title">Why metal fights back</h3>
         <p>Metal makes its own currents that push against the field, and it knocks the coil out of tune.</p>
         <div class="plate-controls">
-          <label>Metal behind the card <output data-for="s9-gap"></output><input id="s9-gap" type="range" min="1" max="61" value="61"></label>
+          <label for="s9-gap">Metal behind the card <output data-for="s9-gap"></output><input id="s9-gap" type="range" min="1" max="61" value="61"></label>
         </div>
         <p class="plate-readout" aria-live="polite"></p>
         <p class="plate-real">Real name: eddy currents and detuning. Modelled as a perfect conductor: a mirror image of the reader’s coil, with the current reversed.</p>
@@ -382,7 +382,7 @@
         <h3 id="s10-title">Getting through the pauses</h3>
         <p>The phone talks by switching its field off for an instant. A chip with no battery has to survive every pause, a few millionths of a second long, on saved energy.</p>
         <div class="plate-controls">
-          <label>Storage capacitor <output data-for="s10-cap"></output><input id="s10-cap" type="range" min="0" max="40" value="20"></label>
+          <label for="s10-cap">Storage capacitor <output data-for="s10-cap"></output><input id="s10-cap" type="range" min="0" max="40" value="20"></label>
         </div>
         <p class="plate-readout" aria-live="polite"></p>
         <p class="plate-real">Real name: 100% ASK pauses, modified Miller coding. Each pause lasts about 2.4 µs.</p>
@@ -399,7 +399,7 @@
         <p>The chip never sends anything. It changes how much of the field it soaks up, and the reader feels the difference in its own coil.</p>
         <div class="plate-controls">
           <label class="plate-check"><input id="s11-switch" type="checkbox" checked> The chip’s answer switch</label>
-          <label>Zoom <output data-for="s11-zoom"></output><input id="s11-zoom" type="range" min="0" max="100" value="0"></label>
+          <label for="s11-zoom">Zoom <output data-for="s11-zoom"></output><input id="s11-zoom" type="range" min="0" max="100" value="0"></label>
         </div>
         <p class="plate-readout" aria-live="polite"></p>
         <p class="plate-real">Real name: load modulation.</p>
@@ -429,7 +429,7 @@
         <div class="plate-controls">
           <label>A letter <input id="s13-letter" type="text" maxlength="1" value="A" autocomplete="off"></label>
           <span class="plate-switch" role="radiogroup" aria-label="How bits are written"><label><input type="radio" name="s13-code" value="simple"> Dip for 1</label><label><input type="radio" name="s13-code" value="manchester" checked> Change in the middle</label></span>
-          <label>The reader’s clock <output data-for="s13-drift"></output><input id="s13-drift" type="range" min="-12" max="12" value="7"></label>
+          <label for="s13-drift">The reader’s clock <output data-for="s13-drift"></output><input id="s13-drift" type="range" min="-12" max="12" value="7"></label>
         </div>
         <p class="plate-readout" aria-live="polite"></p>
         <p class="plate-real">Real name: Manchester coding.</p>
@@ -443,7 +443,7 @@
         <h3 id="s14-title">Catching mistakes</h3>
         <p>A dip drowns and a 1 becomes a 0. A check bit on every byte and a check number on every message catch it, and the phone asks again.</p>
         <div class="plate-controls">
-          <label>Noise <output data-for="s14-noise"></output><input id="s14-noise" type="range" min="0" max="100" value="35"></label>
+          <label for="s14-noise">Noise <output data-for="s14-noise"></output><input id="s14-noise" type="range" min="0" max="100" value="35"></label>
           <label class="plate-check"><input id="s14-checks" type="checkbox" checked> Checks</label>
           <button type="button" id="s14-tap">Tap again</button>
         </div>
@@ -479,7 +479,7 @@
         <h3 id="s16-title">Two cards in one field</h3>
         <p>Both cards answer at once. Where their IDs differ, the reader hears a 1 and a 0 together: a clash. It picks one side, and the other card goes quiet. That’s why tapping a whole wallet can charge the wrong card.</p>
         <div class="plate-controls">
-          <label>Cards on the phone <output data-for="s16-cards"></output><input id="s16-cards" type="range" min="1" max="3" value="2"></label>
+          <label for="s16-cards">Cards on the phone <output data-for="s16-cards"></output><input id="s16-cards" type="range" min="1" max="3" value="2"></label>
           <span class="plate-switch" role="radiogroup" aria-label="At a clash, the reader picks"><label><input type="radio" name="s16-pick" value="1" checked> 1s first</label><label><input type="radio" name="s16-pick" value="0"> 0s first</label></span>
           <button type="button" id="s16-tap">New cards</button>
         </div>
