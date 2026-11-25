@@ -173,7 +173,7 @@ const ALL_HOLD_CLASSES = [
 ];
 const ALL_STAGED_CLASSES = [
   's8-awaiting', 's9-entering',
-  's10-awaiting', 's10-entering', 's12-staged', 's12-title-in-flight', 's13-staged',
+  's10-awaiting', 's10-entering', 's12-staged', 's12-title-in-flight',
   's15-staged', 's16-staged', 's17-staged', 'deep-end-staged', 'deep-rev-staged',
 ];
 const STRAY_OVERLAY_SELECTOR = [
@@ -349,22 +349,7 @@ function runReverseCanvasMorph(fromEl, toEl, { mode = 'default', cut = 430, arri
       ctx.restore();
     }
 
-    if (mode === 'counting') {
-      const sweep = ease(60, cut + 160, elapsed);
-      const sx = mix(fromView.x + fromView.w, fromView.x, sweep);
-      const barAlpha = ease(20, 120, elapsed) * (1 - ease(cut + 120, cut + 280, elapsed));
-      if (barAlpha > 0) {
-        ctx.save();
-        ctx.globalAlpha = barAlpha;
-        ctx.strokeStyle = '#b8652a';
-        ctx.lineWidth = 1.6;
-        ctx.beginPath();
-        ctx.moveTo(sx, fromView.y - 4);
-        ctx.lineTo(sx, fromView.y + fromView.h + 4);
-        ctx.stroke();
-        ctx.restore();
-      }
-    } else if (mode === 'tuning' || mode === 'pauses') {
+    if (mode === 'tuning' || mode === 'pauses') {
       const waveFade = ease(120, 360, elapsed) * (1 - ease(cut + 180, arrivalEnd, elapsed));
       if (waveFade > 0) {
         ctx.save();
@@ -2109,137 +2094,107 @@ function watchCounting(previous, scene) {
   copy.className = 's13-spectrum-copy';
   copy.setAttribute('aria-hidden', 'true');
   const ctx = copy.getContext('2d');
-  const cut = 640, carryEnd = 900, sweepStart = 840, sweepEnd = 2420, arrivalEnd = 2520, readHold = 1000;
-  let run, frame, revCtrl, readoutFlip;
+  const end = 2260, readHold = 1000;
+  let run, frame, readoutFlip;
   let codeBlend = scene.querySelector('input[name="s13-code"]:checked')?.value === 'manchester' ? 1 : 0;
   let codeTarget = codeBlend, codeFrom = codeBlend, codeStart = 0, codeFrame = 0;
   let prevDriftSign = Math.sign(driftInput?.valueAsNumber ?? 7), wordFlip, zeroPulse;
-  const canPlay = () => ctx && !reducedMotion.matches && !document.hidden &&
-    CSS.supports('clip-path', 'polygon(0 0, 100% 0, 100% 100%, 0 100%)');
+  const canPlay = () => ctx && !reducedMotion.matches && !document.hidden;
 
-  function clearEffects() {
-    if (!copy.isConnected && !scene.classList.contains('s13-staged')) return;
-    copy.remove();
-    source.style.removeProperty('--s13-spectrum-opacity');
-    chart.style.removeProperty('clip-path');
-    scene.classList.remove('s13-staged');
-    run?.animations.forEach(animation => animation.cancel());
-  }
-
-  function finish() {
+  function finish(land = true) {
     if (!run) return;
     cancelAnimationFrame(frame);
-    clearEffects();
+    if (land) scrollTo({ top: run.direction > 0 ? run.destination : run.origin, behavior: 'instant' });
+    copy.remove();
+    source.style.removeProperty('--s13-spectrum-opacity');
+    for (const node of [source, before]) node.style.removeProperty('transform');
+    before.style.removeProperty('opacity');
+    before.style.removeProperty('visibility');
+    chart.style.removeProperty('opacity');
+    chart.setCountingHandoff?.(1);
+    for (const property of ['words-in', 'words-offset', 'controls-in', 'controls-visibility', 'result-in']) {
+      scene.style.removeProperty(`--s13-${property}`);
+    }
     run = undefined;
     root.classList.remove('deep-counting-hold');
     scheduleMotion();
   }
 
-  function land() {
-    scrollTo({ top: run.destination, behavior: 'instant' });
-    run.top = scrollY;
-    run.landed = true;
-    scene.classList.remove('s13-staged');
-    for (const [i, node] of Array.from(after.children).entries()) {
-      run.animations.push(node.animate([
-        { opacity: 0, transform: 'translateY(9px)' },
-        { opacity: 1, transform: 'none' },
-      ], { duration: 420, delay: 70 + i * 52, easing: arrivalEase, fill: 'both' }));
-    }
-  }
+  function paint() {
+    const { elapsed, width, height, from, to, spectrum } = run;
+    const wordsOut = 1 - ease(50, 570, elapsed);
+    const wordsIn = ease(385, 960, elapsed);
+    const controlsIn = ease(1070, 1690, elapsed);
+    const blend = ease(685, 885, elapsed);
+    const digits = stage(850, end, elapsed);
 
-  function drawHandoff(elapsed) {
-    const { width, height, stacked, fromBox, toBox, toChartTop, spectrum, timing } = run;
-    const count = timing.sent.length;
-    const carry = ease(80, carryEnd, elapsed);
-    const arc = stacked ? 0 : Math.sin(Math.PI * carry) * -22;
-    const curX = mix(fromBox.x, toBox.x, carry);
-    const curY = mix(fromBox.y, toBox.y, carry) + arc;
-    const curW = mix(fromBox.w, toBox.w, carry);
-    const curH = mix(fromBox.h, toBox.h, carry);
+    before.style.opacity = wordsOut;
+    before.style.visibility = wordsOut ? 'visible' : 'hidden';
+    scene.style.setProperty('--s13-words-in', wordsIn);
+    scene.style.setProperty('--s13-words-offset', `${8 * (1 - wordsIn)}px`);
+    scene.style.setProperty('--s13-controls-in', controlsIn);
+    scene.style.setProperty('--s13-controls-visibility', controlsIn ? 'visible' : 'hidden');
+    scene.style.setProperty('--s13-result-in', ease(1940, end, elapsed));
+    chart.style.opacity = blend;
+    chart.setCountingHandoff?.(digits);
 
-    const arriving = ease(sweepStart, sweepEnd, elapsed) * count;
-    const whole = Math.floor(arriving), fraction = arriving - whole;
-    const labels = arriving >= count ? 1 : (whole + ease(0, .38, fraction)) / count;
-    const replaced = arriving >= count ? 1 : (whole + ease(.22, 1, fraction)) / count;
-
+    const leave = ease(0, 165, elapsed);
+    source.style.setProperty('--s13-spectrum-opacity', 1 - leave);
     ctx.clearRect(0, 0, width, height);
-    if (replaced < 1) {
-      const specBox = spectrum.box;
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(curX + curW * replaced, 0, width, height);
-      ctx.clip();
-      ctx.strokeStyle = spectrum.color;
-      ctx.lineWidth = 1;
-      ctx.globalAlpha = ease(0, 140, elapsed) * (1 - ease(sweepEnd - 140, arrivalEnd, elapsed));
-      ctx.beginPath();
-      spectrum.points.forEach(([frequency, strength], i) => {
-        const px = curX + (spectrum.X(frequency) - specBox.x) / specBox.w * curW;
-        const py = curY + (spectrum.Y(strength) - specBox.y) / specBox.h * curH;
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      });
-      ctx.stroke();
-      ctx.restore();
+    if (!leave || blend === 1) return;
+
+    const travel = ease(75, 770, elapsed), flatten = ease(130, 750, elapsed);
+    const x = mix(from.x, to.x, travel), w = mix(from.w, to.w, travel);
+    const center = mix(from.y + from.h / 2, to.y, travel);
+    const { box, X, Y, points, color } = spectrum;
+    ctx.beginPath();
+    for (const [i, [frequency, strength]] of points.entries()) {
+      const px = x + (X(frequency) - box.x) / box.w * w;
+      const py = center + (Y(strength) - box.y - box.h / 2) * (1 - flatten);
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
     }
+    ctx.globalAlpha = leave * (1 - blend) * (1 - flatten);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.globalAlpha = leave * (1 - blend) * flatten;
+    ctx.strokeStyle = '#b8652a';
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
 
-    const timBox = timing.box;
-    if (run.landed && elapsed >= sweepStart && replaced < 1) {
-      const cursorAlpha = ease(sweepStart, sweepStart + 160, elapsed) * (1 - ease(sweepEnd - 180, arrivalEnd, elapsed));
-      if (cursorAlpha > 0) {
-        const cursorX = toBox.x + toBox.w * replaced;
-        ctx.save();
-        ctx.strokeStyle = '#b8652a';
-        ctx.lineWidth = 1.5;
-        ctx.globalAlpha = cursorAlpha * .78;
-        ctx.beginPath();
-        ctx.moveTo(cursorX, toChartTop + timBox.y - 24);
-        ctx.lineTo(cursorX, toChartTop + timBox.y + timBox.h + 36);
-        ctx.stroke();
-        ctx.restore();
-      }
+  function tick(now) {
+    const next = Math.max(0, Math.min(end, run.elapsed + (now - run.last) * run.direction));
+    run.last = now;
+    if (run.elapsed !== next) {
+      run.elapsed = next;
+      paint();
     }
-
-    if (!run.landed) return;
-    const digitsX = labels ? timBox.x + timBox.w * labels : 0;
-    const waveX = replaced ? timBox.x + timBox.w * replaced : 0;
-    const caption = timBox.y - 24, row = timBox.y;
-    chart.style.clipPath = arriving >= count ? 'none'
-      : `polygon(0 0, 100% 0, 100% ${caption}px, ${digitsX}px ${caption}px, ${digitsX}px ${row}px, ${waveX}px ${row}px, ${waveX}px 100%, 0 100%)`;
+    if (next === (run.direction > 0 ? end : 0)) {
+      run.holdUntil ??= now + readHold;
+      if (now >= run.holdUntil) return finish();
+    }
+    frame = requestAnimationFrame(tick);
   }
 
-  function animate(now) {
-    const elapsed = now - run.start;
-    if (elapsed >= cut && !run.landed) land();
-    if (elapsed < arrivalEnd) drawHandoff(elapsed);
-    else if (copy.isConnected) clearEffects();
-    if (elapsed >= arrivalEnd + readHold) return finish();
-    frame = requestAnimationFrame(animate);
-  }
-
-  function approach(top, height) {
-    const start = bounds(previous, top).y, end = bounds(scene, top).y;
-    const cue = Math.max(start, end - height);
-    return { start, cue, end };
-  }
-
-  function startRun(height) {
+  function startRun(direction) {
+    if (run || !canPlay()) return;
+    sanitizeChapter();
     const spectrum = source.spectrumTrace, timing = chart.timingTrace;
-    if (run || !canPlay() || !spectrum || !timing) return;
-    const width = viewportWidth();
-    const { cue, end } = approach(scrollY, height);
-    if (scrollY > cue + 1) scrollTo({ top: cue, behavior: 'instant' });
-    const top = scrollY;
+    if (!spectrum || !timing) {
+      (direction > 0 ? scene : previous).scrollIntoView({ block: 'start', behavior: 'instant' });
+      return;
+    }
 
+    const top = scrollY, width = viewportWidth(), height = innerHeight;
+    const previousTop = bounds(previous, top).y, sceneTop = bounds(scene, top).y;
     const from = bounds(source, top), to = bounds(chart, top);
-    const extra = Math.max(0, Math.min(to.y + to.h + 6 - end - height, scene.offsetHeight - height));
-    const destination = end + extra;
-    const stacked = matchMedia('(max-width: 860px)').matches;
-    const specBox = spectrum.box, timBox = timing.box;
-    const fromBox = { x: from.x + specBox.x, y: from.y - top + specBox.y, w: specBox.w, h: specBox.h };
-    const toChartTop = to.y - destination;
-    const toBox = { x: to.x + timBox.x, y: toChartTop + timing.Y(1), w: timBox.w, h: timing.Y(0) - timing.Y(1) };
+    const origin = direction > 0 ? top : previousTop;
+    const extra = Math.max(0, Math.min(to.y + to.h + 6 - sceneTop - height, scene.offsetHeight - height));
+    const destination = direction < 0 ? top : sceneTop + extra;
+    const { box } = spectrum;
 
     const dpr = Math.min(devicePixelRatio || 1, 2);
     copy.width = Math.round(width * dpr);
@@ -2247,20 +2202,17 @@ function watchCounting(previous, scene) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.lineCap = ctx.lineJoin = 'round';
 
-    run = { top, width, height, stacked, start: performance.now(), destination, fromBox, toBox, toChartTop,
-      spectrum, timing, animations: [] };
-
     root.classList.add('deep-counting-hold');
-    scene.classList.add('s13-staged');
-    source.style.setProperty('--s13-spectrum-opacity', 0);
-    chart.style.clipPath = 'inset(0 100% 0 0)';
+    scrollTo({ top: destination, behavior: 'instant' });
+    const pin = `translateY(${scrollY - origin}px)`;
+    source.style.transform = before.style.transform = pin;
+    run = { top: scrollY, width, height, origin, destination, direction, elapsed: direction > 0 ? 0 : end,
+      spectrum, from: { x: from.x + box.x, y: from.y - origin + box.y, w: box.w, h: box.h },
+      to: { x: to.x + timing.box.x, y: to.y - destination + timing.Y(0), w: timing.box.w } };
     chapter.append(copy);
-    for (const node of before.children) {
-      run.animations.push(node.animate([{ opacity: 1 }, { opacity: 0 }],
-        { duration: 420, delay: 40, fill: 'both' }));
-    }
-    drawHandoff(0);
-    frame = requestAnimationFrame(animate);
+    paint();
+    run.last = performance.now();
+    frame = requestAnimationFrame(tick);
   }
 
   function flipReadout() {
@@ -2349,36 +2301,35 @@ function watchCounting(previous, scene) {
   exactBtn?.addEventListener('click', flipReadout);
 
   watchScrollMotion((top, height) => {
-    if (run) {
-      if (!canPlay() || Math.abs(top - run.top) > height * .95) finish();
-      else if (Math.abs(top - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
-    }
+    if (!run) return;
+    if (!canPlay() || Math.abs(top - run.top) > height * .95) finish(false);
+    else if (Math.abs(top - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
   });
 
-  for (const plate of [previous, scene]) {
+  for (const [plate, direction] of [[previous, -1], [scene, 1]]) {
     const controls = plate.querySelector('.plate-controls');
-    for (const event of ['focusin', 'pointerdown', 'input']) controls.addEventListener(event, finish);
+    for (const event of ['focusin', 'pointerdown', 'input']) controls.addEventListener(event, () => {
+      if (!run) return;
+      run.direction = direction;
+      finish();
+    });
   }
-  for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, finish);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) { revCtrl?.cancel(); finish(); settleControls(); } });
-  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) { revCtrl?.cancel(); finish(); settleControls(); } });
+  addEventListener('resize', () => finish());
+  for (const event of ['hashchange', 'pagehide']) addEventListener(event, () => finish(false));
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { finish(); settleControls(); } });
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) { finish(); settleControls(); } });
 
   return {
-    forward() {
-      if (!canPlay() || run || revCtrl?.active()) return;
-      sanitizeChapter();
-      if (!source.spectrumTrace || !chart.timingTrace) {
-        scene.scrollIntoView({ block: 'start', behavior: 'instant' });
-        return;
-      }
-      startRun(innerHeight);
+    forward: () => startRun(1),
+    reverse: () => startRun(-1),
+    turn(direction) {
+      if (!run) return false;
+      run.direction = direction;
+      run.holdUntil = undefined;
+      return true;
     },
-    reverse() {
-      if (!canPlay() || run || revCtrl?.active()) return;
-      revCtrl = runReverseCanvasMorph(scene, previous, { mode: 'counting' });
-    },
-    cancel: () => { revCtrl?.cancel(); finish(); },
-    active: () => !!run || !!revCtrl?.active(),
+    cancel: finish,
+    active: () => !!run,
   };
 }
 

@@ -843,6 +843,7 @@
   // ---------- 13. Keeping count ----------
   let clockDrift = 7;
   const countingMotion = { codeBlend: undefined };
+  let countingReveal = 1;
   function decodeBits(sent, code, drift, H) {
     const level = [];
     for (const b of sent) {
@@ -910,31 +911,50 @@
       captions.push({ char: letter, opacity: captionProgress, offset: captionTravel * (1 - captionProgress) });
     }
 
-    const ctx = fit(p), bx = { x: 24, y: 46, w: p.w - 48, h: p.h - 120 };
-    const X = i => bx.x + i / active.level.length * bx.w, Y = v => bx.y + bx.h - v * bx.h * .8;
-    p.canvas.timingTrace = { box: bx, X, Y, sent, level: active.level, plottedLevel: level, read: active.read, ticks: active.ticks, samplesPerBit: 2 * H, color: INK, codeBlend: blend };
+    const ctx = fit(p), inset = p.w < 440 ? 8 : 18;
+    const bx = { x: inset, y: 48, w: p.w - inset * 2, h: p.h - 96 };
+    const X = i => bx.x + i / active.level.length * bx.w, Y = v => bx.y + bx.h - v * bx.h * .92;
+    const bitSize = 2 * H;
+    const revealBit = (i, lead = 0) => stage(i, i + 1, countingReveal * sent.length + lead);
+    const plottedLevel = countingReveal === 1 ? level : level.map((value, i) => value * revealBit(Math.floor(i / bitSize)));
+    p.canvas.timingTrace = { box: bx, X, Y, sent, level: active.level, plottedLevel, read: active.read, ticks: active.ticks, samplesPerBit: bitSize, color: INK, codeBlend: blend };
+
+    ctx.save();
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= sent.length; i++) {
+      ctx.globalAlpha = revealBit(Math.max(0, i - 1));
+      ctx.strokeStyle = i === 8 ? FAINT : GRID;
+      const x = X(i * bitSize);
+      ctx.beginPath(); ctx.moveTo(x, bx.y - 3); ctx.lineTo(x, Y(0) + 16); ctx.stroke();
+    }
+    ctx.restore();
+
     ctx.save();
     ctx.beginPath(); ctx.rect(0, bx.y - 21, p.w, 16); ctx.clip();
-    ctx.font = `600 14px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = `600 ${p.w < 440 ? 12 : 14}px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     shownBits.forEach((b, i) => {
-      const x = X((i + .5) * 2 * H), y = bx.y - 13;
+      const x = X((i + .5) * bitSize), y = bx.y - 13, opacity = revealBit(i, .45);
       ctx.fillStyle = i < 8 ? INK : MUTED;
-      if (b < 1) { ctx.globalAlpha = 1 - b; ctx.fillText('0', x, y - 10 * b); }
-      if (b > 0) { ctx.globalAlpha = b; ctx.fillText('1', x, y + 10 * (1 - b)); }
+      if (b < 1) { ctx.globalAlpha = opacity * (1 - b); ctx.fillText('0', x, y - 10 * b); }
+      if (b > 0) { ctx.globalAlpha = opacity * b; ctx.fillText('1', x, y + 10 * (1 - b)); }
     });
     ctx.restore();
     ctx.font = `600 11px ${SANS}`; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom'; ctx.fillStyle = MUTED;
     ctx.save();
     ctx.beginPath(); ctx.rect(0, bx.y - 40, p.w, 14); ctx.clip();
     for (const { char, opacity, offset } of captions) {
-      ctx.globalAlpha = opacity;
-      ctx.fillText(`“${char}”`, bx.x, bx.y - 28 + offset);
+      ctx.globalAlpha = opacity * revealBit(0, .45);
+      ctx.fillText(`Sent “${char}”`, bx.x, bx.y - 28 + offset);
     }
     ctx.restore();
-    ctx.fillText('then eight zeros', bx.x + 22, bx.y - 28);
+    ctx.globalAlpha = revealBit(8, .45);
+    ctx.fillText('Eight trailing zeros', X(8 * bitSize) + 6, bx.y - 28);
+    ctx.globalAlpha = revealBit(0);
+    ctx.fillText('Reader samples', bx.x, Y(0) + 46);
+    ctx.globalAlpha = 1;
     ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.beginPath();
-    for (let i = 0; i < level.length; i++) {
-      const y = Y(level[i]);
+    for (let i = 0; i < plottedLevel.length; i++) {
+      const y = Y(plottedLevel[i]);
       i ? ctx.lineTo(X(i), y) : ctx.moveTo(X(i), y);
     }
     ctx.stroke();
@@ -960,7 +980,7 @@
       if (b !== undefined) weights[2 * manchester.read[i] + Number(manchester.read[i] === sent[i])] += blend;
       weights.forEach((weight, k) => {
         weights[k] = mix(previous?.weights[k] ?? (before ? 0 : weight), weight, t);
-        drawTick(X(sample), k >> 1, k % 2 === 1, weights[k]);
+        drawTick(X(sample), k >> 1, k % 2 === 1, weights[k] * revealBit(Math.floor(sample / bitSize)));
       });
       ticks.push({ sample, weights });
     }
@@ -971,6 +991,11 @@
       : `The reader counted ${active.read.length} bits instead of ${sent.length}: ${active.read.filter(b => b === 0).length} zeros where there were ${sent.filter(b => b === 0).length}.`);
   });
   if (counting) {
+    counting.canvas.setCountingHandoff = reveal => {
+      if (reveal === countingReveal) return;
+      countingReveal = reveal;
+      counting.dirty = true;
+    };
     counting.canvas.setCountingMotion = codeBlend => {
       if (codeBlend === countingMotion.codeBlend) return;
       countingMotion.codeBlend = codeBlend;
