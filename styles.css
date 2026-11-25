@@ -1056,6 +1056,11 @@ html[data-intro] .stage-light { opacity: 0; }
 /* A narrow panel (a small laptop, a tablet held sideways): the three buttons only fit with
    "Ask the card" said as "Ask" (its name for screen readers stays whole). */
 .intro .try { container-type: inline-size; }
+/* A wide panel (a tablet held upright, where it spans the stage): the sliders two across, so far
+   more of it shows without scrolling the panel. */
+@container (min-width: 560px) {
+  .intro .try-controls { grid-template-columns: 1fr 1fr; column-gap: 1.4rem; }
+}
 @container (max-width: 300px) {
   .intro .try-long { display: none; }
   .intro .try-actions { gap: .4rem; }
