@@ -33,7 +33,6 @@ function intro(experience) {
   const sceneCanvas = $('.card-scene');
   const poster = $('.card-poster');
   const shadow = $('.card-shadow');
-  const frameLines = $('.frame');
   const signalCanvas = $('.signal');
   const signal = signalCanvas.getContext('2d');
   const letters = [...experience.querySelectorAll('.letter')];
@@ -381,7 +380,6 @@ function intro(experience) {
     reader.style.opacity = visual.reader * b.reader;
     scrollGuide.style.opacity = 1 - ease(5.14, 5.62, time);
     hud.style.opacity = b.page;
-    frameLines.style.opacity = .16 * b.page;
 
     // While the camera pushes in during a drag, the card grows with it (card-scene.js, GROW).
     const grow = Math.min(b.view.zoom, 1.3);
@@ -1736,7 +1734,6 @@ function intro(experience) {
     const target = into < 0
       ? ARRIVE * (1 - smoother(0, 1, 1 + into / layout.height))
       : scrollTime(fraction);
-    stage.style.setProperty('--progress', fraction);
     motion.time ??= spring(target);
     // The playhead trails the scroll a little and catches up softly. It is a touch slower
     // through the mouth, which is where the eye watches the card closest.

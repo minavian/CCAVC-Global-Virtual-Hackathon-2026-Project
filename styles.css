@@ -423,7 +423,7 @@ html[data-intro] .stage-light { opacity: 0; }
 .intro .card-poster { position: relative; width: min(70vw, 24rem); }
 .intro .card-poster img { display: block; width: 100%; height: auto; }
 .intro .card-poster img + img { position: absolute; inset: 0; opacity: var(--xray, 0); }
-.intro :is(.frame, .letters, .card-shadow, .signal, .reader, .card-scene, .intro-callouts, .hud) { display: none; }
+.intro :is(.letters, .card-shadow, .signal, .reader, .card-scene, .intro-callouts, .hud) { display: none; }
 
 .intro.enhanced {
   height: calc((var(--scroll-screens) + 1) * 100vh);
@@ -450,17 +450,14 @@ html[data-intro] .stage-light { opacity: 0; }
   clip-path: inset(50%);
 }
 
-.intro.enhanced :is(.frame, .letters, .card-shadow, .signal, .reader, .card-scene, .intro-callouts, .hud) {
+.intro.enhanced :is(.letters, .card-shadow, .signal, .reader, .card-scene, .intro-callouts, .hud) {
   display: block;
   position: absolute;
   pointer-events: none;
 }
 
-.intro .frame {
-  inset: clamp(1.1rem, 3.4dvh, 2.75rem) var(--gutter) clamp(3.9rem, 10.2dvh, 6.6rem);
-  border-block: 1px solid currentColor;
-  opacity: .16;
-}
+/* (The thin lines along the stage's top and bottom, `.frame`, and the scroll's progress bar at the
+   bottom right, `.progress`, were taken out on 2026-11-26.) */
 
 .intro.enhanced :is(.letters, .signal, .card-scene, .intro-callouts) { inset: 0; width: 100%; height: 100%; }
 .intro-stage:not(.has-card) .card-scene { visibility: hidden; }
@@ -1436,22 +1433,6 @@ html[data-intro] .stage-light { opacity: 0; }
 }
 
 .intro .scroll-guide img { opacity: .82; }
-
-.intro .progress {
-  position: relative;
-  flex: 0 1 clamp(5.5rem, 17vw, 14rem);
-  height: 2px;
-  margin-left: auto;
-  background: color-mix(in srgb, currentColor 20%, transparent);
-}
-
-.intro .progress span {
-  position: absolute;
-  inset: 0;
-  scale: var(--progress, 0) 1;
-  transform-origin: left center;
-  background: currentColor;
-}
 
 .intro.enhanced #try-it { position: absolute; bottom: 0; }
 
