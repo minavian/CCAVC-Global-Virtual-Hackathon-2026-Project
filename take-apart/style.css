@@ -942,7 +942,7 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   border-block-start: 1px solid rgba(13, 13, 12, .14);
 }
 #s13 .s13-letter-control { justify-self: start; white-space: nowrap; }
-#s13 .plate-readout { grid-row: 6; min-block-size: 0; transform-origin: left bottom; }
+#s13 .plate-readout { grid-row: 6; min-block-size: 2lh; transform-origin: left bottom; }
 #s13 .plate-real { grid-row: 7; }
 @media (width > 860px) {
   #s13 { grid-template-columns: minmax(0, 5fr) minmax(0, 4fr); column-gap: 48px; }
