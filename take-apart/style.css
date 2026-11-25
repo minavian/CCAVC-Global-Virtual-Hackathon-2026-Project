@@ -2221,7 +2221,17 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   z-index: 1;
 }
 .s17-pill-opt:has(input:checked) { color: var(--paper); }
-.s17-why-word { display: inline-block; padding-inline: .04em; border-radius: .06em; }
+.s17-plot { position: relative; }
+#s17-reader-pulse {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--copper);
+  border-radius: 50%;
+  translate: -50% -50%;
+  opacity: 0;
+  pointer-events: none;
+}
 
 /* Finale blink (one-shot via WAAPI) & bidirectional reverse transition overlays */
 .deep-end-staged:not(:focus-within) > * { visibility: hidden; }

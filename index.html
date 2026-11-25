@@ -22,7 +22,7 @@
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
   <link rel="stylesheet" href="styles.css?v=21">
-  <link rel="stylesheet" href="take-apart/style.css?v=chat-wheel-1">
+  <link rel="stylesheet" href="take-apart/style.css?v=finale-cue-1">
   <script type="importmap">
     {"imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -40,8 +40,8 @@
   <script src="js/models.js" defer></script>
   <script src="js/story.js?v=5" defer></script>
   <script src="js/lab.js" defer></script>
-  <script src="js/deep.js?v=conversation-tap-1" defer></script>
-  <script type="module" src="js/deep-motion.js?v=chat-wheel-1"></script>
+  <script src="js/deep.js?v=finale-cue-1" defer></script>
+  <script type="module" src="js/deep-motion.js?v=finale-cue-1"></script>
   <script src="js/landing.js?v=9" defer></script>
   <script src="js/present.js?v=5" defer></script>
   <script type="module" src="js/taps.js"></script>
@@ -722,7 +722,7 @@
     <section class="plate" id="s17" aria-labelledby="s17-title">
       <div class="plate-words">
         <p class="plate-num">17</p>
-        <h3 id="s17-title"><span id="s17-why-word" class="s17-why-word">Why</span> your phone can’t read your car key</h3>
+        <h3 id="s17-title">Why your phone can’t read your car key</h3>
         <p>A reader and a tag have to be tuned to each other. The key is tuned to 125 kHz; the phone’s field flips at 13.56 MHz, about 100 times faster.</p>
         <div class="plate-controls s17-controls">
           <div class="s17-switch-row">
@@ -745,7 +745,10 @@
         <p class="plate-readout" aria-live="polite"></p>
         <p class="plate-real">Real name: low frequency (LF, 125 kHz) and high frequency (HF, 13.56 MHz).</p>
       </div>
-      <canvas class="plate-canvas" id="s17-chart" role="img" aria-label="The tag's tuning curve and the reader's frequency"></canvas>
+      <div class="s17-plot">
+        <canvas class="plate-canvas" id="s17-chart" role="img" aria-label="The tag's tuning curve and the reader's frequency"></canvas>
+        <span id="s17-reader-pulse" aria-hidden="true" hidden></span>
+      </div>
     </section>
 
     <footer class="deep-end" id="deep-end">

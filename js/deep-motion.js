@@ -3573,17 +3573,27 @@ function watchCarKey(previous, scene) {
 
 function watchFinale(previous, end) {
   const root = document.documentElement, chapter = end.closest('.deep');
-  const whyWord = previous.querySelector('#s17-why-word'), endBlink = end.querySelector('#deep-end-blink');
-  if (!whyWord || !endBlink) return;
+  const readerPulse = previous.querySelector('#s17-reader-pulse'), endBlink = end.querySelector('#deep-end-blink');
+  if (!endBlink) return;
 
   const cover = document.createElement('span');
   cover.className = 'deep-blink-cover';
   cover.setAttribute('aria-hidden', 'true');
   const normal = { color: 'var(--ink)', backgroundColor: 'transparent' };
-  const inverted = { color: 'var(--paper)', backgroundColor: 'var(--ink)' };
-  const blinkEnd = 860, closeEnd = 995, openEnd = 1280, readHold = 1000;
+  const cueEnd = 760, closeEnd = 995, openEnd = 1280, readHold = 1000;
   let run, rev, frame, finaleBlinkedOnce = false;
   const canPlay = () => !reducedMotion.matches && !document.hidden;
+
+  function pulseReaderMarker(animations, duration, delay = 0) {
+    if (!readerPulse || readerPulse.hidden) return;
+    const { top, bottom } = readerPulse.getBoundingClientRect();
+    if (bottom <= 0 || top >= innerHeight) return;
+    animations.push(readerPulse.animate([
+      { opacity: 0, transform: 'scale(.8)' },
+      { opacity: .85, transform: 'scale(1)', offset: .2, easing: arrivalEase },
+      { opacity: 0, transform: 'scale(2.8)' },
+    ], { duration, delay }));
+  }
 
   function playFinaleBlinkOnce() {
     if (finaleBlinkedOnce || reducedMotion.matches || document.hidden) return;
@@ -3639,10 +3649,10 @@ function watchFinale(previous, end) {
 
   function animate(now) {
     const elapsed = now - run.start;
-    if (elapsed >= blinkEnd && !run.coverClosing) {
+    if (elapsed >= cueEnd && !run.coverClosing) {
       run.coverClosing = true;
       chapter.append(cover);
-      run.closeAnim = cover.animate([{ opacity: 0 }, { opacity: 1 }], { duration: closeEnd - blinkEnd, easing: 'ease-in', fill: 'forwards' });
+      run.closeAnim = cover.animate([{ opacity: 0 }, { opacity: 1 }], { duration: closeEnd - cueEnd, easing: 'ease-in', fill: 'forwards' });
       run.animations.push(run.closeAnim);
     }
     if (elapsed >= closeEnd && !run.landed) {
@@ -3675,12 +3685,7 @@ function watchFinale(previous, end) {
     run = { top, start: performance.now(), destination, animations: [] };
     root.classList.add('deep-finale-hold');
     end.classList.add('deep-end-staged');
-    run.animations.push(whyWord.animate([
-      normal, { ...normal, offset: .10 }, { ...inverted, offset: .14 },
-      { ...inverted, offset: .27 }, { ...normal, offset: .32 },
-      { ...normal, offset: .48 }, { ...inverted, offset: .53 },
-      { ...inverted, offset: .66 }, { ...normal, offset: .72 }, normal,
-    ], { duration: blinkEnd }));
+    pulseReaderMarker(run.animations, cueEnd);
     frame = requestAnimationFrame(animate);
   }
 
@@ -3718,9 +3723,7 @@ function watchFinale(previous, end) {
         rev.anims.push(cover.animate([
           { opacity: 1 }, { opacity: 1, offset: .14, easing: 'ease-out' }, { opacity: 0 },
         ], { duration: 250, fill: 'both' }));
-        rev.anims.push(whyWord.animate([
-          normal, { ...inverted, offset: .24 }, { ...normal, offset: .52 }, normal,
-        ], { duration: 420, delay: 140 }));
+        pulseReaderMarker(rev.anims, 420, 140);
       }
       if (Math.abs(scrollY - rev.top) > 1 && Math.abs(scrollY - rev.top) < innerHeight * .95) {
         scrollTo({ top: rev.top, behavior: 'instant' });
