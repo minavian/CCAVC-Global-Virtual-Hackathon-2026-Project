@@ -1323,7 +1323,7 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
 }
 #s14-checks:checked { border-color: var(--ink); background: var(--ink); color: var(--paper); }
 #s14-checks:checked::before { transform: translateX(18px); }
-#s14 .plate-readout { max-inline-size: 420px; min-block-size: 3em; margin-top: 2px; }
+#s14 .plate-readout { max-inline-size: 420px; min-block-size: 3lh; margin-top: 2px; }
 .s14-signal-label {
   display: flex;
   justify-content: space-between;
@@ -1429,7 +1429,7 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   background: color-mix(in srgb, var(--red) var(--s14-noise-ratio, 0%), var(--copper));
 }
 #s14-signal-help { margin: 8px 0 16px; color: var(--muted); font-size: 13px; line-height: 1.4; }
-.s14-replies { min-block-size: 180px; margin: 0; padding: 0; list-style: none; }
+.s14-replies { min-block-size: 250px; margin: 0; padding: 0; list-style: none; }
 .s14-replies li { padding-block: 7px; border-block-start: 1px solid rgba(13, 13, 12, .12); will-change: auto; }
 .s14-prompt {
   display: flex;
@@ -1447,6 +1447,10 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
 .s14-bits { display: flex; font: 600 clamp(10px, 2.65vw, 12px)/1.5 "JetBrains Mono", ui-monospace, monospace; }
 .s14-bit { flex: 0 1 12px; min-inline-size: 0; }
 .s14-bit[data-wrong] { color: var(--red); text-decoration: underline; text-underline-offset: 2px; }
+@media (max-width: 360px) {
+  .s14-signal-label { flex-direction: column; align-items: stretch; }
+  .s14-signal-meta { justify-content: space-between; }
+}
 @media (max-width: 440px) {
   #s14 .s14-tap-pad { gap: 10px; padding: 11px 13px; }
   .s14-tap-stage { gap: 16px; }
