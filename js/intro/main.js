@@ -213,6 +213,9 @@ function intro(experience) {
     signal?.setTransform(ratio, 0, 0, ratio, 0, 0);
     if (available) scene.resize(w, h);
     place(reader, layout.reader.x, layout.reader.y, layout.reader.width, layout.reader.height);
+    // The lab's chart is drawn to its own size: redrawn at the new one, or it stayed stretched
+    // (or squeezed) from the old until the next change of setting.
+    if (!labUi.panel.hidden) paintPlot();
     needsMeasure = false;
     return true;
   }
