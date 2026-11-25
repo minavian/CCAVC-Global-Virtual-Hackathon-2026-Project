@@ -1040,7 +1040,16 @@ html[data-intro] .stage-light { opacity: 0; }
   position: sticky; bottom: -1rem; z-index: 2; margin: 0 -1rem -1rem; padding: .6rem 1rem 1rem;
   background: linear-gradient(rgba(22, 20, 17, 0), rgba(22, 20, 17, .96) .55rem);
 }
-.intro .try-actions button { white-space: nowrap; }
+.intro .try-actions button { white-space: nowrap; min-width: 0; }
+/* A narrow panel (a small laptop, a tablet held sideways): the three buttons only fit with
+   "Ask the card" said as "Ask" (its name for screen readers stays whole). */
+.intro .try { container-type: inline-size; }
+@container (max-width: 300px) {
+  .intro .try-long { display: none; }
+  .intro .try-actions { gap: .4rem; }
+  .intro .try-actions button { padding-inline: .6rem; }
+  .intro .try-reader button { padding-inline: .35rem; white-space: nowrap; }
+}
 .intro .try-actions button, .intro .try-presets button {
   min-height: 2.4rem; padding: .4rem .9rem; border-radius: 999px; font: inherit; font-size: .82rem; font-weight: 650; cursor: pointer;
 }

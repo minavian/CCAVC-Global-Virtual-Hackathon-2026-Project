@@ -768,7 +768,9 @@ function intro(experience) {
       g.beginPath(); g.moveTo(left, Y(v) + .5); g.lineTo(W - right, Y(v) + .5); g.stroke();
       g.fillText(v + unit, 2, Y(v) + 3);
     }
-    const ticks = tuning ? [5, 10, 13.56, 20, 30] : [2, 4, 6, 8, 10];
+    // A narrow chart (a narrow panel) keeps fewer labels along the bottom, so they never collide.
+    const narrow = W < 270;
+    const ticks = tuning ? (narrow ? [5, 13.56, 30] : [5, 10, 13.56, 20, 30]) : (narrow ? [2, 5, 10] : [2, 4, 6, 8, 10]);
     // Each under its place; the last one ends at the chart's edge, so it is never cut off.
     for (const v of ticks) {
       const last = v === ticks[ticks.length - 1];
