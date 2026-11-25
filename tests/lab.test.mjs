@@ -138,6 +138,16 @@ test('the map of where it wakes has exact edges', () => {
   }
 });
 
+test('an ID that can not be a card’s says why', () => {
+  assert.equal(L.idProblem('04 7B 21 9E'), null);
+  assert.equal(L.idProblem('047b219e'), null);
+  assert.match(L.idProblem('04 7B 21'), /four bytes/);
+  assert.match(L.idProblem('zz'), /four bytes/);
+  // 88 is the cascade tag: it tells the reader a longer ID follows, so no 4-byte ID starts with it.
+  assert.match(L.idProblem('88 11 22 33'), /longer ID/);
+  assert.equal(L.idProblem('08 11 22 33'), null);
+});
+
 test('a copy has the ID but not the key', () => {
   const key = Array.from({ length: 16 }, (_, i) => i * 17 & 255), copy = key.map(b => b ^ 1);
   const challenge = [0x5a, 0x13, 0xc2, 0x7e];

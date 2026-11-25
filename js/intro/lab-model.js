@@ -371,6 +371,15 @@ export function proofCode(key, challenge) {
 }
 
 // The card's ID typed by the visitor: four bytes in hex ("04 7B 21 9E"), or null.
+// Why a typed ID can't be a card's, or null if it can be: four bytes in hex, and not starting
+// with 88, the cascade tag (CT) that tells the reader a longer ID follows (ISO/IEC 14443-3).
+export function idProblem(text) {
+  const bytes = parseId(text);
+  if (!bytes) return 'An ID is four bytes, like 04 7B 21 9E.';
+  if (bytes[0] === 0x88) return '88 can’t come first: it means a longer ID follows.';
+  return null;
+}
+
 export function parseId(text) {
   const hex = text.replace(/[^0-9a-f]/gi, '');
   if (hex.length !== 8) return null;

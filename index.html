@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
-  <link rel="stylesheet" href="styles.css?v=36">
+  <link rel="stylesheet" href="styles.css?v=37">
   <script type="importmap">
     {"imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -43,7 +43,7 @@
   <script src="js/landing.js?v=7" defer></script>
   <script src="js/present.js?v=5" defer></script>
   <script type="module" src="js/taps.js"></script>
-  <script type="module" src="js/intro/main.js?v=81"></script>
+  <script type="module" src="js/intro/main.js?v=82"></script>
 </head>
 <body>
   <main class="hero">
@@ -213,8 +213,9 @@
               <input id="try-tune" aria-labelledby="try-tune-name" type="range" name="tune" min="0" max="1000" step="1" value="499"></label>
           </div>
           <div class="try-id">
-            <label><span>Card’s ID</span><input type="text" name="id" value="04 7B 21 9E" maxlength="11" spellcheck="false" autocomplete="off" aria-describedby="try-check"></label>
+            <label><span>Card’s ID</span><input type="text" name="id" value="04 7B 21 9E" maxlength="11" spellcheck="false" autocomplete="off" aria-describedby="try-check try-id-note"></label>
             <p class="try-check" id="try-check">Check byte <b>C0</b></p>
+            <p class="try-id-note" id="try-id-note" role="status"></p>
           </div>
           <div class="try-presets" role="group" aria-label="Try a situation"></div>
           <!-- Last, and pinned to the panel's bottom edge, so they never scroll out of reach. -->

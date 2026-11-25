@@ -1035,6 +1035,9 @@ html[data-intro] .stage-light { opacity: 0; }
   color: #f4f1ea; background: rgba(255, 255, 255, .06);
 }
 .intro .try-id input[aria-invalid="true"] { border-color: #ff8f7a; }
+/* Why a typed ID can't be a card's, under the field, only while it can't. */
+.intro .try-id-note { grid-column: 1 / -1; margin: -.35rem 0 0; font-size: .72rem; color: #ff8f7a; }
+.intro .try-id-note:empty { display: none; }
 .intro .try-check { margin: 0 0 .5rem; font-size: .72rem; color: rgba(244, 241, 234, .6); white-space: nowrap; }
 .intro .try-check b { font-family: "Inter Tight", system-ui, sans-serif; font-weight: 700; font-variant-numeric: tabular-nums; color: #f4f1ea; }
 .intro .try-actions { display: grid; grid-template-columns: 1fr 1fr auto; gap: .5rem; }

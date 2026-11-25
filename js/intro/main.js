@@ -10,7 +10,7 @@ import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose
 import { renderSignals } from './signals.js?v=2';
 import { ANSWER_AFTER, APPROACH_DETAIL, APPROACH_TEXT, ASK, SAMPLES_PER_BIT, CARD_ID, IDLE, LAB, LAST, NEAREST, REAL_MS, SHOTS, STEPS, TALK, approach, approachBand, approachView, centimetres,
   checkByte, chipShare, hex, message, proofSeconds, proofTalk, setCardId, talkLevels, view } from './cinema.js';
-import { LAB_START, PRESETS, READERS, clampSetting, curve, labLevels, measure as measureLab, parseId, proofCode, startFor, status as labStatus, wakes, chipPower, wakeMap } from './lab-model.js';
+import { LAB_START, PRESETS, READERS, clampSetting, curve, labLevels, measure as measureLab, parseId, idProblem, proofCode, startFor, status as labStatus, wakes, chipPower, wakeMap } from './lab-model.js';
 
 // Resolves once the landing's opening is over (js/landing.js), the visitor scrolls, or
 // `fallback` ms pass, whichever is first: the moment to load 3D without stuttering it.
@@ -80,7 +80,7 @@ function intro(experience) {
     readings: Object.fromEntries([...experience.querySelectorAll('.try-reading')].map(node => [node.dataset.reading, node])),
     inputs: Object.fromEntries([...experience.querySelectorAll('.try-controls input')].map(input => [input.name, input])),
     outputs: Object.fromEntries([...experience.querySelectorAll('.try-controls output')].map(output => [output.dataset.for, output])),
-    id: $('.try-id input'), check: $('.try-check b'), ask: $('.try-ask'), prove: $('.try-prove'), reset: $('.try-reset'), presets: $('.try-presets'),
+    id: $('.try-id input'), idNote: $('.try-id-note'), check: $('.try-check b'), ask: $('.try-ask'), prove: $('.try-prove'), reset: $('.try-reset'), presets: $('.try-presets'),
     // (Only the buttons that name a reader: the tag's switch shares the reader switch's look.)
     readers: [...experience.querySelectorAll('.try-reader button[data-reader]')], driveLabel: $('.try-control-drive span'),
     tags: [...experience.querySelectorAll('.try-tag button')],
@@ -1674,18 +1674,22 @@ function intro(experience) {
     });
   }
   // The card's ID: four bytes in hex. Its check byte follows as it is typed, and its answer
-  // carries the new ID.
+  // carries the new ID. One that can't be a card's says why under the field: at once for an ID
+  // starting with 88 (the cascade tag), and for one that isn't four bytes only once the field is
+  // left, so it doesn't scold every half-typed ID.
   labUi.id.addEventListener('input', event => {
     if (event.isTrusted) takeOver();
-    const bytes = parseId(labUi.id.value);
-    labUi.id.setAttribute('aria-invalid', String(!bytes));
-    if (!bytes) { labUi.check.textContent = '··'; return; }
+    const bytes = parseId(labUi.id.value), problem = idProblem(labUi.id.value);
+    labUi.id.setAttribute('aria-invalid', String(Boolean(problem)));
+    labUi.idNote.textContent = bytes && problem ? problem : '';
+    if (problem) { labUi.check.textContent = '··'; return; }
     setCardId(bytes);
     labUi.check.textContent = hex([checkByte(bytes)]);
   });
   labUi.id.addEventListener('blur', () => {
     const bytes = parseId(labUi.id.value);
     if (bytes) labUi.id.value = hex(bytes);
+    labUi.idNote.textContent = idProblem(labUi.id.value) ?? '';
   });
   labUi.ask.addEventListener('click', event => { if (event.isTrusted) takeOver(); labAsk(); });
   labUi.prove.addEventListener('click', event => { if (event.isTrusted) takeOver(); labAsk(true); });
@@ -1695,6 +1699,7 @@ function intro(experience) {
     setCardId(bytes);
     labUi.id.value = DEFAULT_ID;
     labUi.id.setAttribute('aria-invalid', 'false');
+    labUi.idNote.textContent = '';
     labUi.check.textContent = hex([checkByte(bytes)]);
     setLab({ ...startFor('pad') });
   });
