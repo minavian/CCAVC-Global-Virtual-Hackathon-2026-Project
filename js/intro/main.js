@@ -1250,20 +1250,29 @@ function intro(experience) {
       ? ['chip', ...(lab.set.metal > 0 ? ['metal'] : []), ...(b.phone > .97 ? ['phoneCoil'] : []), ...(b.reachShow > .5 ? ['reach'] : [])]
       : STEPS[step]?.labels ?? [];
     paintLabels3D(docked && available ? names : []);
-    // The lab's panel shows only in its step, once the readout is in.
+    // The lab's panel shows only in its step, once the readout is in. It is shown, leaving (fading
+    // and sliding out, already inert so nothing in it keeps the focus), or hidden.
     const labShown = inLab && b.panel > .5;
-    if (labUi.panel.hidden === labShown) {
-      labUi.panel.hidden = !labShown;
-      if (labShown) {
-        // Its entrance: the readings count up from nothing, the chart's curves draw in from the
-        // left and then its dot appears, and the amber lines under the sliders sweep in (styles.css).
-        if (!reduce.matches) {
-          lab.tweens = { field: 0, volts: 0, reach: 0, answer: lab.targets?.answer === null ? null : 0, watts: 0 };
-          lab.reveal = performance.now();
-        }
-        requestAnimationFrame(() => { labUi.panel.classList.add('is-shown'); paintPlot(); });
+    const panelState = labUi.panel.hidden ? 'hidden' : labUi.panel.inert ? 'leaving' : 'shown';
+    if (labShown && panelState !== 'shown') {
+      clearTimeout(lab.leaving);
+      labUi.panel.hidden = labUi.panel.inert = false;
+      // Its entrance, from hidden: the readings count up from nothing, the chart's curves draw in
+      // from the left and then its dot appears, and the amber lines under the sliders sweep in
+      // (styles.css). Called back while leaving, it simply comes back as it is.
+      if (panelState === 'hidden' && !reduce.matches) {
+        lab.tweens = { field: 0, volts: 0, reach: 0, answer: lab.targets?.answer === null ? null : 0, watts: 0 };
+        lab.reveal = performance.now();
       }
-      else labUi.panel.classList.remove('is-shown');
+      requestAnimationFrame(() => { labUi.panel.classList.add('is-shown'); paintPlot(); });
+    } else if (!labShown && panelState === 'shown') {
+      // Its exit: the same fade and slide as its entrance, backwards (.45 s), then hidden. A focus
+      // left in it goes to the readout's Next (to the explanation, `focusWhenDone` sees to it).
+      if (labUi.panel.contains(document.activeElement) && step !== LAST) film.next.focus({ preventScroll: true });
+      labUi.panel.classList.remove('is-shown');
+      labUi.panel.inert = true;
+      if (reduce.matches) labUi.panel.hidden = true;
+      else lab.leaving = setTimeout(() => { labUi.panel.hidden = true; }, 460);
     }
     stage.classList.toggle('is-lab', inLab);
     if (labShown) paintLabNumbers(Math.min(.05, (performance.now() - (lab.paintedAt ?? performance.now())) / 1000));
