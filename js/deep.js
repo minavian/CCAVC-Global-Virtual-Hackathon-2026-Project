@@ -235,34 +235,52 @@
   }
 
   // ---------- 7. It has to keep flipping ----------
-  plate('s7', p => {
+  const s7VoltageFormat = new Intl.NumberFormat('en', { maximumSignificantDigits: 2 });
+  const flipping = plate('s7', p => {
     const speed = p.input('speed'), v = speed.valueAsNumber;
     const f = v === 0 ? 0 : 10 * (13.56e6 / 10) ** (v / 100);
-    const speedText = f === 0 ? 'not at all (a still magnet)' : si(f, 'Hz', 3) + (v === 100 ? ' (real)' : '');
+    const emf = f > 0 ? physics.solve({ tag: 'card', reader: 'phone', distance: .02, frequency: f }).emf : 0;
+    const frequency = v === 100 ? '13.56 MHz' : f === 0 ? '0 Hz' : si(f, 'Hz', 3);
+    const speedText = f === 0 ? '0 Hz (still field)' : frequency + (v === 100 ? ' (reader speed)' : '');
     if (speed.getAttribute('aria-valuetext') !== speedText) {
-      p.out('speed', speedText);
+      p.out('speed', frequency);
       speed.setAttribute('aria-valuetext', speedText);
+      const [scale, unit] = emf === 0 || emf >= 1 ? [1, 'V'] : emf >= .001 ? [1e3, 'mV'] : [1e6, 'µV'];
+      p.say(`${s7VoltageFormat.format(emf * scale)} ${unit}`);
+      for (const button of p.el.querySelectorAll('[data-s7-speed]')) {
+        button.setAttribute('aria-pressed', String(Number(button.dataset.s7Speed) === v));
+      }
     }
-    const s = f > 0 ? physics.solve({ tag: 'card', reader: 'phone', distance: .02, frequency: f }) : { emf: 0 };
     const ctx = fit(p);
     // The waves are slowed for the eye: their speed on screen follows the log of the real speed.
     const shown = f === 0 ? 0 : .25 + Math.log10(f) / Math.log10(13.56e6) * 1.6;
     if (!reduced.matches) p.phase = (p.phase || 0) + shown * p.dt * Math.PI * 2;
     const ph = p.phase || 0;
-    const B = { x: 54, y: 30, w: p.w - 72, h: (p.h - 90) / 2 }, V = { x: 54, y: B.y + B.h + 40, w: p.w - 72, h: B.h };
+    const inset = p.w < 500 ? 14 : 28;
+    const laneHeight = (p.h - 70) / 2;
+    const B = { x: inset, y: 28, w: p.w - 2 * inset, h: laneHeight };
+    const V = { ...B, y: B.y + laneHeight + 28 };
     const emfMax = physics.solve({ tag: 'card', reader: 'phone', distance: .02 }).emf;
-    const vAmp = f === 0 ? 0 : clamp(Math.log10(1 + s.emf / emfMax * 1e4) / 4, 0, 1);
+    const vAmp = f === 0 ? 0 : clamp(Math.log10(1 + emf / emfMax * 1e4) / 4, 0, 1);
     const drawOutgoingHandoff = p.canvas.drawOutgoingHandoff;
     const handoffPlots = drawOutgoingHandoff ? [] : null;
-    const divider = (B.y + B.h + V.y) / 2;
-    hline(ctx, divider, B.x, B.x + B.w, GRID, '', []);
+    const divider = (B.y + B.h + V.y) / 2 - 6;
+    hline(ctx, divider, B.x, B.x + B.w, '#d3cabe', '', []);
     for (const [bx, label, fn, color] of [
-      [B, 'The field through the coil', t => f === 0 ? .7 : Math.sin(t), INK],
-      [V, 'The voltage it makes', t => f === 0 ? 0 : vAmp * Math.cos(t), COPPER]]) {
-      const yAt = u => .5 - fn(ph - u * Math.PI * 4) * .45;
-      ctx.strokeStyle = GRID; ctx.beginPath(); ctx.moveTo(bx.x, bx.y + bx.h / 2); ctx.lineTo(bx.x + bx.w, bx.y + bx.h / 2); ctx.stroke();
-      ctx.fillStyle = INK; ctx.font = `600 11px ${SANS}`; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom'; ctx.fillText(label, bx.x, bx.y - 6);
-      ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+      [B, 'Magnetic field', t => f === 0 ? .7 : Math.sin(t), INK],
+      [V, 'Induced voltage', t => f === 0 ? 0 : vAmp * Math.cos(t), COPPER]]) {
+      const yAt = u => .5 - fn(ph - u * Math.PI * 4) * .40;
+      ctx.strokeStyle = '#ded7cc'; ctx.lineWidth = 1; ctx.beginPath();
+      for (let i = 0; i <= 8; i++) {
+        const x = bx.x + bx.w * i / 8;
+        ctx.moveTo(x, bx.y); ctx.lineTo(x, bx.y + bx.h);
+      }
+      ctx.stroke();
+      hline(ctx, bx.y + bx.h / 2, bx.x, bx.x + bx.w, '#bdb4a6', '', []);
+      ctx.fillStyle = color === COPPER ? '#89481e' : INK;
+      ctx.font = `700 13px ${SANS}`; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+      ctx.fillText(label, bx.x, bx.y - 6);
+      ctx.strokeStyle = color; ctx.lineWidth = 2.25; ctx.beginPath();
       for (let i = 0; i <= 200; i++) {
         const u = i / 200, x = bx.x + u * bx.w, y = bx.y + yAt(u) * bx.h;
         i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
@@ -271,12 +289,14 @@
       handoffPlots?.push({ box: bx, yAt, color });
     }
     drawOutgoingHandoff?.(handoffPlots);
-    ctx.fillStyle = MUTED; ctx.font = `500 11px ${SANS}`; ctx.textAlign = 'right'; ctx.textBaseline = 'top';
-    ctx.fillText('Slowed down. Voltage height uses a log scale.', p.w - 18, p.h - 18);
-    ctx.globalAlpha = 1;
-    p.say(f === 0 ? 'A still magnet: the field is there, but nothing changes, so the coil makes 0 V.'
-      : `Flipping ${si(f, 'Hz', 3)}: the coil makes ${si(s.emf, 'V', 2)}. ${s.emf >= 3 ? 'Plenty for the chip.' : 'The chip needs about 2 V.'}`);
   }, { animate: true });
+  for (const button of flipping?.el.querySelectorAll('[data-s7-speed]') ?? []) {
+    button.addEventListener('click', () => {
+      const speed = flipping.input('speed');
+      speed.value = button.dataset.s7Speed;
+      speed.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  }
 
   // ---------- 8. The tuning trick ----------
   function blendTuningPlot(from, to, t) {
