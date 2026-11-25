@@ -271,9 +271,12 @@ export function buildEffects() {
     // Where the rings land: spread while the card is in the hand, on the card's coil once it
     // is down, blending between the two as it docks so nothing jumps.
     // The card's coil as the rings meet it: narrower when the card is turned away (the lab).
-    const facing = Math.abs(Math.cos(b.tilt || 0));
-    cardShape.sy = AT_CARD.sy * Math.max(.05, facing);
-    phoneCard.sy = PHONE_CARD.sy * Math.max(.05, facing);
+    const facing = Math.abs(Math.cos(b.tilt || 0)), size = 1 + ((b.tagScale ?? 1) - 1) * (b.dock || 0);
+    // The card's coil, as big as the lab's tag (a key ring tag's is smaller), and narrower turned away.
+    cardShape.sx = AT_CARD.sx * size;
+    cardShape.sy = AT_CARD.sy * size * Math.max(.05, facing);
+    phoneCard.sx = PHONE_CARD.sx * size;
+    phoneCard.sy = PHONE_CARD.sy * size * Math.max(.05, facing);
     // The rings take the card's coil's shape only as far as the card faces the reader: turned
     // side-on, little of the field goes through its coil, so they keep spreading past it rather
     // than closing onto it (they used to land on it even at 80°).
@@ -378,6 +381,7 @@ export function buildEffects() {
     if (!reachLine.visible) return;
     // As far over the coil as the card's coil can be and still wake it.
     reachLine.position.set(HOVER.x, HOVER.y, COIL_Z + (b.reachZ || 0));
+    reachLine.scale.setScalar(b.tagScale ?? 1);
     reachLine.material.opacity = .55 * show;
   }
 

@@ -10,7 +10,7 @@ import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose
 import { renderSignals } from './signals.js?v=2';
 import { ANSWER_AFTER, APPROACH_DETAIL, APPROACH_TEXT, ASK, SAMPLES_PER_BIT, CARD_ID, IDLE, LAB, LAST, NEAREST, REAL_MS, SHOTS, STEPS, TALK, approach, approachBand, approachView, centimetres,
   checkByte, chipShare, hex, message, proofSeconds, proofTalk, setCardId, talkLevels, view } from './cinema.js';
-import { LAB_START, PRESETS, READERS, clampSetting, curve, labLevels, measure as measureLab, parseId, proofCode, startFor, status as labStatus, wakes, chipPower } from './lab-model.js';
+import { LAB_START, PRESETS, READERS, clampSetting, curve, labLevels, measure as measureLab, parseId, proofCode, startFor, status as labStatus, wakes, chipPower, TAG_SIZES } from './lab-model.js';
 
 // Resolves once the landing's opening is over (js/landing.js), the visitor scrolls, or
 // `fallback` ms pass, whichever is first: the moment to load 3D without stuttering it.
@@ -77,6 +77,7 @@ function intro(experience) {
     outputs: Object.fromEntries([...experience.querySelectorAll('.try-controls output')].map(output => [output.dataset.for, output])),
     id: $('.try-id input'), check: $('.try-check b'), ask: $('.try-ask'), prove: $('.try-prove'), reset: $('.try-reset'), presets: $('.try-presets'),
     readers: [...experience.querySelectorAll('.try-reader button')], driveLabel: $('.try-control-drive span'),
+    tags: [...experience.querySelectorAll('.try-tag button')],
   };
   // Under each slider, a thin line: amber where along it the chip would wake, with everything
   // else as set (`paintZones`).
@@ -502,6 +503,7 @@ function intro(experience) {
       // (a card left tuned to 6 MHz made the whole demo say it was tuned wrong).
       next.drive = LAB_START.drive;
       next.tune = LAB_START.tune;
+      next.tag = LAB_START.tag;
       if (next.reader === 'phone' && available) scene.usePhone();
       // Only once the phone is there to show (still loading, or failed to: the pad stays).
       if (next.reader === 'phone' && !(available && scene.phoneLoaded())) next.reader = 'pad';
@@ -522,9 +524,9 @@ function intro(experience) {
   function setLab(next, fromControl) {
     // What the chart shows now, before anything changes: it glides from there to the new curve.
     const shownBefore = plotNow();
-    const before = lab.set.reader;
+    const before = lab.set.reader, tagBefore = lab.set.tag;
     lab.set = clampSetting({ ...lab.set, ...next });
-    if (lab.set.reader !== before || !labUi.presets.childElementCount) paintReader();
+    if (lab.set.reader !== before || lab.set.tag !== tagBefore || !labUi.presets.childElementCount) paintReader();
     lab.m = measureLab(lab.set);
     // (Only within one chart: the x of its points stay put.)
     lab.morph = shownBefore && shownBefore.chart === lab.chart ? { ...shownBefore, start: performance.now() } : null;
@@ -590,6 +592,7 @@ function intro(experience) {
   function paintReader() {
     const reader = lab.set.reader, info = READERS[reader];
     for (const button of labUi.readers) button.setAttribute('aria-pressed', String(button.dataset.reader === reader));
+    for (const button of labUi.tags) button.setAttribute('aria-pressed', String(button.dataset.tag === lab.set.tag));
     labUi.inputs.distance.min = info.nearest;
     labUi.driveLabel.textContent = reader === 'phone' ? 'Phone’s power' : 'Reader’s power';
     labUi.presets.replaceChildren(...Object.values(PRESETS[reader]).map(preset => {
@@ -601,6 +604,7 @@ function intro(experience) {
       button.setAttribute('aria-pressed', 'false');
       button.addEventListener('click', event => {
         if (event.isTrusted) takeOver();
+        // (A situation is for a bank card: "Normal tap" at 3 cm would leave a sticker asleep.)
         setLab(set);
       });
       return button;
@@ -682,7 +686,7 @@ function intro(experience) {
     const s = lab.set;
     for (const button of labUi.presets.children) {
       const p = button.preset;
-      const same = p && p.reader === s.reader && Math.abs(p.distance - s.distance) < .05 && Math.abs(p.angle - s.angle) < .5
+      const same = p && p.reader === s.reader && p.tag === s.tag && Math.abs(p.distance - s.distance) < .05 && Math.abs(p.angle - s.angle) < .5
         && Math.round(p.metal) === Math.round(s.metal) && Math.abs(p.drive - s.drive) < .5 && Math.abs(p.tune - s.tune) < .01
         && Boolean(p.clone) === Boolean(s.clone);
       button.setAttribute('aria-pressed', String(Boolean(same)));
@@ -1354,6 +1358,13 @@ function intro(experience) {
       lab.chart = tab.dataset.chart;
       for (const other of labUi.tabs) other.setAttribute('aria-pressed', String(other === tab));
       setLab({}, true);
+    });
+  }
+  // The tag's size: a bank card, a key ring tag or a sticker.
+  for (const button of labUi.tags) {
+    button.addEventListener('click', event => {
+      if (event.isTrusted) takeOver();
+      setLab({ tag: button.dataset.tag });
     });
   }
   // Which reader: the card reader or a phone.

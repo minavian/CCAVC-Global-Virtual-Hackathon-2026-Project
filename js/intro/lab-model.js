@@ -13,10 +13,11 @@
 //   tune      the frequency the card's coil is tuned to, MHz (5 to 30; real cards: 13.56)
 //   reader    which reader: 'pad', a shop's card reader, or 'phone', a phone's NFC
 //   clone     the card is a copy: the same ID, but not the secret key (see `proofCode`)
+//   tag       the size of the card's coil: 'card', a bank card's; 'fob', a key ring tag's; 'sticker'
 import { shownPower } from './easing.js';
 
 export const METAL_GAPS = [null, .02, .01, .005, .002];
-export const LAB_START = { distance: 3, angle: 0, metal: 0, drive: 100, tune: 13.56, reader: 'pad', clone: false };
+export const LAB_START = { distance: 3, angle: 0, metal: 0, drive: 100, tune: 13.56, reader: 'pad', clone: false, tag: 'card' };
 export const LIMITS = {
   distance: [.5, 10], angle: [0, 90], metal: [0, METAL_GAPS.length - 1], drive: [0, 150], tune: [5, 30],
 };
@@ -36,12 +37,23 @@ export const READERS = {
 // even 30° on a phone, the card's own edge holds it out at 2.2 cm, past where it can wake.
 const CARD_HALF_CM = 2.7;
 export function nearestFor(s) {
-  const r = READERS[readerOf(s)];
+  const r = READERS[readerOf(s)], half = CARD_HALF_CM * TAG_SIZES[tagOf(s)].scale;
   // Up to the distance slider's next 0.1 cm step, so a lifted card sits on a value it can show.
-  const lifted = Math.ceil((CARD_HALF_CM * Math.sin((s.angle || 0) * Math.PI / 180) + r.surface + .1) * 10 - 1e-9) / 10;
+  const lifted = Math.ceil((half * Math.sin((s.angle || 0) * Math.PI / 180) + r.surface + .1) * 10 - 1e-9) / 10;
   return Math.max(r.nearest, lifted);
 }
 const readerOf = s => READERS[s.reader] ? s.reader : 'pad';
+// The tag's coil: a bank card's (35.7 mm in radius, the engine's card), a key ring tag's (15 mm) or
+// a sticker's (10 mm), the same chip in each. A smaller coil catches less of the field, so it reaches
+// less over the card reader (4.9, 3.7, 2.8 cm); but over the phone, whose own coil is small, the key
+// ring tag reaches a little further than the card (2.5 against 2.4 cm): coils of a size couple best.
+// `scale`: how big the close-up draws the card for it (its coil, as a share of a bank card's).
+export const TAG_SIZES = {
+  card: { label: 'Card', radius: .0357, scale: 1 },
+  fob: { label: 'Key ring', radius: .015, scale: .45 },
+  sticker: { label: 'Sticker', radius: .01, scale: .32 },
+};
+const tagOf = s => TAG_SIZES[s.tag] ? s.tag : 'card';
 // Where a setting starts for a reader: everything normal, the card at that reader's normal tap.
 export const startFor = reader => ({ ...LAB_START, reader, distance: READERS[reader].start });
 // Situations to try, one click each, for each reader. Every one is checked against the physics:
@@ -74,9 +86,13 @@ const clampTo = (value, [lo, hi]) => Math.min(hi, Math.max(lo, value));
 
 // The engine's options for a setting (SI units).
 function options(s, distanceCm = s.distance) {
-  const P = physics(), C0 = P.TAGS.card.capacitance;
+  const P = physics(), card = P.TAGS.card, radius = TAG_SIZES[tagOf(s)].radius;
+  // Each tag is tuned to 13.56 MHz for its own coil, as a real one is: the capacitor that tunes a
+  // coil of this size (a bank card's is the engine's own).
+  const C0 = radius === card.radius ? card.capacitance
+    : 1 / ((2 * Math.PI * 13.56e6) ** 2 * P.coilInductance(card.turns, radius, card.wire));
   return {
-    tag: 'card', reader: readerOf(s),
+    tag: 'card', reader: readerOf(s), radius,
     distance: distanceCm / 100,
     angle: s.angle * Math.PI / 180,
     metal: METAL_GAPS[Math.round(s.metal)] ?? null,
@@ -205,6 +221,8 @@ export function labLevels(s, m) {
     // it wakes nowhere).
     reachZ: Math.min(m.reach, 10) / 100,
     reachShow: m.reach > .05 ? 1 : 0,
+    // How big the card is drawn: its coil's size (TAG_SIZES).
+    tagScale: TAG_SIZES[tagOf(s)].scale,
   };
 }
 
@@ -222,7 +240,7 @@ export function wakes(s) {
 // Why the chip is asleep, found by asking the physics rather than guessing: each control,
 // put back to normal on its own, in order of how much it usually matters. The first that
 // would wake the chip by itself is the reason. Null if none would on its own.
-const CAUSES = ['drive', 'angle', 'metal', 'tune', 'distance'];
+const CAUSES = ['drive', 'angle', 'metal', 'tune', 'tag', 'distance'];
 function cause(s) {
   const normal = startFor(readerOf(s));
   // (Each as it could really be: a turned card stays lifted by its edge.)
@@ -262,6 +280,7 @@ export function status(s, m) {
       ? `Its edge on the ${noun} holds it further off too.` : 'Little field passes through a tilted coil.' };
     case 'metal': return { text: 'Asleep: the metal blocks the field.', detail: 'Metal makes currents that cancel the field.' };
     case 'tune': return { text: 'Asleep: the card is tuned wrong.', detail: 'Its coil must be tuned to 13.56 MHz.' };
+    case 'tag': return { text: 'Asleep: too far for so small a coil.', detail: `${reach} A bank card’s coil would wake.` };
     case 'distance': return { text: `Asleep: too far from the ${noun}.`, detail: phone ? `${reach} A phone reaches less than a reader.` : reach };
     default: return { text: 'Asleep: not enough power.', detail: 'Several things are working against it.' };
   }
@@ -269,7 +288,7 @@ export function status(s, m) {
 
 // A setting kept inside its limits (the phone's camera island keeps the card 0.8 cm away).
 export function clampSetting(s) {
-  const out = { ...s, reader: readerOf(s), clone: Boolean(s.clone) };
+  const out = { ...s, reader: readerOf(s), clone: Boolean(s.clone), tag: tagOf(s) };
   for (const key in LIMITS) out[key] = clampTo(+out[key], LIMITS[key]);
   out.distance = Math.max(out.distance, nearestFor(out));
   return out;

@@ -76,6 +76,28 @@ test('the numbers the page states', () => {
   assert.ok(dip(2.5) > dip(.5) && dip(2.5) > dip(4.8), 'the answer peaks in between');
 });
 
+test('every tag size: what is drawn and said agrees with the physics', () => {
+  for (const tag of Object.keys(L.TAG_SIZES)) for (const reader of ['pad', 'phone'])
+    for (const distance of [.5, 1, 2, 3, 4, 7]) for (const angle of [0, 45, 80]) for (const drive of [0, 50, 100, 150]) {
+      const s = L.clampSetting({ ...L.startFor(reader), tag, distance, angle, drive }), m = L.measure(s), v = L.labLevels(s, m);
+      const st = L.status(s, m), at = JSON.stringify(s);
+      assert.equal(ASLEEP.test(st.text), !m.awake, `sentence "${st.text}" at ${at}`);
+      assert.ok(!/several things/i.test(st.detail) || !m.awake, `at ${at}`);
+      if (!m.awake) assert.ok(!v.power, `asleep but lit at ${at}`);
+      if (m.awake) assert.ok(m.reach + .05 >= s.distance, `awake beyond its reach at ${at}`);
+      assert.equal(v.tagScale, L.TAG_SIZES[tag].scale);
+      const edge = s.distance - 2.7 * L.TAG_SIZES[tag].scale * Math.sin(angle * Math.PI / 180);
+      assert.ok(edge >= L.READERS[reader].surface + .05, `tag inside the reader at ${at}`);
+    }
+  // Smaller coils reach less over the card reader; over the phone, a key ring tag reaches a
+  // little further than a card (its coil is nearer the phone's own size).
+  const reach = (reader, tag) => L.measure(L.clampSetting({ ...L.startFor(reader), tag })).reach;
+  assert.ok(reach('pad', 'card') > reach('pad', 'fob') && reach('pad', 'fob') > reach('pad', 'sticker'));
+  assert.ok(reach('phone', 'fob') > reach('phone', 'card'));
+  const sticker = L.clampSetting({ ...L.startFor('pad'), tag: 'sticker' });
+  assert.match(L.status(sticker, L.measure(sticker)).text, /small a coil/);
+});
+
 test('a copy has the ID but not the key', () => {
   const key = Array.from({ length: 16 }, (_, i) => i * 17 & 255), copy = key.map(b => b ^ 1);
   const challenge = [0x5a, 0x13, 0xc2, 0x7e];

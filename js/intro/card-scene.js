@@ -519,7 +519,9 @@ export async function createCardScene(canvas) {
     blend(free, docked, b.dock, shown);
     rig.position.copy(shown.position);
     rig.quaternion.copy(shown.quaternion);
-    rig.scale.setScalar(shown.scale);
+    // The lab's tag size: the card drawn smaller for a smaller coil, once it lies over the reader.
+    tagScale = 1 + ((b.tagScale ?? 1) - 1) * (b.dock || 0);
+    rig.scale.setScalar(shown.scale * tagScale);
 
     shade(Math.max(pose.xray, b.xray), b.card, b.copper, b.xray);
 
@@ -643,9 +645,12 @@ export async function createCardScene(canvas) {
   // The parts the close-up names, in the reader's frame (the card lying over it, cinema.js
   // HOVER, as high as it is shown): the right side of the reader's coil, the right side of
   // the field's rings halfway up, the right end of the card's coil, and the card's chip.
-  let cardTop = TOP, plateHeight = .02;
+  let cardTop = TOP, plateHeight = .02, tagScale = 1;
+  // A point on the card (its own millimetres, as a bank card), as it lies over the reader, drawn
+  // as big as the lab's tag size.
   const onCard = (x, y, z) => {
     const c = Math.cos(HOVER.spin), s = Math.sin(HOVER.spin);
+    x *= tagScale; y *= tagScale;
     return point.set(HOVER.x + x * c - y * s, HOVER.y + x * s + y * c, z);
   };
   let usingPhone = false;

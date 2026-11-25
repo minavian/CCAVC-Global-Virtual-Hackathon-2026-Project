@@ -1003,6 +1003,9 @@ html[data-intro] .stage-light { opacity: 0; }
 .intro .try-reader button[aria-pressed="true"] { color: #141210; background: #f4f1ea; }
 .intro .try-reader button[aria-busy="true"] { cursor: progress; opacity: .7; }
 .intro .try-reader button:disabled { cursor: not-allowed; opacity: .35; }
+/* The tag's size: three across, a little smaller than the reader switch. */
+.intro .try-tag { grid-template-columns: repeat(3, 1fr); margin-top: -.2rem; }
+.intro .try-tag button { min-height: 1.7rem; font-size: .74rem; }
 .intro .try-reader button:focus-visible { outline: 2px solid #ffb52e; outline-offset: 2px; }
 .intro .try-control { display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: .1rem .5rem; font-size: .8rem; font-weight: 600; }
 .intro .try-control output { font: 650 .84rem "Inter Tight", system-ui, sans-serif; color: #ffc56b; font-variant-numeric: tabular-nums; }
@@ -1246,18 +1249,20 @@ html[data-intro] .stage-light { opacity: 0; }
 /* The lab on a shorter laptop screen (a 1366 × 768 or 1024 × 768 one): everything a little
    tighter, so the whole panel fits without scrolling. */
 @media (min-width: 701px) and (min-aspect-ratio: 17/20) and (max-height: 860px) {
-  .intro .try { gap: .45rem; padding-top: .8rem; }
-  .intro .try-readings { gap: .3rem .8rem; }
+  .intro .try { gap: .38rem; padding-top: .8rem; }
+  .intro .try-readings { gap: .2rem .8rem; }
+  .intro .try-watts { font-size: .62rem; }
+  .intro .try-tag button { min-height: 1.45rem; }
   .intro .try-reading b { font-size: 1rem; }
-  .intro .try-plot { height: 4rem; }
-  .intro .try-reader button { min-height: 1.75rem; padding: .2rem .7rem; }
-  .intro .try-controls { gap: .2rem; }
+  .intro .try-plot { height: 3.5rem; }
+  .intro .try-reader button { min-height: 1.5rem; padding: .15rem .7rem; }
+  .intro .try-controls { gap: .1rem; }
   .intro .try-control { font-size: .76rem; }
   .intro .try-control input { height: .95rem; }
   .intro .try-id input { padding: .3rem .55rem; }
   .intro .try-id label { grid-template-columns: auto 1fr; align-items: center; gap: .5rem; }
   .intro .try-check { margin: 0 0 .4rem; }
-  .intro .try-presets button { min-height: 1.75rem; padding: .15rem .55rem; font-size: .7rem; }
+  .intro .try-presets button { min-height: 1.6rem; padding: .12rem .55rem; font-size: .7rem; }
   .intro .try-actions button { min-height: 2.15rem; }
 }
 
