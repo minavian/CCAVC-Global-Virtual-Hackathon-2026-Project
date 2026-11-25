@@ -1193,7 +1193,9 @@ function intro(experience) {
       }
       // With reduced motion the answer's one still frame keeps it on its way down to the
       // reader, so the picture still shows which way it goes.
-      if (said && reduce.matches && said.dir < 0) goal = { ...goal, reply: plan.levels.reply };
+      // (Not in the lab, whose own still frame above already keeps it: this used to set it back to
+      // the lab step's own level, none, so the lab's answer never showed with reduced motion.)
+      if (said && reduce.matches && said.dir < 0 && !plan.lab) goal = { ...goal, reply: plan.levels.reply };
       // Aim where the card is going, so the camera and the card arrive together.
       look = view(plan.shot, goal.gap, rest, layout.compact);
       if (plan.lab) look.zoom *= 1 - .1 * shown.phone.value;
