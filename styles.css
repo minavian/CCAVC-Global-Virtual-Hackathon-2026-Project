@@ -825,10 +825,15 @@ html[data-intro] .stage-light { opacity: 0; }
   color: #fff;
   text-shadow: 0 1px 14px rgba(0, 0, 0, .65);
   opacity: 0;
-  transition: opacity .4s ease;
+  /* It comes in with a small rise in size as it fades in (the `scale` property, so it never
+     fights the translate that places it), and shrinks back as it fades out. */
+  scale: .96;
+  transform-origin: 50% 0;
+  transition: opacity .4s ease, scale .45s cubic-bezier(.2, .7, .2, 1);
   pointer-events: none;
 }
-.intro .talk-tag.is-shown { opacity: 1; }
+.intro .talk-tag.is-shown { opacity: 1; scale: 1; }
+@media (prefers-reduced-motion: reduce) { .intro .talk-tag { scale: 1; transition: opacity .4s ease; } }
 .intro .talk-note {
   font: 650 .6rem/1 "Inter Tight", "Helvetica Neue", Helvetica, Arial, sans-serif;
   letter-spacing: .14em;
@@ -860,7 +865,7 @@ html[data-intro] .stage-light { opacity: 0; }
 .intro .talk-bytes span.is-check { color: rgba(255, 255, 255, .4); }
 .intro .talk-tag:is([data-kind="ask"], [data-kind="answer"]) { left: 50%; top: clamp(1rem, 6dvh, 3.5rem); translate: -50% 0; }
 /* While the reader checks: the ID alone, just above the reader's chip. */
-.intro .talk-tag[data-kind="check"] { translate: -50% calc(-100% - 14px); font-size: .9rem; }
+.intro .talk-tag[data-kind="check"] { translate: -50% calc(-100% - 14px); font-size: .9rem; transform-origin: 50% 100%; }
 .intro .talk-tag[data-kind="check"] :is(.talk-signal, .talk-bytes) { display: none; }
 /* Just above the readout, in the middle. */
 /* While it plays by itself, a ring round the right arrow fills until the next step. */
