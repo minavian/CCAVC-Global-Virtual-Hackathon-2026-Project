@@ -562,7 +562,15 @@ function intro(experience) {
     lab.morph = shownBefore && shownBefore.chart === lab.chart ? { ...shownBefore, start: performance.now() } : null;
     // The Map chart is a grid of where the chip wakes, not a curve. The last one stays a moment,
     // fading out under the new one, so a change cross-fades instead of jumping.
-    if (lab.chart === 'map') {
+    // At most one map every 50 ms (about 2,500 solves each: a few milliseconds here, several times
+    // that on a slow phone), and once more when a drag stops; the dot follows every step anyway.
+    const mapDue = lab.chart === 'map' && (!lab.map || performance.now() - (lab.mapAt ?? 0) >= MAP_EVERY);
+    if (lab.chart === 'map' && !mapDue) {
+      clearTimeout(lab.mapLater);
+      lab.mapLater = setTimeout(() => setLab({}), MAP_EVERY);
+    } else if (lab.chart === 'map') {
+      clearTimeout(lab.mapLater);
+      lab.mapAt = performance.now();
       if (lab.map && !reduce.matches) lab.mapFade = { map: lab.map, start: performance.now() };
       lab.map = wakeMap(lab.set);
       // The other reader's, everything else the same, for its outline (coarser: about 500 solves).
@@ -801,7 +809,7 @@ function intro(experience) {
     return moving || Boolean(lab.morph) || Boolean(lab.reveal) || Boolean(lab.mapFade);
   }
 
-  const MAP_FADE = 260;
+  const MAP_FADE = 260, MAP_EVERY = 50;
   // The rule a payment terminal is built to (EMV contactless): it must read a card anywhere up to
   // 4 cm from its face. On the card reader's distance charts and Map, a dotted line there, named
   // at its top, so its 4.9 cm reach can be seen to clear it (and metal, say, not to).
