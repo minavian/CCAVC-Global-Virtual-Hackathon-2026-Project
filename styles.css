@@ -1275,6 +1275,17 @@ html[data-intro] .stage-light { opacity: 0; }
   .intro .try-actions button { min-height: 2.15rem; }
 }
 
+/* Shorter still (a 1280 × 720 laptop): the four readings in one row, as on a phone. */
+@media (min-width: 701px) and (min-aspect-ratio: 17/20) and (max-height: 760px) {
+  .intro .try-readings { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .25rem .5rem; }
+  .intro .try-reading dt { font-size: .56rem; letter-spacing: .03em; }
+  .intro .try-reading b { font-size: .9rem; }
+  .intro .try-watts { white-space: normal; font-size: .56rem; line-height: 1.2; }
+  .intro .try-plot { height: 3.1rem; }
+  /* The amber lines' caption moves into a tip on the lines themselves (main.js sets it). */
+  .intro .try-legend { display: none; }
+}
+
 @media (max-height: 480px) {
   .intro .instruction { top: 9%; }
   .intro .instruction h2 { font-size: min(7vw, 13dvh); }

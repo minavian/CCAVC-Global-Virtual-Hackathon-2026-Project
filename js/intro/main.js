@@ -85,6 +85,7 @@ function intro(experience) {
     const bar = document.createElement('i');
     bar.className = 'try-zone';
     bar.setAttribute('aria-hidden', 'true');
+    bar.title = 'Amber: where the chip wakes, with everything else as set.';
     input.after(bar);
     return [name, bar];
   }));
