@@ -1140,7 +1140,8 @@ function intro(experience) {
       : tuning
       ? `Voltage at the chip against the ${READERS[lab.set.reader].noun}'s frequency, with the card tuned to ${lab.set.tune.toFixed(2)} MHz. At 13.56 MHz it gets ${lab.m.raw.toFixed(1)} volts; it needs 2.`
       : `Voltage at the chip against distance. At ${lab.set.distance.toFixed(1)} cm it gets ${lab.m.raw.toFixed(1)} volts; it needs 2. It works up to ${lab.m.reach.toFixed(1)} cm.`
-        + (lab.set.reader === 'pad' ? ` A payment terminal must read a card up to ${TERMINAL_CM} cm away.` : ''));
+        + (lab.set.reader === 'pad' ? ` A payment terminal must read a card up to ${TERMINAL_CM} cm away.` : '')
+        + (nearest > .55 ? ` Closer than ${nearest.toFixed(1)} cm, the card can’t be.` : ''));
   }
 
   // Ask in the lab: the question goes out; the card answers only if its chip is awake.
