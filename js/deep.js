@@ -219,6 +219,15 @@
     const cappedVolts = volts.map(([x, v]) => [x, Math.min(v, 6)]);
     const voltsTrace = stage(.36, .88, progress);
     trace(cappedVolts, b, bottom, COPPER, voltsTrace);
+    p.canvas.transitionTraces = [[top, field, a, INK], [bottom, cappedVolts, b, COPPER]].map(([box, points, axes, color]) => {
+      const x = axes.X(points[0][0]);
+      const yAt = u => {
+        const index = u * (points.length - 1), i = Math.floor(index);
+        const value = points[i][1], next = points[Math.min(i + 1, points.length - 1)][1];
+        return (axes.Y(value + (next - value) * (index - i)) - box.y) / box.h;
+      };
+      return { box: { ...box, x, w: axes.X(points.at(-1)[0]) - x }, yAt, color };
+    });
     if (voltsTrace >= d / xr.to) dot(ctx, b.X(d), b.Y(Math.min(s.rawVolts, 6)), s.awake ? GREEN : RED);
     const range = physics.range(opts);
     const rangeLine = stage(.76, 1, progress);
@@ -262,8 +271,7 @@
     const V = { ...B, y: B.y + laneHeight + 28 };
     const emfMax = physics.solve({ tag: 'card', reader: 'phone', distance: .02 }).emf;
     const vAmp = f === 0 ? 0 : clamp(Math.log10(1 + emf / emfMax * 1e4) / 4, 0, 1);
-    const drawOutgoingHandoff = p.canvas.drawOutgoingHandoff;
-    const handoffPlots = drawOutgoingHandoff ? [] : null;
+    const handoffPlots = [];
     const divider = (B.y + B.h + V.y) / 2 - 6;
     hline(ctx, divider, B.x, B.x + B.w, '#d3cabe', '', []);
     for (const [bx, label, fn, color] of [
@@ -286,9 +294,10 @@
         i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
       }
       ctx.stroke();
-      handoffPlots?.push({ box: bx, yAt, color });
+      handoffPlots.push({ box: bx, yAt, color });
     }
-    drawOutgoingHandoff?.(handoffPlots);
+    p.canvas.transitionTraces = handoffPlots;
+    p.canvas.drawOutgoingHandoff?.(handoffPlots);
   }, { animate: true });
   for (const button of flipping?.el.querySelectorAll('[data-s7-speed]') ?? []) {
     button.addEventListener('click', () => {

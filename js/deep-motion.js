@@ -177,7 +177,7 @@ const ALL_STAGED_CLASSES = [
   's15-staged', 's16-staged', 's17-staged', 'deep-end-staged', 'deep-rev-staged',
 ];
 const STRAY_OVERLAY_SELECTOR = [
-  '.deep-rev-copy', '.deep-blink-cover', '.s7-paper-fade', '.part-two-reveal', '.part-two-reverse-cover',
+  '.deep-rev-copy', '.deep-blink-cover', '.s7-trace-handoff', '.part-two-reveal', '.part-two-reverse-cover',
   '.s12-vortex', '.s13-spectrum-copy', '.s14-timing-copy',
   '.s15-handoff-copy', '.s16-handoff-copy', '.s16-title-morph', '.s17-handoff-copy', '.s17-portal-wallet',
 ].join(', ');
@@ -584,10 +584,12 @@ function watchCloser(source, plate) {
 
 function watchFlipping(previous, plate) {
   const root = document.documentElement;
-  const cover = document.createElement('span');
-  cover.className = 's7-paper-fade';
-  cover.setAttribute('aria-hidden', 'true');
-  const midpoint = 280, duration = 620, readHold = 1000;
+  const source = previous.querySelector('#s6-chart'), target = plate.querySelector('#s7-chart');
+  const overlay = document.createElement('canvas');
+  overlay.className = 's7-trace-handoff';
+  overlay.setAttribute('aria-hidden', 'true');
+  const ctx = overlay.getContext('2d');
+  const duration = 900, readHold = 1000;
   let run, frame;
 
   const canPlay = () => !reducedMotion.matches && !document.hidden;
@@ -596,27 +598,56 @@ function watchFlipping(previous, plate) {
     if (!run) return;
     cancelAnimationFrame(frame);
     run = undefined;
-    cover.remove();
+    overlay.remove();
+    for (const scene of [previous, plate]) {
+      scene.style.removeProperty('--s7-scene-opacity');
+      scene.style.removeProperty('--s7-title-offset');
+    }
     root.classList.remove('deep-flipping-hold');
     scheduleMotion();
   }
 
   function render() {
-    const { position, before, after, dir } = run;
-    cover.style.opacity = position < midpoint ? ease(0, midpoint, position) : 1 - ease(midpoint, duration, position);
-    const showNext = position > midpoint || (position === midpoint && dir > 0);
-    const top = showNext ? after : before;
+    const { position, before, after, from, to, width, height } = run;
+    const t = position / duration;
+    const outgoing = ease(.04, .36, t), incoming = ease(.64, .96, t);
+    previous.style.setProperty('--s7-scene-opacity', 1 - outgoing);
+    previous.style.setProperty('--s7-title-offset', `${-12 * outgoing}px`);
+    plate.style.setProperty('--s7-scene-opacity', incoming);
+    plate.style.setProperty('--s7-title-offset', `${12 * (1 - incoming)}px`);
+    const top = t < .5 ? before : after;
     if (Math.abs(scrollY - top) > 1) scrollTo({ top, behavior: 'instant' });
     run.top = scrollY;
+
+    if (!ctx) return;
+    ctx.clearRect(0, 0, width, height);
+    const alpha = outgoing * (1 - incoming);
+    const start = source.transitionTraces, finish = target.transitionTraces;
+    if (!alpha || !start || !finish) return;
+    const travel = ease(.22, .76, t), shape = ease(.32, .74, t);
+    ctx.globalAlpha = alpha;
+    start.forEach((trace, index) => {
+      const next = finish[index];
+      const startY = from.y + trace.box.y, endY = to.y + next.box.y;
+      const baseline = mix(startY + trace.box.h / 2, endY + next.box.h / 2, travel);
+      ctx.strokeStyle = trace.color;
+      ctx.beginPath();
+      for (let i = 0; i <= 120; i++) {
+        const u = i / 120;
+        const x = mix(from.x + trace.box.x + trace.box.w * u, to.x + next.box.x + next.box.w * u, travel);
+        const y = baseline + mix((trace.yAt(u) - .5) * trace.box.h, (next.yAt(u) - .5) * next.box.h, shape);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    });
   }
 
   function animate(now) {
     const elapsed = Math.max(0, Math.min(48, now - run.last));
     run.last = now;
     const end = run.dir > 0 ? duration : 0;
-    let position = Math.max(0, Math.min(duration, run.position + run.dir * elapsed));
-    // Paint the fully covered frame even if a slow frame crosses the midpoint.
-    if ((run.position - midpoint) * (position - midpoint) < 0) position = midpoint;
+    const position = Math.max(0, Math.min(duration, run.position + run.dir * elapsed));
     if (run.position !== position) {
       run.position = position;
       render();
@@ -640,9 +671,21 @@ function watchFlipping(previous, plate) {
     // On a tall scene, reverse to the edge the visitor originally paged from.
     const before = dir > 0 ? scrollY : Math.max(beforeTop, afterTop - innerHeight);
     const after = dir > 0 ? afterTop : scrollY;
-    run = { before, after, dir, position: dir > 0 ? 0 : duration, last: performance.now() };
+    const from = bounds(source, scrollY), to = bounds(target, scrollY);
+    from.y -= before;
+    to.y -= after;
+    const width = viewportWidth(), height = innerHeight;
+    run = { before, after, from, to, width, height, dir, position: dir > 0 ? 0 : duration, last: performance.now() };
     root.classList.add('deep-flipping-hold');
-    plate.closest('.deep').append(cover);
+    if (ctx) {
+      const dpr = Math.min(devicePixelRatio || 1, 2);
+      overlay.width = Math.round(width * dpr);
+      overlay.height = Math.round(height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.lineWidth = 2.25;
+      ctx.lineJoin = ctx.lineCap = 'round';
+      plate.closest('.deep').append(overlay);
+    }
     render();
     frame = requestAnimationFrame(animate);
   }
