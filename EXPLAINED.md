@@ -616,7 +616,7 @@ Owner: Mina Vian · 2026-11-21 · Issue #19
 
 **Why it is built this way.** No libraries and no build step: Node's own test runner, and a plain page for the browser. Judges can open the checks themselves.
 
-**How to check it.** `node --test` in the project's folder (32 checks); or serve the folder and open `/tests/` (the 24 simulation checks). Every line should be green.
+**How to check it.** `node --test` in the project's folder (38 checks); or serve the folder and open `/tests/` (35: the 24 simulation checks and the lab's 11). Every line should be green.
 
 ---
 
