@@ -23,7 +23,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
-  <link rel="stylesheet" href="styles.css?v=60">
+  <link rel="stylesheet" href="styles.css?v=61">
   <link rel="stylesheet" href="take-apart/style.css?v=part-two-wave-1">
   <script type="importmap">
     {"imports": {
@@ -47,7 +47,7 @@
   <script src="js/landing.js?v=9" defer></script>
   <script src="js/present.js?v=6" defer></script>
   <script type="module" src="js/taps.js"></script>
-  <script type="module" src="js/intro/main.js?v=116"></script>
+  <script type="module" src="js/intro/main.js?v=117"></script>
 </head>
 <body>
   <main class="hero">
@@ -245,8 +245,12 @@
           </div>
         </section>
         <!-- Top right: X-ray on or off (on at first: the card and the reader seen through, so their
-             coils and chip show), and Pause / Play: it plays by itself until the visitor steps in. -->
+             coils and chip show), and Pause / Play: it plays by itself until the visitor steps in.
+             First, Real physics (off at first): the coils' real field lines in place of the rings
+             (js/intro/effects.js, js/intro/coil-field.js), with a note on what they show. -->
         <div class="cine-tools">
+          <p class="cine-physics-note" hidden><b>Real field lines</b><span class="cine-physics-slow"> · slowed 27 million times</span><span class="cine-physics-count"> · <b class="cine-physics-through">0</b> of <span class="cine-physics-total">48</span> go through the card</span></p>
+          <button class="cine-physics" type="button" aria-pressed="false" title="Draw the coil’s real magnetic field" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8h13"/><path class="cine-physics-lobe" d="M8 8C3.6 8 3.6 2 8 2s4.4 6 0 6Z"/><path class="cine-physics-lobe" d="M8 8c-4.4 0-4.4 6 0 6s4.4-6 0-6Z"/></svg>Real physics</button>
           <button class="cine-xray" type="button" aria-pressed="true" title="See inside the card and the reader" hidden><i aria-hidden="true"></i>X-ray</button>
           <button class="cine-auto is-on" type="button" aria-pressed="true" hidden><i aria-hidden="true"></i><span class="cine-auto-text">Pause</span></button>
         </div>

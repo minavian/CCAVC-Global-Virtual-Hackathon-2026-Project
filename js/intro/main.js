@@ -66,6 +66,8 @@ function intro(experience) {
     // The parts named on screen, each with a thin line to its part (paintLabels in paintFilm).
     labels: Object.fromEntries([...experience.querySelectorAll('.cine-label')].map(label => [label.dataset.part, label])),
     leaders: $('.cine-leaders'), auto: $('.cine-auto'), autoText: $('.cine-auto-text'), xray: $('.cine-xray'), done: $('.lab-done'),
+    physics: $('.cine-physics'), physicsNote: $('.cine-physics-note'), physicsThrough: $('.cine-physics-through'),
+    physicsTotal: $('.cine-physics-total'),
     check: $('.cine-check'), explain: $('.cine-explain'), replay: $('.replay'),
     backdrop: $('.cine-backdrop'), hint: $('.cine-hint'), nextLabel: 'Next',
     // The message's label: which way, what it says, and its signal as the receiver feels it.
@@ -171,6 +173,9 @@ function intro(experience) {
   // The X-ray switch (top right, on at first): off, the card's face and the reader's body (or the
   // phone's) stay solid through the close-up and the lab, instead of being seen through.
   let xray = true;
+  // The "Real physics" switch (top right, off at first): on, the field is drawn as the coils' real
+  // field lines, worked out from their windings (effects.js, coil-field.js), in place of the rings.
+  let physics = false;
   // The note that says why the page won't scroll on yet (`nudge`).
   const holdNote = document.createElement('p');
   holdNote.className = 'hold-note';
@@ -523,13 +528,30 @@ function intro(experience) {
     }
   }
 
+  // The note beside the switches while Real physics is on: what the lines are, and once the card
+  // lies over the reader, how many of them pass through its coil (effects.js `real`), rolling
+  // as it changes. (On a phone, not over the lab's panel.)
+  function paintPhysics(shown) {
+    const on = physics && shown;
+    if (film.physicsNote.hidden === on) film.physicsNote.hidden = !on;
+    if (!on) return;
+    const info = available ? scene.real() : null;
+    const counting = !!info && info.show > .5 && info.total > 0;
+    film.physicsNote.classList.toggle('is-counting', counting);
+    if (!counting) return;
+    roll(film.physicsThrough, String(info.through));
+    if (film.physicsTotal.textContent !== String(info.total)) film.physicsTotal.textContent = info.total;
+  }
+
   // The autoplay button: shown once the card can be dropped, until the close-up is over.
   function paintAuto() {
     const around = (canDrop || detected) && step < LAST && !(layout?.compact && step === LAB);
     const shown = around && !reduce.matches;
     if (film.auto.hidden === shown) film.auto.hidden = !shown;
-    // The X-ray switch shows with it, with reduced motion too.
+    // The X-ray switch shows with it, with reduced motion too, and so does Real physics.
     if (film.xray.hidden === around) film.xray.hidden = !around;
+    if (film.physics.hidden === around) film.physics.hidden = !around;
+    paintPhysics(around && !(layout?.compact && step === LAB));
     const label = auto.on ? 'Pause' : 'Play';
     if (film.autoText.textContent !== label) {
       film.autoText.textContent = label;
@@ -1842,6 +1864,8 @@ function intro(experience) {
       goal = IDLE;
       look = view('rest', IDLE.gap, rest, layout.compact);
     }
+    // Real physics is the switch's alone: no step sets it.
+    goal = { ...goal, physics: physics ? 1 : 0 };
     let settled = true;
     const pace = docked ? 4.5 : 14;
     for (const key in shown) {
@@ -2138,6 +2162,11 @@ function intro(experience) {
   film.xray.addEventListener('click', () => {
     xray = !xray;
     film.xray.setAttribute('aria-pressed', String(xray));
+    invalidate();
+  });
+  film.physics.addEventListener('click', () => {
+    physics = !physics;
+    film.physics.setAttribute('aria-pressed', String(physics));
     invalidate();
   });
   film.auto.addEventListener('click', () => {

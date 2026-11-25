@@ -7,12 +7,16 @@
 //   which powers the card and carries the question. Blue rings come down from the card to
 //   the reader: the answer.
 // - The chips glow while they have power or work, and flash as they read each byte.
+// - With the "Real physics" switch on (main.js), the rings give way to the coils' real field
+//   lines, worked out from their windings (coil-field.js; see "Real physics" below).
 // The rings live in the reader's frame; the wires and the chip's glow live in the card's
 // frame, so they move with it. Units are metres.
 // The page behind is light while the card is dragged, so nothing here adds light: every
 // mark is a saturated colour laid over the scene with ordinary blending, which reads on
 // paper as well as on the dark close-up.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { makeCoil, lines as traceLines, strength } from './coil-field.js';
 import { squarePoint, COIL_Z, COIL_HALF, COIL_RADIUS, CHIP as READER_CHIP } from './reader-model.js';
 import { HOVER } from './cinema.js';
 import { PHONE_COIL, PHONE_CHIP } from './phone-reader.js';
@@ -153,6 +157,168 @@ const blendShape = (a, b, k, out) => {
   return out;
 };
 
+// Real physics (the close-up's switch, main.js `physics`; shown as far as `b.physics`): in place
+// of the rings, the coils' own magnetic field, worked out from their windings (coil-field.js) and
+// drawn as its field lines. Owner: Mina Vian. What is real in it:
+// - The shape: each line runs the way a compass needle would point, up through the coil, round,
+//   and back under it (the half under the coil is fainter: it runs through the reader).
+// - The strength: the lines crowd where the field is strong, and each fades where it weakens
+//   (it falls about as the cube of the distance, so the far ends fade fast).
+// - The timing: the field is not sent across. It is there everywhere at once and turns round
+//   13.56 million times a second; here once every two seconds (WAVE_HZ). The beads on the lines
+//   run the way the field points at that moment, so you see it swing back and forth.
+// - The card's power: the lines that pass through the card's coil (drawn stronger) are the ones
+//   that drive its current. Farther away, or turned side-on, fewer pass through.
+// - The answer: the card's coil makes a small field of its own (blue), a quarter turn behind the
+//   reader's, as the current a changing field drives round a tuned coil is.
+const WAVE_HZ = .5;     // 13.56 MHz shown 27 million times slower
+const BEAD = .009;      // about this far between the beads on a line (m)
+const CARD_CENTRE = [-.0003, 0], CARD_Z = .00034, CARD_HALF = [.0402, .0246];
+const QUARTERS = [0, 1, 2, 3].map(k => ({ turn: k * Math.PI / 2 }));
+
+// The coils, each turn a closed loop: the reader's as wound in reader-model.js (five turns, drawn in
+// from its outer one), the phone's (round, between its outer and inner turn, phone-reader.js), and
+// the card's (its outer turn as drawn here, and three more inside it, in the card's own frame).
+const COILS = {
+  pad: () => {
+    const coil = makeCoil(Array.from({ length: 5 }, (_, k) => {
+      const s = (k + .5) / 5;
+      return Array.from({ length: 64 }, (_, i) => [...squarePoint(COIL_HALF - s * .0115, COIL_RADIUS - s * .0055, i / 64), COIL_Z]);
+    }));
+    // The rounded square is the same turned by a quarter, so two rays are traced, and turned.
+    return { coil, centre: [0, 0], list: traceLines(coil, { count: 6, reach: .16, rays: [
+      { angle: 0, edge: COIL_HALF, copies: QUARTERS },
+      { angle: Math.PI / 4, edge: (COIL_HALF - COIL_RADIUS) * Math.SQRT2 + COIL_RADIUS, copies: QUARTERS },
+    ] }) };
+  },
+  phone: () => {
+    const coil = makeCoil(Array.from({ length: 4 }, (_, k) => {
+      const r = PHONE_COIL.radius - (k + .5) / 4 * (PHONE_COIL.radius - PHONE_COIL.inner);
+      return Array.from({ length: 64 }, (_, i) => [r * Math.cos(i / 64 * Math.PI * 2), r * Math.sin(i / 64 * Math.PI * 2), PHONE_COIL.z]);
+    }));
+    // Round: one ray, turned eight ways.
+    return { coil, centre: [0, 0], list: traceLines(coil, { count: 6, reach: .16, rays: [
+      { angle: 0, edge: PHONE_COIL.radius, copies: Array.from({ length: 8 }, (_, k) => ({ turn: k * Math.PI / 4 })) },
+    ] }) };
+  },
+  card: () => {
+    const coil = makeCoil(Array.from({ length: 4 }, (_, k) =>
+      loop(CARD_CENTRE, CARD_HALF[0] - k * .0011, CARD_HALF[1] - k * .0011, Math.max(.001, .0028 - k * .0006), CARD_Z, 96)), { soft: .0005 });
+    // A rectangle is its own mirror image across each of its middles: two rays, each mirrored.
+    return { coil, centre: CARD_CENTRE, list: traceLines(coil, { count: 4, reach: .12, centre: CARD_CENTRE, rays: [
+      { angle: 0, edge: CARD_HALF[0], copies: [{}, { flipX: true }] },
+      { angle: Math.PI / 2, edge: CARD_HALF[1], copies: [{}, { flipY: true }] },
+    ] }) };
+  },
+};
+
+// One coil's field lines as one mesh: a thin tube along each line, which knows how far along the
+// line each point is (in beads), how strong the field is there (0 to 1, on a log scale: a hundredth
+// of the field at the coil's centre is 0) and whether it is under the coil.
+function fieldLineSet({ coil, centre, list }, color) {
+  const b0 = strength(coil, centre[0], centre[1], coil.z), point = new THREE.Vector3();
+  const parts = list.map(({ points, closed }, index) => {
+    const curve = new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(...p)), closed, 'centripetal');
+    const length = curve.getLength(), radial = 5;
+    const segments = Math.round(THREE.MathUtils.clamp(length / .0012, 24, 360));
+    const geometry = new THREE.TubeGeometry(curve, segments, .00045, radial, closed);
+    const n = geometry.attributes.position.count, uv = geometry.attributes.uv;
+    const along = new Float32Array(n), power = new Float32Array(n), under = new Float32Array(n);
+    // A whole number of beads round a closed line, so the last one meets the first.
+    const beads = Math.max(1, Math.round(length / BEAD));
+    for (let i = 0; i <= segments; i++) {
+      curve.getPointAt(i / segments, point);
+      const share = strength(coil, point.x, point.y, point.z) / b0;
+      const level = THREE.MathUtils.clamp(1 + Math.log10(Math.max(share, 1e-6)) / 2, 0, 1);
+      const below = smoothstep(0, .003, coil.z - point.z);
+      for (let j = 0; j <= radial; j++) {
+        const v = i * (radial + 1) + j;
+        along[v] = uv.getX(v) * beads;
+        power[v] = level;
+        under[v] = below;
+      }
+    }
+    geometry.setAttribute('aAlong', new THREE.BufferAttribute(along, 1));
+    geometry.setAttribute('aPower', new THREE.BufferAttribute(power, 1));
+    geometry.setAttribute('aUnder', new THREE.BufferAttribute(under, 1));
+    geometry.setAttribute('aLine', new THREE.BufferAttribute(new Float32Array(n).fill(index), 1));
+    return geometry;
+  });
+  const geometry = mergeGeometries(parts);
+  for (const part of parts) part.dispose();
+  const uniforms = {
+    uColor: { value: color.clone() }, uAmount: { value: 0 }, uWave: { value: 1 }, uFlow: { value: 0 },
+    uLink: { value: new Float32Array(list.length) }, uLinkShow: { value: 0 }, uUnder: { value: .6 },
+    uSoak: { value: 0 }, uSoakFrom: { value: 0 }, uSoakTo: { value: 1 },
+  };
+  const material = new THREE.ShaderMaterial({
+    uniforms, defines: { LINES: list.length },
+    vertexShader: `attribute float aAlong; attribute float aPower; attribute float aUnder; attribute float aLine;
+      uniform float uLink[LINES]; uniform float uLinkShow;
+      varying float vAlong; varying float vPower; varying float vUnder; varying float vLine; varying float vZ; varying vec3 vNormal;
+      void main() {
+        vAlong = aAlong; vPower = aPower; vUnder = aUnder; vLine = aLine; vZ = position.z;
+        vNormal = normalize(normalMatrix * normal);
+        // The lines through the card's coil, drawn thicker.
+        vec3 at = position + normal * .0003 * uLink[int(aLine + .5)] * uLinkShow;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(at, 1.);
+      }`,
+    fragmentShader: `uniform vec3 uColor; uniform float uAmount; uniform float uWave; uniform float uFlow;
+      uniform float uLink[LINES]; uniform float uLinkShow; uniform float uUnder;
+      uniform float uSoak; uniform float uSoakFrom; uniform float uSoakTo;
+      varying float vAlong; varying float vPower; varying float vUnder; varying float vLine; varying float vZ; varying vec3 vNormal;
+      void main() {
+        // The field right now: as strong as the wave, pointing along the line or back (its sign).
+        float wave = abs(uWave);
+        float d = fract(vAlong - uFlow);
+        float at = uWave < 0. ? 1. - d : d;
+        // A bead with a short tail, its head the way the field points.
+        float bead = pow(at, 3.) * (1. - smoothstep(.9, 1., at));
+        float alpha = 1.6 * uAmount * (.25 + .75 * wave) * (.3 + .7 * vPower) * (.5 + .5 * bead);
+        alpha *= 1. - uUnder * vUnder;
+        // Once the card lies over the reader: the lines through its coil stronger, the rest fainter.
+        alpha *= mix(1., .35 + .85 * uLink[int(vLine + .5)], uLinkShow);
+        // A metal plate behind the card: the field dies out before it.
+        alpha *= 1. - uSoak * smoothstep(uSoakFrom, uSoakTo, vZ);
+        // Softer at the tube's edges, so a line reads as a line, not a pipe.
+        alpha *= .55 + .45 * smoothstep(0., .6, abs(vNormal.z));
+        gl_FragColor = vec4(uColor, clamp(alpha, 0., 1.));
+        #include <colorspace_fragment>
+      }`,
+    transparent: true, depthTest: false, depthWrite: false, toneMapped: false,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.renderOrder = 6;
+  mesh.frustumCulled = false;
+  mesh.visible = false;
+  return { mesh, uniforms, list, through: 0, key: '' };
+}
+
+// Which of a reader's lines pass through the card's coil (`card`: where its middle is in the
+// reader's frame, its turn `spin` and `tilt`, its coil's half sizes), with the reader moved by
+// `shift`: each line is followed until it crosses the plane of the card, inside the coil or not.
+function threadCard(set, shift, card) {
+  const c = Math.cos(card.spin), s = Math.sin(card.spin), ct = Math.cos(card.tilt), st = Math.sin(card.tilt);
+  let through = 0;
+  set.list.forEach(({ points }, i) => {
+    let hit = 0, pu = 0, pv = 0, pw = 0;
+    points.forEach(([x, y, z], k) => {
+      if (hit) return;
+      const dx = x + shift.x - card.x, dy = y - card.y, dz = z + shift.z - card.z;
+      const u = dx * c + dy * s, across = -dx * s + dy * c;
+      const v = across * ct + dz * st, w = -across * st + dz * ct;
+      if (k && (w > 0) !== (pw > 0)) {
+        const t = pw / (pw - w);
+        if (Math.abs(pu + (u - pu) * t) < card.hx && Math.abs(pv + (v - pv) * t) < card.hy) hit = 1;
+      }
+      pu = u; pv = v; pw = w;
+    });
+    set.uniforms.uLink.value[i] = hit;
+    through += hit;
+  });
+  set.through = through;
+}
+
 export function buildEffects() {
   const table = new THREE.Group();   // in the reader's frame
   const onCard = new THREE.Group();  // in the card's frame
@@ -181,6 +347,15 @@ export function buildEffects() {
   const phoneCard = { ...PHONE_CARD };
   const PHONE_SPREAD = { x: 0, y: 0, sx: 1.22, sy: 1.22, spin: 0 }, phoneLanding = { ...PHONE_SPREAD };
   const landing = { ...AT_CARD }, cardShape = { ...AT_CARD };
+  // Real physics: each coil's field lines, worked out the first time the switch is turned on (a
+  // few hundredths of a second). The card's live in its own frame, so they move with it.
+  let real = null, realShow = 0, realSet = null;
+  const realCard = { x: 0, y: 0, z: 0, spin: HOVER.spin, tilt: 0, hx: 0, hy: 0 };
+  function buildReal() {
+    real = { pad: fieldLineSet(COILS.pad(), UP_COLOR), phone: fieldLineSet(COILS.phone(), UP_COLOR), card: fieldLineSet(COILS.card(), COOL) };
+    table.add(real.pad.mesh, real.phone.mesh);
+    onCard.add(real.card.mesh);
+  }
   // How far the beads on each wire have run. It adds up frame by frame, so a change of
   // speed or of direction never makes them jump: they slow, stop and turn round.
   let lastClock = null;
@@ -297,16 +472,60 @@ export function buildEffects() {
     const downFade = (p, z) => lerp(1, fieldAt(top - z), falloff * .7);
     // On the light page, while the card is still in the hand, the rings are lighter.
     const paper = 1 - (b.dark || 0), halo = b.dark || 0;
-    const upLevel = b.field * (said?.dir > 0 ? .12 + .88 * amp : 1) * (1 - .5 * paper);
+    const physics = b.physics || 0;
+    const upLevel = b.field * (said?.dir > 0 ? .12 + .88 * amp : 1) * (1 - .5 * paper) * (1 - physics);
     stream(up, t, upLevel * padShare, padFrom, to, COIL_Z + .0004 + padShift.z, top, halo, upFade);
     stream(phoneUp, t, upLevel * phoneShare, phoneFrom, phoneTo, COIL_Z + .0006 + phoneShift.z, top, halo, phoneUpFade);
     // Down: the answer, from the card's coil to the reader's. It swells each time the card
     // closes its switch.
     // (Once the answer has landed, full strength: then only a still frame, with reduced
     // motion, still shows it; blended over the landing, so nothing jumps.)
-    const downLevel = b.reply * (b.answerScale ?? 1) * (said?.dir < 0 ? lerp(.35 + .65 * load, 1, said.landed) : 1);
+    const answer = b.reply * (b.answerScale ?? 1) * (said?.dir < 0 ? lerp(.35 + .65 * load, 1, said.landed) : 1);
+    const downLevel = answer * (1 - physics);
     stream(down, t, downLevel * padShare, cardShape, padFrom, top, COIL_Z + .0004 + padShift.z, halo, downFade);
     stream(phoneDown, t, downLevel * phoneShare, phoneCard, phoneFrom, top, COIL_Z + .0006 + phoneShift.z, halo, downFade);
+
+    // Real physics: the reader's field lines, and the card's while it answers.
+    if (physics > .003 && !real) buildReal();
+    if (real) {
+      const wave = Math.cos(2 * Math.PI * WAVE_HZ * t);
+      // In each of the reader's gaps in the question its field really stops (100% ASK).
+      const reader = b.field * physics * (said?.dir > 0 ? amp : 1);
+      // The card's coil, where it lies over the reader: which lines pass through it.
+      realShow = physics * smoothstep(.6, 1, b.dock || 0);
+      const turn = Math.cos(HOVER.spin), side = Math.sin(HOVER.spin);
+      Object.assign(realCard, { x: HOVER.x + CARD_CENTRE[0] * size * turn, y: HOVER.y + CARD_CENTRE[0] * size * side, z: top,
+        tilt: b.tilt || 0, hx: CARD_HALF[0] * size, hy: CARD_HALF[1] * size });
+      const soak = (b.metal || 0) * (b.shield || 0);
+      realSet = phone > .5 ? real.phone : real.pad;
+      for (const [set, share, shift] of [[real.pad, padShare, padShift], [real.phone, phoneShare, phoneShift]]) {
+        const amount = reader * share;
+        set.mesh.visible = amount > .003;
+        if (!set.mesh.visible) continue;
+        set.mesh.position.set(shift.x, 0, shift.z);
+        const u = set.uniforms;
+        u.uAmount.value = amount;
+        u.uWave.value = wave;
+        u.uFlow.value += dt * 2.2 * wave;
+        u.uLinkShow.value = realShow;
+        u.uUnder.value = lerp(.85, .55, b.xray || 0);
+        u.uSoak.value = soak;
+        u.uSoakFrom.value = top - shift.z;
+        u.uSoakTo.value = top + (b.plate ?? .02) - shift.z;
+        const key = [top, realCard.tilt, size, shift.x, shift.z].map(v => v.toFixed(5)).join();
+        if (realShow > .003 && key !== set.key) { set.key = key; threadCard(set, shift, realCard); }
+      }
+      // The card's own field, a quarter turn behind the reader's.
+      const card = real.card, cardAmount = answer * physics;
+      card.mesh.visible = cardAmount > .003;
+      if (card.mesh.visible) {
+        const behind = Math.sin(2 * Math.PI * WAVE_HZ * t);
+        card.uniforms.uAmount.value = cardAmount;
+        card.uniforms.uWave.value = behind;
+        card.uniforms.uFlow.value += dt * 2.2 * behind;
+        card.uniforms.uUnder.value = 0;
+      }
+    } else realShow = 0;
 
     // The reader's chip beats while it checks, and flashes as it reads each byte of the answer.
     const beat = .5 + .5 * Math.sin(t * Math.PI * 2 * 1.4);
@@ -390,5 +609,8 @@ export function buildEffects() {
     reachLine.material.opacity = (b.dark > .5 ? .55 : .45) * show;
   }
 
-  return { table, onCard, update: updateAll, WARM, COOL, reach: () => reachLine.position };
+  // Real physics: how many of the reader's field lines pass through the card's coil, of how many,
+  // and how far that is shown (0 until the card lies over the reader with the switch on).
+  const realInfo = () => ({ through: realSet?.through ?? 0, total: realSet?.list.length ?? 0, show: realShow });
+  return { table, onCard, update: updateAll, WARM, COOL, reach: () => reachLine.position, real: realInfo };
 }

@@ -726,6 +726,6 @@ export async function createCardScene(canvas) {
     return phoneReady;
   }
 
-  return { resize, draw, project, mouth, anchor, setReader, usePhone, phoneLoaded: () => phone.loaded(),
+  return { resize, draw, project, mouth, anchor, setReader, usePhone, phoneLoaded: () => phone.loaded(), real: () => fx.real(),
     parts: { copper, die, reader, phone, renderer, table, card, rig, camera, world } };
 }
