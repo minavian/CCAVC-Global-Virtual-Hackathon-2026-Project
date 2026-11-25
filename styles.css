@@ -957,7 +957,10 @@ html[data-intro] .stage-light { opacity: 0; }
   z-index: 6;
   top: clamp(4.4rem, 10dvh, 5.6rem);
   right: var(--gutter);
-  bottom: clamp(1rem, 3dvh, 1.75rem);
+  /* As tall as its content, up to the stage's foot: on a big screen it used to stretch to the
+     bottom with a third of it empty; on a short one it scrolls inside, as before. */
+  bottom: auto;
+  max-height: calc(100% - clamp(4.4rem, 10dvh, 5.6rem) - clamp(1rem, 3dvh, 1.75rem));
   width: min(21rem, 31vw);
   display: flex;
   flex-direction: column;
