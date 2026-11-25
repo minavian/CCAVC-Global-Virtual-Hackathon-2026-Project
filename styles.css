@@ -972,6 +972,8 @@ html[data-intro] .stage-light { opacity: 0; }
   scrollbar-color: rgba(255, 255, 255, .2) transparent;
 }
 .intro .try.is-shown { opacity: 1; transform: none; }
+/* With reduced motion the panel doesn't slide: it only fades, quickly. */
+@media (prefers-reduced-motion: reduce) { .intro .try { transform: none; transition: opacity .2s ease; } }
 /* In the lab the readout moves into the space left of the panel, under the close-up. */
 .intro .intro-stage.is-lab .readout {
   right: calc(min(21rem, 31vw) + var(--gutter) + 1rem);
