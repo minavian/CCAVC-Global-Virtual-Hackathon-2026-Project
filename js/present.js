@@ -43,7 +43,7 @@
     if (run) return;
     run = { stops: plan(), i: 0, phase: 'hold', since: performance.now(), from: scrollY, to: 0 };
     if (scrollY > 4) { run.phase = 'travel'; run.to = run.stops[0].y(); }
-    // The card intro's own autoplay (js/intro/autoplay.js) stands aside while this runs.
+    // The card intro's hold at "Here's how" (js/intro/hold.js) stands aside while this runs.
     window.__presenting = true;
     badge.hidden = false;
     for (const type of ['wheel', 'touchstart', 'pointerdown']) addEventListener(type, stop, { passive: true, capture: true });

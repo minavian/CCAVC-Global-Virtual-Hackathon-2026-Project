@@ -47,7 +47,7 @@ export const curlAt = time => smoother(.43, .68, time) * (1 - smoother(.99, MOUT
 
 // How much scroll the intro takes: each screen in `scrollFrames` below is this many screens of
 // real scrolling. At 1 every animation needed a page or two of scrolling whenever the page
-// moved without the auto scroll (autoplay.js); at .3 the whole intro is under three screens.
+// moved without the auto scroll (autoplay.js, since taken out); at .3 the whole intro is under three screens.
 export const PACE = .3;
 
 // Matching playhead values hold the reading composition over a stretch of scroll. The first

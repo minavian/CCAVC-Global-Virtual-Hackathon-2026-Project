@@ -5,7 +5,7 @@
 // distance; dropping it lets the visitor step through the tap, ask the card for its ID and
 // watch the answer flow back, and drag to turn the camera. See EXPLAINED.md.
 import { follow, settle, smoother, spring } from './easing.js';
-import { autoplay } from './autoplay.js?v=17';
+import { hold } from './hold.js?v=1';
 import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose, clamp, ease, mix, measureStage, restingFrame, scrollTime } from './timeline.js?v=3';
 import { renderSignals } from './signals.js?v=2';
 import { ANSWER_AFTER, APPROACH_DETAIL, APPROACH_TEXT, ASK, SAMPLES_PER_BIT, CARD_ID, IDLE, LAB, LAST, NEAREST, REAL_MS, SHOTS, STEPS, TALK, approach, approachBand, approachView, centimetres,
@@ -165,7 +165,7 @@ function intro(experience) {
   // targets on springs too, so moving the card, or pressing Next or Back, never jumps.
   let step = -1, band = -1, clock = 0, cm = 10, shownText = null;
   // `completed` once the visitor has reached the tap's last step (the lab, step 9 of 9): from then
-  // the page may scroll on past "Here's how" (autoplay.js holds it until then), and the close-up
+  // the page may scroll on past "Here's how" (hold.js holds it until then), and the close-up
   // is never played over again. Scrolled back up above the drop, the card leaves the reader for
   // the intro's own animations, and `resumeAt` keeps the step it was on, to go straight back to.
   let completed = false, resumeAt = null;
@@ -1956,7 +1956,7 @@ function intro(experience) {
     invalidate();
   }
 
-  // A scroll that tries to leave "Here's how" before the tap's last step (autoplay.js): what to do
+  // A scroll that tries to leave "Here's how" before the tap's last step (hold.js): what to do
   // next gives a small shake (the instruction before the drop, the readout's Next after), and a
   // short note says so for two seconds. At most once every 0.7 s, however the scroll repeats.
   let nudgedAt = 0, holdTimer = 0;
@@ -2356,11 +2356,11 @@ function intro(experience) {
   experience.style.setProperty('--scroll-screens', SCROLL_SCREENS);
   experience.classList.add('enhanced');
   window.addEventListener('scroll', wake, { passive: true });
-  // Each scroll plays the next animation, from the top to the card's drop (autoplay.js); from
-  // there `auto` above carries the card to the reader and plays the close-up. The page stays at
-  // "Here's how" until the visitor has reached the tap's last step (`completed`); a scroll that
-  // tries to leave before then is answered by `nudge`.
-  autoplay({ experience, stage, reduce, done: () => completed, nudge });
+  // The page scrolls as usual (the scroll assist, autoplay.js, was taken out on 2026-11-26); at
+  // "Here's how" `auto` above carries the card to the reader and plays the close-up. The page
+  // stays at "Here's how" until the visitor has reached the tap's last step (`completed`, hold.js);
+  // a scroll that tries to leave before then is answered by `nudge`.
+  hold({ experience, stage, done: () => completed, nudge });
   window.addEventListener('resize', remeasure, { passive: true });
   // The sections above can change height (fonts, a phone's toolbar), which moves this one.
   new ResizeObserver(remeasure).observe(stage);
