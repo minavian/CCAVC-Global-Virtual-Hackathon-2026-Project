@@ -1671,8 +1671,12 @@ function intro(experience) {
     auto.held = auto.after = 0;
     // A conversation started in the lab ends when it is left.
     if (lab.talk) endTalk();
-    // Reaching the lab, the phone (its second reader) loads in the background.
-    if (step === LAB && available) scene.usePhone();
+    // From the tap's third step on, the phone (the lab's second reader) is made ready in the
+    // background: the landing page has usually fetched its 3 MB model already, but reading it and
+    // preparing it to draw takes a moment, so it is done well before the lab's demo turns to the
+    // phone (18.8 s in). Made ready only on reaching the lab, a slow device could miss that, and
+    // the demo kept the card reader.
+    if (step >= 2 && available) scene.usePhone();
     // The card answers by itself, a moment after the step starts; the question waits for Ask.
     talk = STEPS[step].talk === 'answer' ? { name: 'answer', start: Math.max(answerAt ?? 0, clock + .2) } : null;
     unturn();
