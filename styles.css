@@ -1339,7 +1339,34 @@ html[data-intro] .stage-light { opacity: 0; }
   stroke-dashoffset: calc(1 - clamp(0, (var(--draw, 0) - .35) * 1.54, 1));
 }
 
-/* The explanation, on paper again once the lights come up. */
+/* "That's how it works.": for a moment as the lab opens at the end of the tap (main.js
+   `announceDone`), left of the lab's panel, over the close-up. It rises in out of a blur a quarter
+   of a second after the panel starts, holds about four seconds, and blurs away. */
+.intro .lab-done {
+  position: absolute;
+  z-index: 7;
+  left: var(--gutter);
+  top: clamp(4.4rem, 12dvh, 7rem);
+  width: min(28rem, calc(100% - min(21rem, 31vw) - 3 * var(--gutter)));
+  color: var(--ink);
+  text-shadow: 0 0 14px rgba(245, 242, 236, .95);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  filter: blur(8px);
+  transform: translateY(.8rem);
+  transition: opacity .6s ease, filter .7s cubic-bezier(.22, 1, .36, 1), transform .7s cubic-bezier(.22, 1, .36, 1), visibility 0s .7s;
+}
+.intro .lab-done.is-shown { opacity: 1; visibility: visible; filter: blur(0); transform: none; transition-delay: .25s, .25s, .25s, 0s; }
+.intro .lab-done-kicker { margin: 0; font-size: .78rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #1f9d5c; }
+.intro .lab-done h3 { margin: .35rem 0 .6rem; font-size: clamp(2rem, 4vw, 3.4rem); font-weight: 800; line-height: .98; letter-spacing: -.04em; }
+.intro .lab-done p:last-child { margin: 0; font-size: clamp(1rem, 1.35vw, 1.15rem); font-weight: 500; line-height: 1.42; }
+@media (prefers-reduced-motion: reduce) { .intro .lab-done { filter: none; transform: none; } }
+/* The lab is the last step: no Next there (its place kept, so the dots stay put). */
+.intro .readout .readout-next.is-end { visibility: hidden; }
+
+/* The explanation, on paper again once the lights come up. (Not reached since 2026-11-26: the tap
+   ends at the lab, with "That's how it works." for a moment above.) */
 .intro .cine-explain {
   position: absolute;
   left: 56%;
@@ -1469,6 +1496,8 @@ html[data-intro] .stage-light { opacity: 0; }
   .intro .intro-stage.is-lab .readout { right: 0; width: min(34rem, calc(100% - 2 * var(--gutter))); }
   /* While the lab talks on a phone, the message's label sits under its panel. */
   .intro .intro-stage.is-lab .talk-tag:is([data-kind="ask"], [data-kind="answer"]) { top: calc(47dvh + 1.1rem); }
+  .intro .lab-done { top: calc(47dvh + 1rem); right: var(--gutter); width: auto; }
+  .intro .lab-done h3 { font-size: clamp(1.7rem, 8vw, 2.4rem); }
   .intro .cine-explain h3 { font-size: clamp(1.8rem, 8.4vw, 2.6rem); }
   .intro .cine-explain p { font-size: clamp(.95rem, 4vw, 1.08rem); }
 }

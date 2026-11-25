@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
-  <link rel="stylesheet" href="styles.css?v=58">
+  <link rel="stylesheet" href="styles.css?v=59">
   <link rel="stylesheet" href="take-apart/style.css?v=part-two-wave-1">
   <script type="importmap">
     {"imports": {
@@ -45,7 +45,7 @@
   <script src="js/landing.js?v=9" defer></script>
   <script src="js/present.js?v=5" defer></script>
   <script type="module" src="js/taps.js"></script>
-  <script type="module" src="js/intro/main.js?v=113"></script>
+  <script type="module" src="js/intro/main.js?v=114"></script>
 </head>
 <body>
   <main class="hero">
@@ -267,6 +267,13 @@
           <path d="M20 33.5l8.5 8.5L45 24.5" pathLength="1"/>
           <path class="cine-cross" d="M23 23l18 18M41 23L23 41" pathLength="1"/>
         </svg>
+        <!-- The tap ends at the lab. As its panel opens, for a moment: what it all came to
+             (main.js `announceDone`). -->
+        <div class="lab-done">
+          <p class="lab-done-kicker">Card detected.</p>
+          <h3>That’s how it works.</h3>
+          <p>The reader’s field powers the card. The card uses that power to answer. The reader reads the answer.</p>
+        </div>
         <div class="cine-explain">
           <p class="status" role="status"></p>
           <h3>That’s how it works.</h3>

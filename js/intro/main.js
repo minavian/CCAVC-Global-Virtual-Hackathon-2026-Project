@@ -66,7 +66,7 @@ function intro(experience) {
     dotList: $('.readout-dots'), dots: [],
     // The parts named on screen, each with a thin line to its part (paintLabels in paintFilm).
     labels: Object.fromEntries([...experience.querySelectorAll('.cine-label')].map(label => [label.dataset.part, label])),
-    leaders: $('.cine-leaders'), auto: $('.cine-auto'), autoText: $('.cine-auto-text'), xray: $('.cine-xray'),
+    leaders: $('.cine-leaders'), auto: $('.cine-auto'), autoText: $('.cine-auto-text'), xray: $('.cine-xray'), done: $('.lab-done'),
     check: $('.cine-check'), explain: $('.cine-explain'), replay: $('.replay'),
     backdrop: $('.cine-backdrop'), hint: $('.cine-hint'), nextLabel: 'Next',
     // The message's label: which way, what it says, and its signal as the receiver feels it.
@@ -604,7 +604,8 @@ function intro(experience) {
       const want = clampSetting({ ...lab.set, ...next });
       if (Object.keys(next).some(key => want[key] !== lab.set[key])) setLab(next);
       if (copying && !lab.talk && !lab.demoProved && auto.held > DEMO_COPY[0] + .6) { lab.demoProved = true; labAsk(true); }
-      if (auto.held >= plan.hold) go(step + 1);
+      // The lab is the last step: at the demo's end it stops playing by itself (Play runs it again).
+      if (auto.held >= plan.hold) { auto.on = false; invalidate(); }
     } else if (auto.held >= plan.hold) go(step + 1);
   }
 
@@ -1597,13 +1598,15 @@ function intro(experience) {
         film.next.classList.toggle('is-ask', label !== 'Next');
       }
       film.count.textContent = `${step + 1} of ${LAST}`;
+      // The lab is the last step: no Next there.
+      film.next.classList.toggle('is-end', step === LAB);
       film.dots.forEach((dot, i) => {
         dot.classList.toggle('is-done', i < step);
         dot.classList.toggle('is-now', i === step);
       });
     }
     // While it plays by itself, a ring round the right arrow fills until the next step.
-    const timing = auto.on && navigable && !reduce.matches ? autoProgress() : -1;
+    const timing = auto.on && navigable && step < LAB && !reduce.matches ? autoProgress() : -1;
     film.next.classList.toggle('is-timing', timing >= 0);
     if (timing >= 0) film.next.style.setProperty('--auto', timing.toFixed(3));
     paintAuto();
@@ -1634,6 +1637,7 @@ function intro(experience) {
         for (const slider of Object.values(labUi.sliders)) slider.at.value = slider.at.velocity = 0;
       }
       requestAnimationFrame(() => { labUi.panel.classList.add('is-shown'); paintLabPanel(); paintSliders(0); });
+      if (lab.announce) { lab.announce = false; announceDone(); }
     } else if (!labShown && panelState === 'shown') {
       // Its exit: the same fade and slide as its entrance, backwards (.45 s), then hidden. A focus
       // left in it goes to the readout's Next (to the explanation, `focusWhenDone` sees to it).
@@ -1924,6 +1928,7 @@ function intro(experience) {
     focusWhenDone = false;
     retry.hidden = film.replay.hidden = true;
     film.nav.hidden = true;
+    film.done.classList.remove('is-shown');
     dropButton.hidden = !canDrop;
     invalidate();
   }
@@ -1948,7 +1953,13 @@ function intro(experience) {
   function go(index, answerAt) {
     if (!detected) return;
     const leaving = stage.contains(document.activeElement) && document.activeElement !== dropButton;
-    step = clamp(index, 0, LAST);
+    const was = step;
+    // The tap ends at the lab (the explanation page after it was taken out on 2026-11-26). Arriving
+    // there from the step before it, "That's how it works." shows for a moment with its panel.
+    step = clamp(index, 0, LAB);
+    if (step === LAB && was >= 0 && was < LAB) lab.announce = true;
+    // (No Next on the lab: a focus on it moves to Back.)
+    if (step === LAB && document.activeElement === film.next) film.back.focus({ preventScroll: true });
     if (step >= LAB && !completed) { completed = true; holdNote.classList.remove('is-shown'); }
     auto.held = auto.after = 0;
     // A conversation started in the lab ends when it is left.
@@ -1965,7 +1976,17 @@ function intro(experience) {
     focusWhenDone = step === LAST && leaving;
     film.nav.hidden = step >= LAST;
     if (step < LAST - 1) status.textContent = '';
+    if (step !== LAB) { lab.announce = false; film.done.classList.remove('is-shown'); }
     invalidate();
+  }
+
+  // "That's how it works.", for a moment, as the lab's panel opens at the end of the tap (styles.css
+  // `.lab-done`): it comes into focus left of the panel, holds four seconds and blurs away.
+  let doneTimer = 0;
+  function announceDone() {
+    clearTimeout(doneTimer);
+    film.done.classList.add('is-shown');
+    doneTimer = setTimeout(() => film.done.classList.remove('is-shown'), 4000);
   }
 
   // A scroll that tries to leave "Here's how" before the tap's last step (hold.js): what to do
@@ -1998,7 +2019,7 @@ function intro(experience) {
 
   function forward() {
     if (step === ASK) ask();
-    else go(step + 1);
+    else if (step < LAB) go(step + 1);
   }
 
   film.next.addEventListener('click', event => { if (event.isTrusted) takeOver(); forward(); });
