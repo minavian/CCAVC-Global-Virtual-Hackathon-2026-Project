@@ -3790,7 +3790,7 @@ function createChapterDeck(stops, transitions) {
   }
 
   function ownsVerticalTouch(target) {
-    return !!target?.closest?.('.s9-metal, .s16-pad-card, .s16-wallet, input[type="range"][aria-orientation="vertical"]');
+    return !!target?.closest?.('.drag-card, .battery-handle, .lab-grab, .s9-metal, .s16-pad-card, .s16-wallet, input[type="range"][aria-orientation="vertical"]');
   }
 
   function currentStopIndex() {
@@ -3893,18 +3893,22 @@ function createChapterDeck(stops, transitions) {
       releaseChapterEntry();
     } else if (canLockEntry()) {
       const top = scrollY, entryTop = bounds(opener, top).y;
-      if (Math.min(top, lastTop) < entryTop - 1) {
+      if (Math.min(top, lastTop) < Math.round(entryTop)) {
         nativeEntryUntil = performance.now() + NATIVE_SCROLL_GAP;
         entryHash = location.hash;
       }
     }
   }
 
-  function enterChapter(dir, distance) {
-    if (dir < 0 || !canLockEntry()) return false;
-    const top = opener.getBoundingClientRect().top;
-    if (top <= 1 || distance < top) return false;
-    lockChapterEntry();
+  function approachChapter(event, dir, distance) {
+    if (dir < 0 || !event.cancelable || !canLockEntry()) return false;
+    const remaining = opener.getBoundingClientRect().top;
+    if (remaining <= .5 || remaining > Math.max(2 * innerHeight, distance)) return false;
+    // Take over before the browser can carry this gesture's momentum through the opener.
+    event.preventDefault();
+    const advance = Math.max(1, distance);
+    if (advance >= remaining - .5) lockChapterEntry();
+    else scrollBy({ top: advance, behavior: 'instant' });
     return true;
   }
 
@@ -3925,10 +3929,7 @@ function createChapterDeck(stops, transitions) {
       return;
     }
     if (!overChat && canChildScroll(event.target, dir)) return;
-    if (event.cancelable && enterChapter(dir, Math.abs(dy))) {
-      event.preventDefault();
-      return;
-    }
+    if (approachChapter(event, dir, Math.abs(dy))) return;
     const stop = currentStopIndex();
     const distance = distanceToEdge(dir, stop);
     if (!event.cancelable || Math.abs(dy) <= distance) return;
@@ -3984,10 +3985,7 @@ function createChapterDeck(stops, transitions) {
       return;
     }
     const step = key === 'ArrowUp' || key === 'ArrowDown' ? 40 : innerHeight * .875;
-    if (enterChapter(dir, step)) {
-      event.preventDefault();
-      return;
-    }
+    if (approachChapter(event, dir, step)) return;
     const distance = distanceToEdge(dir);
     if (distance < step) {
       event.preventDefault();
@@ -4028,10 +4026,7 @@ function createChapterDeck(stops, transitions) {
       return;
     }
     if (canChildScroll(touchStart.target, dir) || !event.cancelable) return;
-    if (enterChapter(dir, Math.abs(delta))) {
-      event.preventDefault();
-      return;
-    }
+    if (approachChapter(event, dir, Math.abs(delta))) return;
     const distance = distanceToEdge(dir);
     if (!Number.isFinite(distance)) return;
     event.preventDefault();
@@ -4047,7 +4042,8 @@ function createChapterDeck(stops, transitions) {
     }
   }, { passive: false });
 
-  watchScrollMotion(top => {
+  addEventListener('scroll', () => {
+    const top = scrollY;
     const previous = lastTop;
     lastTop = top;
     if (entryY !== undefined) {
@@ -4055,12 +4051,13 @@ function createChapterDeck(stops, transitions) {
       else if (Math.abs(top - entryY) > 1) scrollTo({ top: entryY, behavior: 'instant' });
       return;
     }
-    if (running() || !canLockEntry() || location.hash !== entryHash || performance.now() > nativeEntryUntil || top <= previous) return;
+    if (!canLockEntry() || location.hash !== entryHash || performance.now() > nativeEntryUntil || top <= previous || running()) return;
     // A native fling can cross the boundary after its last cancellable input event.
-    const entryTop = bounds(opener, top).y;
-    if (previous < entryTop - 1 && top >= entryTop - 1) lockChapterEntry();
-    else if (top < entryTop - 1) nativeEntryUntil = performance.now() + NATIVE_SCROLL_GAP;
-  });
+    const entryTop = Math.round(bounds(opener, top).y);
+    if (previous < entryTop && top >= entryTop) lockChapterEntry();
+    else if (top < entryTop) nativeEntryUntil = performance.now() + NATIVE_SCROLL_GAP;
+  }, { passive: true });
+  watchScrollMotion(running);
   for (const ev of ['resize', 'hashchange', 'pagehide']) addEventListener(ev, cancelActive);
   document.addEventListener('visibilitychange', () => { if (document.hidden) cancelActive(); });
   reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) cancelActive(); });
