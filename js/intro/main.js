@@ -1166,7 +1166,7 @@ function intro(experience) {
     canvas.setAttribute('aria-label', answer
       ? `The answer's strength against distance: it rises as the card comes in, then falls very close. At ${lab.set.distance.toFixed(1)} cm it is ${(lab.m.dip * 100).toFixed(1)}%.`
       : tuning
-      ? `Voltage at the chip against the ${READERS[lab.set.reader].noun}'s frequency, with the card tuned to ${lab.set.tune.toFixed(2)} MHz. At 13.56 MHz it gets ${lab.m.raw.toFixed(1)} volts; it needs 2.`
+      ? `Voltage at the chip against the ${READERS[lab.set.reader].noun}'s frequency, with the card tuned to ${lab.set.tune.toFixed(2)} MHz. At 13.56 MHz it gets ${lab.m.raw.toFixed(1)} volts; it needs 2. Its circuit peaks at ${points.reduce((best, p) => (p[1] > best[1] ? p : best), points[0])[0].toFixed(1)} MHz.`
       : `Voltage at the chip against distance. At ${lab.set.distance.toFixed(1)} cm it gets ${lab.m.raw.toFixed(1)} volts; it needs 2. It works up to ${lab.m.reach.toFixed(1)} cm.`
         + (lab.set.reader === 'pad' ? ` A payment terminal must read a card up to ${TERMINAL_CM} cm away.` : '')
         + (nearest > .55 ? ` Closer than ${nearest.toFixed(1)} cm, the card can’t be.` : ''));
