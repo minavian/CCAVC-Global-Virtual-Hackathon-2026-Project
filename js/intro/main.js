@@ -1130,7 +1130,7 @@ function intro(experience) {
     // The peak named. On Tuning, where the card's own circuit resonates: metal behind the card
     // moves it up (2 mm of metal: about 17 MHz), off the reader's 13.56, and a card tuned to
     // match peaks on the reader's line. On Answer, where the answer is strongest: in between,
-    // not closest (about 2.6 cm over the card reader).
+    // not closest (about 2.5 cm over the card reader).
     const peak = points.reduce((best, p) => (p[1] > best[1] ? p : best), points[0]);
     if ((tuning || (answer && peak[1] > 0)) && drawn >= 1) {
       const matched = tuning && Math.abs(peak[0] - 13.56) < .25;
