@@ -408,7 +408,7 @@
         }
         if (z > 0 && nz <= 0 || z < 0 && nz >= 0) crossed++;
         rho = nr; z = nz;
-        pts.push([rho, z]);
+        pts.push(crossed >= 2 ? start : [rho, z]);
         if (crossed >= 2 || Math.abs(rho) >= .09 || z <= -.03) break;
       }
       return pts;
@@ -503,8 +503,11 @@
     const scene = plate('s9', p => {
       const ctx = fit(p), k = Math.min(p.w / .2, p.h / .15);
       if (p.h !== geometry?.height || p.w !== geometry?.width) {
-        coilY = p.h - 34;
-        scale = (coilY - restY) / (d + park / 1000);
+        const parkedDepth = d + park / 1000;
+        // Reserve room for the lower half of the parked field loops.
+        const loopDepth = Math.max(...fieldAt(park).lines.flatMap(line => line.points.map(([, z]) => -z)));
+        scale = Math.min((p.h - restY - 34) / parkedDepth, (p.h - restY - 8) / (parkedDepth + loopDepth));
+        coilY = restY + parkedDepth * scale;
         nearestY = coilY - (d + .001) * scale;
         metal.style.setProperty('--s9-metal-width', `${.16 * k}px`);
         geometry = { width: p.w, height: p.h };
