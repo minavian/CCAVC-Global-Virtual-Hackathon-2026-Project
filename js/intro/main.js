@@ -956,15 +956,33 @@ function intro(experience) {
     g.restore();
     if (drawn >= 1) paintTerminalRule(g, X, top, bottom, H);
     const dotX = X(lab.set.distance), dotY = Y(lab.set.angle), avoid = [[dotX, dotY]];
+    // Two labels never overlap if their boxes (centre x, middle y, width, ±6 px high) don't.
+    const overlaps = ([ax, ay, aw], [bx, by, bw]) => Math.abs(ax - bx) < (aw + bw) / 2 + 4 && Math.abs(ay - by) < 12;
+    // The grey corner named first, where it is wide enough at the top: a card turned that far,
+    // that close, would have to pass through the reader.
+    let corner = null;
+    if (drawn >= 1) {
+      g.font = '600 9px "Inter Tight", system-ui, sans-serif';
+      const words = 'no room to turn', width = g.measureText(words).width;
+      if (X(map.bands.at(-1).rest) - X(map.near) > width + 10) {
+        corner = [X(map.near) + 4 + width / 2, top + 5, width];
+        g.fillStyle = 'rgba(244,241,234,.45)';
+        g.textAlign = 'left';
+        g.fillText(words, X(map.near) + 4, top + 9);
+        avoid.push(corner);
+      }
+    }
     if (outline && drawn >= 1) {
-      // Named just over its peak (or beside it, at the chart's top), clear of the dot: light, with a
-      // dark halo, so it reads on the amber and off it alike.
+      // Named just over its peak (or beside it, at the chart's top), clear of the dot and of the
+      // grey corner's words: light, with a dark halo, so it reads on the amber and off it alike.
       const name = lab.otherMap.reader === 'phone' ? 'phone' : 'card reader';
       g.font = '600 10px "Inter Tight", system-ui, sans-serif';
       const width = g.measureText(name).width, peak = outline[outline.length >> 1];
-      let x = Math.min(W - right - width / 2, Math.max(left + width / 2, X(peak[0]))), y = Y(peak[1]) - 4;
-      if (y - 9 < top) { y = Y(peak[1]) + 12; x = Math.min(W - right - width / 2, X(peak[0]) + width / 2 + 8); }
-      if (Math.hypot(x - dotX, y - 4 - dotY) < 16 + width / 2) x = Math.min(W - right - width / 2, dotX + width / 2 + 10);
+      const fit = x => Math.min(W - right - width / 2, Math.max(left + width / 2, x));
+      let x = fit(X(peak[0])), y = Y(peak[1]) - 4;
+      if (y - 9 < top) { y = Y(peak[1]) + 12; x = fit(X(peak[0]) + width / 2 + 8); }
+      if (Math.hypot(x - dotX, y - 4 - dotY) < 16 + width / 2) x = fit(dotX + width / 2 + 10);
+      if (corner && overlaps([x, y - 4, width], corner)) x = fit(corner[0] + corner[2] / 2 + width / 2 + 8);
       g.textAlign = 'center';
       g.lineJoin = 'round';
       g.strokeStyle = 'rgba(20,18,16,.75)';
