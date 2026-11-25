@@ -16,7 +16,7 @@
 // paper as well as on the dark close-up.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { makeCoil, lines as traceLines, strength } from './coil-field.js';
+import { solveJob } from './coil-field.js';
 import { squarePoint, COIL_Z, COIL_HALF, COIL_RADIUS, CHIP as READER_CHIP } from './reader-model.js';
 import { HOVER } from './cinema.js';
 import { PHONE_COIL, PHONE_CHIP } from './phone-reader.js';
@@ -171,66 +171,122 @@ const blendShape = (a, b, k, out) => {
 //   that drive its current. Farther away, or turned side-on, fewer pass through.
 // - The answer: the card's coil makes a small field of its own (blue), a quarter turn behind the
 //   reader's, as the current a changing field drives round a tuned coil is.
+// - Metal (the lab's plate behind the card): the eddy currents in it keep any field from passing
+//   through, so the lines bend round the plate (coil-field.js `shield`). They are traced again in
+//   the background (field-worker.js) each time the card or the plate moves, and the new lines
+//   fade in over the old.
 const WAVE_HZ = .5;     // 13.56 MHz shown 27 million times slower
 const BEAD = .009;      // about this far between the beads on a line (m)
 const CARD_CENTRE = [-.0003, 0], CARD_Z = .00034, CARD_HALF = [.0402, .0246];
 const QUARTERS = [0, 1, 2, 3].map(k => ({ turn: k * Math.PI / 2 }));
 
-// The coils, each turn a closed loop: the reader's as wound in reader-model.js (five turns, drawn in
-// from its outer one), the phone's (round, between its outer and inner turn, phone-reader.js), and
-// the card's (its outer turn as drawn here, and three more inside it, in the card's own frame).
+// The coils, each turn a closed loop, and where their lines start: the reader's as wound in
+// reader-model.js (five turns, drawn in from its outer one), the phone's (round, between its outer
+// and inner turn, phone-reader.js), and the card's (its outer turn as drawn here, and three more
+// inside it, in the card's own frame). `rays` trace one ray of each kind and copy it, as the coil
+// alone is symmetric; `plated`, the rays for when a plate breaks that (the plate lies off-centre
+// and turned over a reader, but centred on the card, so the card keeps its copies).
+const PAD_RAYS = Array.from({ length: 8 }, (_, k) => ({ angle: k * Math.PI / 4, edge: k % 2 ? (COIL_HALF - COIL_RADIUS) * Math.SQRT2 + COIL_RADIUS : COIL_HALF }));
+const CARD_RAYS = [
+  { angle: 0, edge: CARD_HALF[0], copies: [{}, { flipX: true }] },
+  { angle: Math.PI / 2, edge: CARD_HALF[1], copies: [{}, { flipY: true }] },
+];
 const COILS = {
-  pad: () => {
-    const coil = makeCoil(Array.from({ length: 5 }, (_, k) => {
+  pad: {
+    loops: Array.from({ length: 5 }, (_, k) => {
       const s = (k + .5) / 5;
       return Array.from({ length: 64 }, (_, i) => [...squarePoint(COIL_HALF - s * .0115, COIL_RADIUS - s * .0055, i / 64), COIL_Z]);
-    }));
-    // The rounded square is the same turned by a quarter, so two rays are traced, and turned.
-    return { coil, centre: [0, 0], list: traceLines(coil, { count: 6, reach: .16, rays: [
-      { angle: 0, edge: COIL_HALF, copies: QUARTERS },
-      { angle: Math.PI / 4, edge: (COIL_HALF - COIL_RADIUS) * Math.SQRT2 + COIL_RADIUS, copies: QUARTERS },
-    ] }) };
+    }),
+    soft: .0008, count: 6, reach: .16, centre: [0, 0],
+    rays: [{ ...PAD_RAYS[0], copies: QUARTERS }, { ...PAD_RAYS[1], copies: QUARTERS }], plated: PAD_RAYS,
   },
-  phone: () => {
-    const coil = makeCoil(Array.from({ length: 4 }, (_, k) => {
+  phone: {
+    loops: Array.from({ length: 4 }, (_, k) => {
       const r = PHONE_COIL.radius - (k + .5) / 4 * (PHONE_COIL.radius - PHONE_COIL.inner);
       return Array.from({ length: 64 }, (_, i) => [r * Math.cos(i / 64 * Math.PI * 2), r * Math.sin(i / 64 * Math.PI * 2), PHONE_COIL.z]);
-    }));
-    // Round: one ray, turned eight ways.
-    return { coil, centre: [0, 0], list: traceLines(coil, { count: 6, reach: .16, rays: [
-      { angle: 0, edge: PHONE_COIL.radius, copies: Array.from({ length: 8 }, (_, k) => ({ turn: k * Math.PI / 4 })) },
-    ] }) };
+    }),
+    soft: .0008, count: 6, reach: .16, centre: [0, 0],
+    rays: [{ angle: 0, edge: PHONE_COIL.radius, copies: Array.from({ length: 8 }, (_, k) => ({ turn: k * Math.PI / 4 })) }],
+    plated: Array.from({ length: 8 }, (_, k) => ({ angle: k * Math.PI / 4, edge: PHONE_COIL.radius })),
   },
-  card: () => {
-    const coil = makeCoil(Array.from({ length: 4 }, (_, k) =>
-      loop(CARD_CENTRE, CARD_HALF[0] - k * .0011, CARD_HALF[1] - k * .0011, Math.max(.001, .0028 - k * .0006), CARD_Z, 96)), { soft: .0005 });
-    // A rectangle is its own mirror image across each of its middles: two rays, each mirrored.
-    return { coil, centre: CARD_CENTRE, list: traceLines(coil, { count: 4, reach: .12, centre: CARD_CENTRE, rays: [
-      { angle: 0, edge: CARD_HALF[0], copies: [{}, { flipX: true }] },
-      { angle: Math.PI / 2, edge: CARD_HALF[1], copies: [{}, { flipY: true }] },
-    ] }) };
+  card: {
+    loops: Array.from({ length: 4 }, (_, k) =>
+      loop(CARD_CENTRE, CARD_HALF[0] - k * .0011, CARD_HALF[1] - k * .0011, Math.max(.001, .0028 - k * .0006), CARD_Z, 96)),
+    soft: .0005, count: 4, reach: .12, centre: CARD_CENTRE, rays: CARD_RAYS, plated: CARD_RAYS,
   },
 };
+const jobFor = (kind, plate) => {
+  const { loops, soft, count, reach, centre, rays, plated } = COILS[kind];
+  return { loops, soft, count, reach, centre, rays: plate ? plated : rays, plate };
+};
+
+// The lab's metal plate (card-scene.js `plate`): in the card's frame, centred on its coil, 0.9 mm
+// plus `behind` (m) behind it, 94 by 62 mm. `cardPlate` as the card's own lines see it;
+// `readerPlate` in the reader's frame, the card's frame at `cardZ` over the reader, turned `tilt`,
+// drawn `size` times a bank card.
+const PLATE_HALF = [.047, .031];
+const cardPlate = behind => ({ centre: [CARD_CENTRE[0], CARD_CENTRE[1], .0009 + behind], half: PLATE_HALF });
+function readerPlate(cardZ, tilt, size, behind) {
+  const s = HOVER.spin, ex = [Math.cos(s), Math.sin(s), 0], n = [Math.sin(s) * Math.sin(tilt), -Math.cos(s) * Math.sin(tilt), Math.cos(tilt)];
+  const along = CARD_CENTRE[0] * size, back = (.0009 + behind) * size;
+  return {
+    centre: [HOVER.x + ex[0] * along + n[0] * back, HOVER.y + ex[1] * along + n[1] * back, cardZ + n[2] * back],
+    spin: s, tilt, half: [PLATE_HALF[0] * size, PLATE_HALF[1] * size],
+  };
+}
+
+// The worker that traces the lines (field-worker.js), started the first time it is needed. If it
+// can't start, or fails, the same work is done here instead.
+let worker, jobs = 0;
+const waiting = new Map();
+function solveField(job) {
+  if (worker === undefined) {
+    try {
+      worker = new Worker(new URL('./field-worker.js', import.meta.url), { type: 'module' });
+      worker.addEventListener('message', ({ data }) => { waiting.get(data.id)?.resolve(data.result); waiting.delete(data.id); });
+      worker.addEventListener('error', () => {
+        worker = null;
+        for (const { resolve, job } of waiting.values()) resolve(solveJob(job));
+        waiting.clear();
+      });
+    } catch (error) { worker = null; }
+  }
+  if (!worker) return Promise.resolve().then(() => solveJob(job));
+  return new Promise(resolve => {
+    const id = ++jobs;
+    waiting.set(id, { resolve, job });
+    worker.postMessage({ id, job });
+  });
+}
 
 // One coil's field lines as one mesh: a thin tube along each line, which knows how far along the
 // line each point is (in beads), how strong the field is there (0 to 1, on a log scale: a hundredth
-// of the field at the coil's centre is 0) and whether it is under the coil.
-function fieldLineSet({ coil, centre, list }, color) {
-  const b0 = strength(coil, centre[0], centre[1], coil.z), point = new THREE.Vector3();
-  const parts = list.map(({ points, closed }, index) => {
-    const curve = new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(...p)), closed, 'centripetal');
-    const length = curve.getLength(), radial = 5;
+// of the field at the coil's centre is 0; worked out with the line, coil-field.js `solveJob`) and
+// whether it is under the coil.
+function fieldLineSet({ z: coilZ, lines: list }, color) {
+  const point = new THREE.Vector3();
+  const parts = list.map(({ points, power: strengths, closed }, index) => {
+    const count = points.length / 3, vectors = [], lengths = [0];
+    for (let k = 0; k < count; k++) {
+      vectors.push(new THREE.Vector3(points[k * 3], points[k * 3 + 1], points[k * 3 + 2]));
+      if (k) lengths.push(lengths[k - 1] + vectors[k].distanceTo(vectors[k - 1]));
+    }
+    const curve = new THREE.CatmullRomCurve3(vectors, closed, 'centripetal');
+    const length = curve.getLength(), radial = 5, total = lengths[count - 1] || 1;
     const segments = Math.round(THREE.MathUtils.clamp(length / .0012, 24, 360));
     const geometry = new THREE.TubeGeometry(curve, segments, .00045, radial, closed);
     const n = geometry.attributes.position.count, uv = geometry.attributes.uv;
     const along = new Float32Array(n), power = new Float32Array(n), under = new Float32Array(n);
     // A whole number of beads round a closed line, so the last one meets the first.
     const beads = Math.max(1, Math.round(length / BEAD));
-    for (let i = 0; i <= segments; i++) {
+    for (let i = 0, k = 1; i <= segments; i++) {
       curve.getPointAt(i / segments, point);
-      const share = strength(coil, point.x, point.y, point.z) / b0;
-      const level = THREE.MathUtils.clamp(1 + Math.log10(Math.max(share, 1e-6)) / 2, 0, 1);
-      const below = smoothstep(0, .003, coil.z - point.z);
+      // The field's strength there, from the traced points either side (by how far along).
+      const want = i / segments * total;
+      while (k < count - 1 && lengths[k] < want) k++;
+      const t = THREE.MathUtils.clamp((want - lengths[k - 1]) / Math.max(1e-9, lengths[k] - lengths[k - 1]), 0, 1);
+      const level = strengths[k - 1] + (strengths[k] - strengths[k - 1]) * t;
+      const below = smoothstep(0, .003, coilZ - point.z);
       for (let j = 0; j <= radial; j++) {
         const v = i * (radial + 1) + j;
         along[v] = uv.getX(v) * beads;
@@ -277,7 +333,7 @@ function fieldLineSet({ coil, centre, list }, color) {
         float alpha = 1.6 * uAmount * (.25 + .75 * wave) * (.3 + .7 * vPower) * (.5 + .5 * bead);
         alpha *= 1. - uUnder * vUnder;
         // Once the card lies over the reader: the lines through its coil stronger, the rest fainter.
-        alpha *= mix(1., .35 + .85 * uLink[int(vLine + .5)], uLinkShow);
+        alpha *= mix(1., .6 + .6 * uLink[int(vLine + .5)], uLinkShow);
         // A metal plate behind the card: the field dies out before it.
         alpha *= 1. - uSoak * smoothstep(uSoakFrom, uSoakTo, vZ);
         // Softer at the tube's edges, so a line reads as a line, not a pipe.
@@ -291,7 +347,7 @@ function fieldLineSet({ coil, centre, list }, color) {
   mesh.renderOrder = 6;
   mesh.frustumCulled = false;
   mesh.visible = false;
-  return { mesh, uniforms, list, through: 0, key: '' };
+  return { mesh, uniforms, list, through: 0, key: '', mix: 0, plated: false };
 }
 
 // Which of a reader's lines pass through the card's coil (`card`: where its middle is in the
@@ -302,9 +358,8 @@ function threadCard(set, shift, card) {
   let through = 0;
   set.list.forEach(({ points }, i) => {
     let hit = 0, pu = 0, pv = 0, pw = 0;
-    points.forEach(([x, y, z], k) => {
-      if (hit) return;
-      const dx = x + shift.x - card.x, dy = y - card.y, dz = z + shift.z - card.z;
+    for (let k = 0; k < points.length && !hit; k += 3) {
+      const dx = points[k] + shift.x - card.x, dy = points[k + 1] - card.y, dz = points[k + 2] + shift.z - card.z;
       const u = dx * c + dy * s, across = -dx * s + dy * c;
       const v = across * ct + dz * st, w = -across * st + dz * ct;
       if (k && (w > 0) !== (pw > 0)) {
@@ -312,7 +367,7 @@ function threadCard(set, shift, card) {
         if (Math.abs(pu + (u - pu) * t) < card.hx && Math.abs(pv + (v - pv) * t) < card.hy) hit = 1;
       }
       pu = u; pv = v; pw = w;
-    });
+    }
     set.uniforms.uLink.value[i] = hit;
     through += hit;
   });
@@ -347,15 +402,52 @@ export function buildEffects() {
   const phoneCard = { ...PHONE_CARD };
   const PHONE_SPREAD = { x: 0, y: 0, sx: 1.22, sy: 1.22, spin: 0 }, phoneLanding = { ...PHONE_SPREAD };
   const landing = { ...AT_CARD }, cardShape = { ...AT_CARD };
-  // Real physics: each coil's field lines, worked out the first time the switch is turned on (a
-  // few hundredths of a second). The card's live in its own frame, so they move with it.
-  let real = null, realShow = 0, realSet = null;
+  // Real physics: each coil's field lines (a "slot" per coil), worked out in the background the
+  // first time they are needed, and again whenever the metal plate or the card behind it moves.
+  // The card's live in its own frame, so they move with it.
+  let realShow = 0, realSet = null;
   const realCard = { x: 0, y: 0, z: 0, spin: HOVER.spin, tilt: 0, hx: 0, hy: 0 };
-  function buildReal() {
-    real = { pad: fieldLineSet(COILS.pad(), UP_COLOR), phone: fieldLineSet(COILS.phone(), UP_COLOR), card: fieldLineSet(COILS.card(), COOL) };
-    table.add(real.pad.mesh, real.phone.mesh);
-    onCard.add(real.card.mesh);
+  function lineSlot(kind, color, group) {
+    const slot = { shown: null, leaving: [], wanted: '', asked: '', plate: null, busy: false };
+    // The lines for `key`: with `plate` (as coil-field.js `shield` takes it), or none. Only one
+    // job at a time; when it comes back, the latest wanted is asked for next.
+    slot.want = (key, plate) => {
+      slot.wanted = key;
+      slot.plate = plate;
+      if (!slot.busy && slot.asked !== key) send();
+    };
+    function send() {
+      slot.busy = true;
+      slot.asked = slot.wanted;
+      const plate = slot.plate;
+      solveField(jobFor(kind, plate)).then(result => {
+        const set = fieldLineSet(result, color);
+        set.plated = !!plate;
+        group.add(set.mesh);
+        if (slot.shown) slot.leaving.push(slot.shown);
+        slot.shown = set;
+      }).catch(error => console.warn('Could not trace the field lines.', error)).finally(() => {
+        slot.busy = false;
+        if (slot.wanted !== slot.asked) send();
+      });
+    }
+    // Each frame: the newest lines fade in as the ones before fade out (a third of a second).
+    slot.fade = dt => {
+      if (slot.shown) slot.shown.mix = Math.min(1, slot.shown.mix + dt / .35);
+      slot.leaving = slot.leaving.filter(set => {
+        set.mix -= dt / .35;
+        set.mesh.visible = false;
+        if (set.mix > 0) return true;
+        group.remove(set.mesh);
+        set.mesh.geometry.dispose();
+        set.mesh.material.dispose();
+        return false;
+      });
+    };
+    slot.sets = () => (slot.shown ? [slot.shown, ...slot.leaving] : slot.leaving);
+    return slot;
   }
+  let real = null;
   // How far the beads on each wire have run. It adds up frame by frame, so a change of
   // speed or of direction never makes them jump: they slow, stop and turn round.
   let lastClock = null;
@@ -486,7 +578,7 @@ export function buildEffects() {
     stream(phoneDown, t, downLevel * phoneShare, phoneCard, phoneFrom, top, COIL_Z + .0006 + phoneShift.z, halo, downFade);
 
     // Real physics: the reader's field lines, and the card's while it answers.
-    if (physics > .003 && !real) buildReal();
+    if (physics > .003 && !real) real = { pad: lineSlot('pad', UP_COLOR, table), phone: lineSlot('phone', UP_COLOR, table), card: lineSlot('card', COOL, onCard) };
     if (real) {
       const wave = Math.cos(2 * Math.PI * WAVE_HZ * t);
       // In each of the reader's gaps in the question its field really stops (100% ASK).
@@ -497,33 +589,49 @@ export function buildEffects() {
       Object.assign(realCard, { x: HOVER.x + CARD_CENTRE[0] * size * turn, y: HOVER.y + CARD_CENTRE[0] * size * side, z: top,
         tilt: b.tilt || 0, hx: CARD_HALF[0] * size, hy: CARD_HALF[1] * size });
       const soak = (b.metal || 0) * (b.shield || 0);
-      realSet = phone > .5 ? real.phone : real.pad;
-      for (const [set, share, shift] of [[real.pad, padShare, padShift], [real.phone, phoneShare, phoneShift]]) {
-        const amount = reader * share;
-        set.mesh.visible = amount > .003;
-        if (!set.mesh.visible) continue;
-        set.mesh.position.set(shift.x, 0, shift.z);
-        const u = set.uniforms;
-        u.uAmount.value = amount;
-        u.uWave.value = wave;
-        u.uFlow.value += dt * 2.2 * wave;
-        u.uLinkShow.value = realShow;
-        u.uUnder.value = lerp(.85, .55, b.xray || 0);
-        u.uSoak.value = soak;
-        u.uSoakFrom.value = top - shift.z;
-        u.uSoakTo.value = top + (b.plate ?? .02) - shift.z;
-        const key = [top, realCard.tilt, size, shift.x, shift.z].map(v => v.toFixed(5)).join();
-        if (realShow > .003 && key !== set.key) { set.key = key; threadCard(set, shift, realCard); }
+      // The metal plate, once it shows with the card down: where it is, to the millimetre (and the
+      // card's turn to about 2°), so the lines are traced again only when it has really moved.
+      const metal = (b.metal || 0) > .3 && (b.dock || 0) > .9;
+      const snap = (v, by) => Math.round(v / by) * by;
+      const behind = snap(b.plate ?? .02, .001), plateZ = snap(cardZ, .001), plateTilt = snap(b.tilt || 0, .03), plateSize = snap(size, .02);
+      const plateKey = metal ? [behind, plateZ, plateTilt, plateSize].map(v => v.toFixed(3)).join() : 'none';
+      const behindWave = Math.sin(2 * Math.PI * WAVE_HZ * t);
+      // Which coils are wanted: the reader in use (both through a swap), and the card while it answers.
+      if (physics > .003 && phone < .999) real.pad.want(plateKey, metal ? readerPlate(plateZ, plateTilt, plateSize, behind) : null);
+      if (physics > .003 && phone > .001) real.phone.want(plateKey, metal ? readerPlate(plateZ, plateTilt, plateSize, behind) : null);
+      if (physics > .003 && answer > .001) real.card.want(metal ? 'card ' + behind.toFixed(3) : 'none', metal ? cardPlate(behind) : null);
+      realSet = (phone > .5 ? real.phone : real.pad).shown;
+      for (const [slot, share, shift] of [[real.pad, padShare, padShift], [real.phone, phoneShare, phoneShift]]) {
+        slot.fade(dt);
+        for (const set of slot.sets()) {
+          const amount = reader * share * set.mix;
+          set.mesh.visible = amount > .003;
+          if (!set.mesh.visible) continue;
+          set.mesh.position.set(shift.x, 0, shift.z);
+          const u = set.uniforms;
+          u.uAmount.value = amount;
+          u.uWave.value = wave;
+          u.uFlow.value += dt * 2.2 * wave;
+          u.uLinkShow.value = realShow;
+          u.uUnder.value = lerp(.85, .55, b.xray || 0);
+          // Lines traced without the plate (until the ones with it come back) fade out before it.
+          u.uSoak.value = set.plated ? 0 : soak;
+          u.uSoakFrom.value = top - shift.z;
+          u.uSoakTo.value = top + (b.plate ?? .02) - shift.z;
+          const key = [top, realCard.tilt, size, shift.x, shift.z].map(v => v.toFixed(5)).join();
+          if (realShow > .003 && key !== set.key) { set.key = key; threadCard(set, shift, realCard); }
+        }
       }
       // The card's own field, a quarter turn behind the reader's.
-      const card = real.card, cardAmount = answer * physics;
-      card.mesh.visible = cardAmount > .003;
-      if (card.mesh.visible) {
-        const behind = Math.sin(2 * Math.PI * WAVE_HZ * t);
-        card.uniforms.uAmount.value = cardAmount;
-        card.uniforms.uWave.value = behind;
-        card.uniforms.uFlow.value += dt * 2.2 * behind;
-        card.uniforms.uUnder.value = 0;
+      real.card.fade(dt);
+      for (const set of real.card.sets()) {
+        const amount = answer * physics * set.mix;
+        set.mesh.visible = amount > .003;
+        if (!set.mesh.visible) continue;
+        set.uniforms.uAmount.value = amount;
+        set.uniforms.uWave.value = behindWave;
+        set.uniforms.uFlow.value += dt * 2.2 * behindWave;
+        set.uniforms.uUnder.value = 0;
       }
     } else realShow = 0;
 

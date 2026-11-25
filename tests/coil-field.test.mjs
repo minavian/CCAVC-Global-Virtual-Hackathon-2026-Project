@@ -3,7 +3,7 @@
 // field lines do. Run with `node --test` from the project's folder. Owner: Mina Vian.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeCoil, fieldAt, trace, wholeLine, seeds, lines } from '../js/intro/coil-field.js';
+import { makeCoil, fieldAt, trace, wholeLine, seeds, lines, shield, solveJob } from '../js/intro/coil-field.js';
 
 const MU0 = 4e-7 * Math.PI;
 // A round coil of radius `a`, one turn, cut into `n` straight pieces, flat at height `z`.
@@ -24,7 +24,7 @@ test('on its axis, a round coil gives μ0 I a² / 2(a² + z²)^1.5', () => {
 
 test('a long straight wire gives μ0 I / 2πd', () => {
   const L = 50, d = .01;
-  const wire = { pieces: Float64Array.from([-L, 0, 0, L, 0, 0]), soft2: 1e-12, z: 0 };
+  const wire = { pieces: Float64Array.from([-L, 0, 0, L, 0, 0]), current: Float64Array.of(1), soft2: Float64Array.of(1e-12), z: 0 };
   const [, , bz] = fieldAt(wire, 0, -d, 0);
   // The current runs along +x; a metre below it (−y) the field points down (−z).
   assert.ok(Math.abs(-bz / (MU0 / (2 * Math.PI * d)) - 1) < 1e-4);
@@ -85,5 +85,49 @@ test('copies of a ray are the same lines, turned', () => {
   a.points.forEach(([x, y, z], i) => {
     const [bx, by, bz] = b.points[i];
     assert.ok(Math.abs(bx + y) < 1e-12 && Math.abs(by - x) < 1e-12 && bz === z);
+  });
+});
+
+// A metal plate 25 mm over a round coil of radius 30 mm, 80 by 60 mm, a little off-centre and
+// turned, as the lab's plate lies behind the card.
+const PLATE = { centre: [.003, -.002, .025], spin: -.1, tilt: 0, half: [.04, .03] };
+
+test('a metal plate lets no field through: its eddy currents cancel the coil’s', () => {
+  const coil = ring(.03, 128, 0, .0008), both = shield(coil, PLATE);
+  const [x, y, z] = PLATE.centre, ref = fieldAt(coil, x, y, z)[2];
+  // Through the plate's middle, almost nothing; and just behind it, almost nothing.
+  assert.ok(Math.abs(fieldAt(both, x, y, z)[2] / ref) < .05, 'through the plate');
+  assert.ok(Math.abs(fieldAt(both, x, y, z + .01)[2] / ref) < .05, 'behind the plate');
+  // Just under it, about what a mirror image of the coil with its current reversed gives (the
+  // textbook answer for a plate that goes on for ever): the coil's field there, less its field as
+  // far on the other side of the plate. This plate ends, so a little more gets round it.
+  const axis = h => .03 ** 2 / (2 * (.03 ** 2 + h * h) ** 1.5);
+  const image = (axis(z - .0015) - axis(z + .0015)) / axis(z);
+  const under = fieldAt(both, x, y, z - .0015)[2] / ref;
+  assert.ok(under > image * .6 && under < image * 1.6, `${under.toFixed(3)} under the plate, ${image.toFixed(3)} for an endless one`);
+});
+
+test('with a plate, the field lines bend round it: none passes through', () => {
+  const rays = Array.from({ length: 8 }, (_, k) => ({ angle: k * Math.PI / 4, edge: .03 }));
+  const loops = [Array.from({ length: 128 }, (_, i) => { const t = i / 128 * 2 * Math.PI; return [.03 * Math.cos(t), .03 * Math.sin(t), 0]; })];
+  const job = { loops, soft: .0008, rays, count: 5, reach: .16, centre: [0, 0] };
+  const plated = solveJob({ ...job, plate: PLATE }).lines, free = solveJob(job).lines;
+  const c = Math.cos(PLATE.spin), s = Math.sin(PLATE.spin);
+  const top = ({ points }) => Math.max(...points.filter((_, k) => k % 3 === 2));
+  plated.forEach(({ points, power }, i) => {
+    assert.ok(power.every(p => p >= 0 && p <= 1), 'strengths from 0 to 1');
+    for (let k = 3; k < points.length; k += 3) {
+      const z1 = points[k - 1] - PLATE.centre[2], z2 = points[k + 2] - PLATE.centre[2];
+      const dx = points[k] - PLATE.centre[0], dy = points[k + 1] - PLATE.centre[1];
+      const u = dx * c + dy * s, v = -dx * s + dy * c;
+      const inside = Math.abs(u) < PLATE.half[0] - .002 && Math.abs(v) < PLATE.half[1] - .002;
+      assert.ok(!inside || (z1 > 0) === (z2 > 0), `a line crosses the plate at (${u.toFixed(3)}, ${v.toFixed(3)})`);
+    }
+    // The lines from the coil's middle rise past the plate's height on their own; with the plate
+    // they are pushed down under it.
+    if (i % 5 === 0) {
+      assert.ok(top(free[i]) > PLATE.centre[2], 'without the plate the line rises past it');
+      assert.ok(top(plated[i]) < top(free[i]), 'with it, the line stays lower');
+    }
   });
 });
