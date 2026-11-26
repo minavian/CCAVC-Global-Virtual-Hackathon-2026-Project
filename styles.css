@@ -11,13 +11,13 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
-/* The page scrolls (that is how the story plays), with a thin scroll bar in ink, so the
-   visitor can always see where they are on the page and how much is left. */
+/* The page scrolls (that is how the story plays), with no scroll bar showing: the wheel, a swipe,
+   the keys and the section index on the left still move it. */
 html {
   background: var(--paper);
-  scrollbar-width: thin;
-  scrollbar-color: rgba(13, 13, 12, .45) transparent;
+  scrollbar-width: none;
 }
+html::-webkit-scrollbar { display: none; }
 
 body {
   margin: 0;
