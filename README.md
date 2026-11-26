@@ -5,7 +5,7 @@
 **Live site:** https://hackathon.minavian.com/ccavc/RFIDtechnology/
 **Checks, running in your browser:** https://hackathon.minavian.com/ccavc/RFIDtechnology/tests/
 
-An interactive website about one everyday mechanism: how a contactless bank card, a transit card or a key fob, with **no battery**, talks to a reader. The visitor drags a card onto a reader, follows one tap step by step, then changes the distance, the angle, metal, the reader's power and the card's tuning, and sees what happens. Every number, curve and signal is worked out live in the browser by the project's own simulation. Made by team CCAVC for the CCAVC Global Virtual Hackathon 2026.
+An interactive website about one everyday mechanism: how a contactless bank card, a transit card or a key fob, with **no battery**, talks to a reader. The visitor drags a card onto a reader, follows one tap step by step, then changes the distance, the angle, metal, the reader's power and the card's tuning, and sees what happens. Every number, curve and signal is worked out live in the browser by the project's own simulation. Made by team CCAVC for the Global Virtual Hackathon 2026.
 
 ## Contents
 
