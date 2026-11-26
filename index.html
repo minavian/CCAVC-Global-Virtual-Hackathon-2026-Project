@@ -23,7 +23,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
-  <link rel="stylesheet" href="styles.css?v=62">
+  <link rel="stylesheet" href="styles.css?v=63">
   <link rel="stylesheet" href="take-apart/style.css?v=part-two-wave-1">
   <script type="importmap">
     {"imports": {
@@ -47,10 +47,14 @@
   <script src="js/landing.js?v=9" defer></script>
   <script src="js/present.js?v=6" defer></script>
   <script type="module" src="js/taps.js"></script>
-  <script type="module" src="js/intro/main.js?v=119"></script>
+  <script type="module" src="js/intro/main.js?v=120"></script>
 </head>
 <body>
   <main class="hero">
+    <!-- Straight to the mechanism: "Here's how" in the card intro, where the card waits to be
+         dragged onto the reader (js/intro/main.js wires it; without it, the link goes to the
+         intro's start). In the page from the first frame, top right, over the 3D stage. -->
+    <a class="jump" href="#what-is-rfid">Jump straight to the mechanism<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v10M3.5 8.5 8 13l4.5-4.5"/></svg></a>
     <div class="stage" id="stage" tabindex="0" role="group" aria-roledescription="carousel"
       aria-label="Three everyday things that use RFID: a key fob, a phone and a contactless card. Use the left and right arrow keys to turn them.">
       <div class="stage-light" aria-hidden="true"></div>

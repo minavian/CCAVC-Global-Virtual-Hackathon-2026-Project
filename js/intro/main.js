@@ -5,7 +5,7 @@
 // distance; dropping it lets the visitor step through the tap, ask the card for its ID and
 // watch the answer flow back, and drag to turn the camera. See EXPLAINED.md.
 import { follow, settle, smoother, spring } from './easing.js';
-import { hold } from './hold.js?v=1';
+import { hold } from './hold.js?v=2';
 import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose, clamp, ease, mix, measureStage, restingFrame, scrollTime } from './timeline.js?v=4';
 import { renderSignals } from './signals.js?v=3';
 import { ANSWER_AFTER, APPROACH_DETAIL, APPROACH_TEXT, ASK, SAMPLES_PER_BIT, CARD_ID, IDLE, LAB, LAST, NEAREST, REAL_MS, SHOTS, STEPS, TALK, approach, approachBand, approachView, centimetres,
@@ -2433,7 +2433,18 @@ function intro(experience) {
   // "Here's how" `auto` above carries the card to the reader and plays the close-up. The page
   // stays at "Here's how" until the visitor has reached the tap's last step (`completed`, hold.js);
   // a scroll that tries to leave before then is answered by `nudge`.
-  hold({ experience, stage, done: () => completed, nudge });
+  const held = hold({ experience, stage, done: () => completed, nudge });
+  // The landing's "Jump straight to the mechanism" (index.html `.jump`): straight to "Here's
+  // how", where the card waits to be dragged onto the reader, in one jump. The intro's animations
+  // aren't played on the way: off screen until then, it starts at the scroll it is shown at.
+  // Focus goes to "Here's how", so the keyboard carries on from there.
+  const instruction = $('.instruction');
+  instruction.tabIndex = -1;
+  document.querySelector('.jump')?.addEventListener('click', event => {
+    event.preventDefault();
+    scrollTo({ top: Math.max(0, held.at() - 2), behavior: 'instant' });
+    instruction.focus({ preventScroll: true });
+  });
   window.addEventListener('resize', remeasure, { passive: true });
   // The sections above can change height (fonts, a phone's toolbar), which moves this one.
   new ResizeObserver(remeasure).observe(stage);
