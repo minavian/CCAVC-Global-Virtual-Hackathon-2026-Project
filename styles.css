@@ -214,12 +214,37 @@ html[data-intro] #headline:not([data-docked]) {
 html[data-intro] #subline,
 html[data-intro] .stage-light { opacity: 0; }
 
+/* Leaving for the taps (landing.js `leave`): --exit runs from 0 to 1 over the first half
+   screen of scrolling. The words lift, shrink a little, blur and fade; the objects lift and
+   fade. Transform and filter wait for the opening's end, because they would move the
+   headline while it is still placed on its own (position: fixed) during the opening. */
+.hero.is-leaving .copy,
+.hero.is-leaving .jump { opacity: calc(1 - var(--exit, 0)); }
+html:not([data-intro]) .hero.is-leaving .copy {
+  transform: translateY(calc(var(--exit, 0) * -9vh)) scale(calc(1 - var(--exit, 0) * .05));
+  filter: blur(calc(var(--exit, 0) * 8px));
+}
+.hero.is-leaving .stage {
+  opacity: calc(1 - var(--exit, 0));
+  transform: translateY(calc(var(--exit, 0) * -6vh)) scale(calc(1 + var(--exit, 0) * .04));
+}
+.hero.is-gone { visibility: hidden; }
+
+/* The taps arrive as the landing page leaves: the title rises in, the panels fade in. */
+.taps-title {
+  opacity: var(--enter, 1);
+  translate: 0 calc((1 - var(--enter, 1)) * 56px);
+}
+.taps-row, .taps-pause { opacity: var(--enter, 1); }
+
 /* ---------- Every day: three taps under the landing page (js/taps.js) ----------
    Three panels side by side, split by hairlines. One canvas lies under the row and
    taps.js draws each panel's scene into that panel's .tap-view box.
-   The landing page is pinned, so this section starts one screen down and slides up
-   over it like a sheet of paper. It is at least a screen tall, so it covers the landing
-   page completely before the story (which starts where this section ends) begins. */
+   The landing page is pinned, so this section starts one screen down. It has no paper of
+   its own: it doesn't slide over the landing page as a sheet. Instead, as it rises, the
+   landing page's words and objects drift up and fade away, and its own title and panels
+   fade in (landing.js `leave` sets --exit on the landing page and --enter here), so both
+   share one paper. It is at least a screen tall. */
 .taps {
   position: relative;
   z-index: 5;
@@ -227,8 +252,7 @@ html[data-intro] .stage-light { opacity: 0; }
   margin-top: 100lvh;
   min-height: 100vh;
   min-height: 100lvh;
-  background: var(--paper);
-  box-shadow: 0 -48px 80px rgba(245, 242, 236, .92), 0 48px 80px rgba(245, 242, 236, .92);
+  background: transparent;
   display: grid;
   align-content: center;
   justify-items: center;

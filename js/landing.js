@@ -44,6 +44,7 @@
 
   const root = document.documentElement;
   const $ = id => document.getElementById(id);
+  const hero = $('top'), taps = $('taps');
   const stage = $('stage'), headline = $('headline'), subline = $('subline');
   const copyBox = document.querySelector('.copy');
   const announcer = $('focus-name');
@@ -687,7 +688,7 @@
 
   function frame(now) {
     frameId = 0;
-    if (document.hidden || covered()) { lastNow = null; return; }
+    if (document.hidden || gone || covered()) { lastNow = null; return; }
     const raw = lastNow === null ? 0 : Math.max(0, (now - lastNow) / 1000);
     // Clamp the step so a hitch slows the motion down instead of skipping it.
     const dt = Math.min(.1, raw);
@@ -802,8 +803,32 @@
     // Without the story, scrolling never plays it: the objects stay where they are.
     scrollGoal = track ? Math.max(0, scrollY - track.offsetTop) / Math.max(1, viewH()) : 0;
     if (intro !== null && started && frozenAt === null && scrollY / Math.max(1, viewH()) > .01) finishIntro(true);
+    leave();
     wake();
   }, { passive: true });
+
+  // ---------- Leaving for the taps ----------
+  // The taps (js/taps.js) don't slide over the landing page as a sheet. Over the first half
+  // screen of scrolling the landing page's words and objects drift up and fade (--exit, read
+  // by styles.css), while the taps' title rises in and its panels fade in (--enter, over the
+  // first 0.1 to 0.7 screens). Both follow the scroll, so scrolling back brings the landing
+  // page back. Once it has gone, its frame loop sleeps (`gone`).
+  let gone = false, leftAt = '';
+  function leave() {
+    const h = Math.max(1, viewH());
+    const exit = smoothstep(clamp01(scrollY / (h * .5)));
+    const enter = easeOutCubic(clamp01((scrollY - h * .1) / (h * .6)));
+    const key = exit.toFixed(4) + '|' + enter.toFixed(4);
+    if (key === leftAt) return;
+    leftAt = key;
+    hero.style.setProperty('--exit', exit.toFixed(4));
+    hero.classList.toggle('is-leaving', exit > 0);
+    gone = exit >= 1;
+    hero.classList.toggle('is-gone', gone);
+    taps?.style.setProperty('--enter', enter.toFixed(4));
+  }
+  leave();
+  addEventListener('resize', leave);
 
   addEventListener('resize', measure);
   const resized = new ResizeObserver(() => measure());
