@@ -3799,6 +3799,7 @@ function createChapterDeck(stops, transitions) {
   const canLockEntry = () => canPage() && !window.__presenting;
 
   function cancelJumpScroll() {
+    window.__indexJumping = false;
     if (!jumpScroll) return;
     cancelAnimationFrame(jumpScroll.frame);
     jumpScroll = undefined;
@@ -4104,19 +4105,26 @@ function createChapterDeck(stops, transitions) {
     const chapter = opener.closest('.deep');
     if (!nav || !chapter) return () => {};
 
+    const taps = document.getElementById('taps');
+    const intro = document.getElementById('what-is-rfid');
+    const introStage = intro?.querySelector('.intro-stage');
     const toggle = nav.querySelector('.deep-index-toggle');
     const panel = nav.querySelector('.deep-index-panel');
+    const lists = Array.from(nav.querySelectorAll('.deep-index-items'));
     const links = Array.from(nav.querySelectorAll('a[data-target]'));
-    const sections = links.map(link => document.getElementById(link.dataset.target)).filter(Boolean);
+    const deepSections = links
+      .filter(link => /^s\d+$/.test(link.dataset.target))
+      .map(link => document.getElementById(link.dataset.target))
+      .filter(Boolean);
     let hoverTimer = 0;
 
     function layoutSlabs() {
       if (!panel || !links.length) return;
       const panelHeight = panel.offsetHeight;
       if (!panelHeight) return;
-      const pitch = innerWidth <= 860 ? 8 : 9;
-      const groupGap = 8;
-      const stackH = (links.length - 1) * pitch + groupGap;
+      const pitch = innerWidth <= 860 ? 7 : 8;
+      const groupGap = innerWidth <= 860 ? 7 : 8;
+      const stackH = (links.length - 1) * pitch + Math.max(0, lists.length - 1) * groupGap;
       const startY = (panelHeight - stackH) / 2;
       const center = (links.length - 1) / 2;
       links.forEach((link, i) => {
@@ -4126,13 +4134,35 @@ function createChapterDeck(stops, transitions) {
           rowY += el.offsetTop;
           el = el.offsetParent;
         }
-        const slabY = startY + i * pitch + (i >= 5 ? groupGap : 0);
+        const groupIdx = Math.max(0, lists.indexOf(link.closest('.deep-index-items')));
+        const slabY = startY + i * pitch + groupIdx * groupGap;
         link.style.setProperty('--slab-dy', `${(slabY - rowY).toFixed(1)}px`);
         link.style.setProperty('--dist', Math.abs(i - center).toFixed(1));
       });
       const cardSy = Math.min(1, (stackH + 24) / panelHeight);
       nav.style.setProperty('--card-sy', cardSy.toFixed(3));
       nav.style.setProperty('--slab-hit-h', `${Math.round(stackH + 48)}px`);
+    }
+
+    function getIntroRange(from) {
+      if (!intro) return { start: 0, span: 1 };
+      const start = bounds(intro, from).y;
+      const span = Math.max(intro.offsetHeight - (introStage?.clientHeight || innerHeight), 1);
+      return { start, span };
+    }
+
+    function getTargetY(targetId, target, from) {
+      if (targetId === 'top') return 0;
+      if (targetId === 'what-is-rfid' && intro) {
+        const { start, span } = getIntroRange(from);
+        return start + span * (1.68 / 9.27);
+      }
+      if (targetId === 'try-it' && intro) {
+        const { start, span } = getIntroRange(from);
+        return start + span * (9.1 / 9.27);
+      }
+      if (targetId === 'take-apart') return bounds(chapter, from).y;
+      return bounds(target, from).y;
     }
 
     function setHover(on) {
@@ -4147,20 +4177,24 @@ function createChapterDeck(stops, transitions) {
     }
 
     function updateIndex() {
-      const visible = !window.__presenting && chapter.getBoundingClientRect().top <= innerHeight * .35;
+      const visible = !window.__presenting && !root.hasAttribute('data-intro');
       nav.classList.toggle('is-visible', visible);
       if (!visible) {
         setHover(false);
         setOpen(false);
         return;
       }
-      let activeId = '';
-      for (const section of sections) {
-        const r = section.getBoundingClientRect();
-        if (r.top <= innerHeight * .45 && r.bottom >= innerHeight * .25) {
-          activeId = section.id;
-          break;
+      let activeId = 'top';
+      if (chapter.getBoundingClientRect().top <= innerHeight * .45) {
+        activeId = 'take-apart';
+        for (const section of deepSections) {
+          if (section.getBoundingClientRect().top <= innerHeight * .45) activeId = section.id;
         }
+      } else if (intro && intro.getBoundingClientRect().top <= innerHeight * .45) {
+        const { start, span } = getIntroRange(scrollY);
+        activeId = scrollY >= start + span * (8.4 / 9.27) ? 'try-it' : 'what-is-rfid';
+      } else if (taps && taps.getBoundingClientRect().top <= innerHeight * .45) {
+        activeId = 'taps';
       }
       for (const link of links) {
         if (link.dataset.target === activeId) link.setAttribute('aria-current', 'location');
@@ -4168,19 +4202,22 @@ function createChapterDeck(stops, transitions) {
       }
     }
 
-    function scrollToSection(target) {
+    function scrollToSection(target, targetId) {
       cancelActive();
       sanitizeChapter();
       nativeEntryUntil = 0;
       const from = scrollY;
       const maxScroll = Math.max(0, root.scrollHeight - innerHeight);
-      const to = Math.min(maxScroll, Math.max(0, bounds(target, from).y));
+      const to = Math.min(maxScroll, Math.max(0, getTargetY(targetId, target, from)));
       const dist = Math.abs(to - from);
+      const pastIntro = targetId === 'take-apart' || /^s\d+$/.test(targetId);
 
-      history.replaceState(null, '', `#${target.id}`);
+      document.dispatchEvent(new CustomEvent('rfid:index-jump', { detail: { pastIntro } }));
+      history.replaceState(null, '', targetId === 'top' ? location.pathname + location.search : `#${targetId}`);
       target.focus({ preventScroll: true });
 
-      if (dist < 2 || reducedMotion.matches || document.hidden) {
+      if (dist < 2 || document.hidden) {
+        window.__indexJumping = false;
         scrollTo({ top: to, behavior: 'instant' });
         lastTop = scrollY;
         cooldownUntil = performance.now() + 220;
@@ -4188,6 +4225,7 @@ function createChapterDeck(stops, transitions) {
         return;
       }
 
+      window.__indexJumping = true;
       const screens = dist / Math.max(1, innerHeight);
       const duration = Math.round(Math.min(1100, Math.max(460, 420 + Math.sqrt(screens) * 200)));
       const start = performance.now();
@@ -4200,8 +4238,9 @@ function createChapterDeck(stops, transitions) {
         const k = Math.min(1, (now - start) / duration);
         if (k >= 1) {
           jumpScroll = undefined;
+          window.__indexJumping = false;
           const finalMax = Math.max(0, root.scrollHeight - innerHeight);
-          const finalTo = Math.min(finalMax, Math.max(0, bounds(target, scrollY).y));
+          const finalTo = Math.min(finalMax, Math.max(0, getTargetY(targetId, target, scrollY)));
           scrollTo({ top: finalTo, behavior: 'instant' });
           lastTop = scrollY;
           cooldownUntil = performance.now() + 220;
@@ -4218,13 +4257,14 @@ function createChapterDeck(stops, transitions) {
 
     for (const link of links) {
       link.addEventListener('click', event => {
-        const target = document.getElementById(link.dataset.target);
+        const targetId = link.dataset.target;
+        const target = document.getElementById(targetId);
         if (!target) return;
         event.preventDefault();
         setHover(false);
         setOpen(false);
         if (nav.contains(document.activeElement)) document.activeElement.blur();
-        scrollToSection(target);
+        scrollToSection(target, targetId);
       });
     }
 
@@ -4251,6 +4291,10 @@ function createChapterDeck(stops, transitions) {
         if (nav.contains(document.activeElement)) document.activeElement.blur();
       }
     });
+    document.addEventListener('rfid:opening-done', updateIndex);
+    if (typeof MutationObserver === 'function') {
+      new MutationObserver(updateIndex).observe(root, { attributes: true, attributeFilter: ['data-intro'] });
+    }
     addEventListener('resize', layoutSlabs, { passive: true });
     document.fonts?.ready.then(layoutSlabs);
     layoutSlabs();
