@@ -830,6 +830,17 @@
   leave();
   addEventListener('resize', leave);
 
+  // Footnote links (the car key's asterisk, `data-jump`): through the section index's own
+  // link, which knows how to get past the card intro's hold (js/deep-motion.js). Without the
+  // index, the plain #anchor still works.
+  document.addEventListener('click', e => {
+    const link = e.target.closest?.('a[data-jump]');
+    const twin = link && document.querySelector(`.deep-index a[data-target="${link.dataset.jump}"]`);
+    if (!twin) return;
+    e.preventDefault();
+    twin.click();
+  });
+
   addEventListener('resize', measure);
   const resized = new ResizeObserver(() => measure());
   resized.observe(stage);

@@ -327,6 +327,20 @@ html:not([data-intro]) .hero.is-leaving .copy {
   transition: color .6s ease, opacity .6s ease;
 }
 .tap-say b { font-weight: 800; color: var(--ink); }
+/* The car key's footnote: it uses active RFID (a battery), so it goes to scene 13,
+   "Passive vs. active" (landing.js sends it through the section index's own jump). */
+.tap-star {
+  margin-left: .1em;
+  padding: 0 .15em;
+  font-weight: 800;
+  color: var(--copper, #b8652a);
+  text-decoration: none;
+  vertical-align: .35em;
+  font-size: .8em;
+  border-radius: 4px;
+}
+.tap-star:hover { color: var(--ink); }
+.tap-star:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .tap.is-on .tap-say { color: var(--ink); opacity: 1; }
 
 /* Fills while its panel plays, and empties when the three reset. */
