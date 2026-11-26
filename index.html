@@ -24,7 +24,7 @@
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
   <link rel="stylesheet" href="styles.css?v=65">
-  <link rel="stylesheet" href="take-apart/style.css?v=stable-gutter-1">
+  <link rel="stylesheet" href="take-apart/style.css?v=passive-active-1">
   <script type="importmap">
     {"imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -42,8 +42,8 @@
   <script src="js/models.js?v=2" defer></script>
   <script src="js/story.js?v=5" defer></script>
   <script src="js/lab.js" defer></script>
-  <script src="js/deep.js?v=finale-cue-1" defer></script>
-  <script type="module" src="js/deep-motion.js?v=full-page-index-1"></script>
+  <script src="js/deep.js?v=passive-active-2" defer></script>
+  <script type="module" src="js/deep-motion.js?v=passive-active-1"></script>
   <script src="js/landing.js?v=9" defer></script>
   <script src="js/present.js?v=6" defer></script>
   <script type="module" src="js/taps.js"></script>
@@ -804,6 +804,87 @@
       </div>
     </section>
 
+    <section class="plate" id="s18" aria-labelledby="s18-title" tabindex="-1">
+      <div class="plate-words">
+        <p class="plate-num">13</p>
+        <h3 id="s18-title">Passive vs. active: what a battery changes</h3>
+        <p>Everything above is passive RFID: no battery, powered only by the reader’s field. Give the tag its own battery and radio, and range, reply, and lifespan all flip.</p>
+        <div class="plate-controls s18-controls">
+          <div class="s18-dist-control">
+            <div class="s18-dist-head">
+              <label for="s18-distance">Distance</label>
+              <output id="s18-distance-out" for="s18-distance" data-for="s18-distance" aria-live="off">2.0 cm</output>
+            </div>
+            <input id="s18-distance" type="range" min="0" max="1000" step="1" value="75" aria-valuetext="2.0 cm">
+            <div class="s18-endpoints" aria-hidden="true"><span>1 cm</span><span>5 cm</span><span>1 m</span><span>100 m</span></div>
+          </div>
+          <div class="s18-toggle-row">
+            <label class="s18-toggle-label" for="s18-field">
+              <span class="s18-toggle-text">
+                <span>Reader’s field</span>
+                <span class="s18-toggle-sub">Powers passive tags</span>
+              </span>
+              <span class="s18-toggle-wrap">
+                <output id="s18-field-state" for="s18-field" aria-live="off">On</output>
+                <input id="s18-field" type="checkbox" role="switch" checked>
+              </span>
+            </label>
+          </div>
+          <div class="s18-toggle-row">
+            <label class="s18-toggle-label" for="s18-battery">
+              <span class="s18-toggle-text">
+                <span>Active tag’s battery</span>
+                <span class="s18-toggle-sub">3 V coin cell · ~4 yr</span>
+              </span>
+              <span class="s18-toggle-wrap">
+                <output id="s18-battery-state" for="s18-battery" aria-live="off">On</output>
+                <input id="s18-battery" type="checkbox" role="switch" checked>
+              </span>
+            </label>
+          </div>
+        </div>
+        <p class="plate-readout" aria-live="polite"></p>
+        <p class="plate-real">Real names: passive near-field coupling (drops as 1/d³; passive UHF backscatter reaches a few meters) vs. active radio (drops as 1/d²). Semi-passive (BAP) is in between: a battery runs the chip, but the reader still triggers the reply.</p>
+      </div>
+      <div class="s18-instrument">
+        <div class="s18-plot">
+          <canvas class="plate-canvas" id="s18-chart" role="img" aria-label="Animated comparison of passive and active RFID links and their signal margin across distance"></canvas>
+          <span id="s18-reader-pulse" aria-hidden="true" hidden></span>
+        </div>
+        <table class="s18-compare" aria-label="Passive versus active RFID comparison">
+          <thead>
+            <tr>
+              <th scope="col">Trait</th>
+              <th scope="col" class="s18-col-passive">Passive</th>
+              <th scope="col" class="s18-col-active">Active</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Power</th>
+              <td>Reader’s field</td>
+              <td>Built-in battery</td>
+            </tr>
+            <tr>
+              <th scope="row">Reply</th>
+              <td>Dips reader’s field</td>
+              <td>Own radio wave</td>
+            </tr>
+            <tr>
+              <th scope="row">Range · Life</th>
+              <td>~5 cm · Decades</td>
+              <td>~100 m · ~3–5 yr</td>
+            </tr>
+            <tr>
+              <th scope="row">Examples</th>
+              <td>Bank card, transit pass</td>
+              <td>Toll tag, asset tracker</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <footer class="deep-end" id="deep-end">
       <p class="deep-last">Every tap does all of this, in less time than a <span id="deep-end-blink" class="deep-end-blink">blink</span>.</p>
       <p>Everything on this page is computed by its own code: the coils from Maxwell’s formula, the card and phone from the ISO/IEC 14443 standard, and a reader that decodes only the signal it receives. <a href="tests/">See the checks run</a>.</p>
@@ -840,6 +921,7 @@
         <li><a href="#s15" data-target="s15"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">10</span><span class="deep-index-name">The six messages in a tap</span></a></li>
         <li><a href="#s16" data-target="s16"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">11</span><span class="deep-index-name">Two cards: anticollision</span></a></li>
         <li><a href="#s17" data-target="s17"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">12</span><span class="deep-index-name">125 kHz keys vs. 13.56 MHz phones</span></a></li>
+        <li><a href="#s18" data-target="s18"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">13</span><span class="deep-index-name">Passive vs. active: battery and range</span></a></li>
       </ol>
     </div>
   </nav>

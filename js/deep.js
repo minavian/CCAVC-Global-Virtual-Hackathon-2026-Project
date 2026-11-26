@@ -1,5 +1,5 @@
 /*
- * Part 2, "Take it apart": scenes 6 to 17. Each scene is one question with one thing to try,
+ * Part 2, "Take it apart": scenes 6 to 18. Each scene is one question with one thing to try,
  * and every picture is computed from the simulation in js/rfid as the visitor changes it.
  *
  *   The power      6 distance and coil size   7 a still magnet makes nothing
@@ -7,9 +7,10 @@
  *   The answer     11 load modulation          12 the subcarrier      13 Manchester coding
  *                  14 check bits and CRC       15 the whole conversation
  *                  16 two cards at once        17 why a phone can't read a car key
+ *                  18 passive vs. active RFID
  *
  * Plates draw only while they are on screen. Static ones redraw when an input changes;
- * moving ones (7, 15) draw every frame while visible.
+ * moving ones (7, 15, 18) draw every frame while visible.
  */
 (function () {
   'use strict';
@@ -2650,6 +2651,256 @@
     if (rawT < 1) p.dirty = true;
     else s17Anim.active = false;
   });
+
+  // ---------- 18. Passive vs. active: what a battery changes ----------
+  const s18DistFromSlider = v => .01 * Math.pow(10, 4 * (v / 1000));
+  const s18FormatDist = m => m < .1 ? `${(m * 100).toFixed(1)} cm`
+    : m < 1 ? `${Math.round(m * 100)} cm`
+    : m < 10 ? `${m.toFixed(1)} m`
+    : `${Math.round(m)} m`;
+  const s18SampleDistances = Array.from({ length: 141 }, (_, i) => s18DistFromSlider(i * 1000 / 140));
+  const s18PassiveCurve = s18SampleDistances.map(d => {
+    const r = physics.solve({ tag: 'card', reader: 'pad', distance: d });
+    const db = 20 * Math.log10(Math.max(r.rawVolts, 1e-6) / r.wake);
+    return [d, clamp(db, -60, 90)];
+  });
+  const s18ActiveCurve = s18SampleDistances.map(d => {
+    const a = physics.activeLink(d);
+    return [d, clamp(a.marginDb, -60, 90)];
+  });
+  const s18ReaderPulse = document.getElementById('s18-reader-pulse');
+
+  plate('s18', p => {
+    p.time += p.dt || 0;
+    const distInput = p.input('distance'), fieldInput = p.input('field'), batteryInput = p.input('battery');
+    const sliderVal = Number(distInput?.value ?? 75);
+    const d = s18DistFromSlider(sliderVal);
+    const fieldOn = !!fieldInput?.checked;
+    const batteryOn = !!batteryInput?.checked;
+    const distText = s18FormatDist(d);
+
+    p.out('distance', distText);
+    distInput?.setAttribute('aria-valuetext', distText);
+    const fieldState = p.el.querySelector('#s18-field-state');
+    if (fieldState) {
+      fieldState.textContent = fieldOn ? 'On' : 'Off';
+      fieldState.toggleAttribute('data-off', !fieldOn);
+    }
+    const batteryState = p.el.querySelector('#s18-battery-state');
+    if (batteryState) {
+      batteryState.textContent = batteryOn ? 'On' : 'Off';
+      batteryState.toggleAttribute('data-off', !batteryOn);
+    }
+
+    const passive = physics.solve({ tag: 'card', reader: 'pad', distance: d, drive: fieldOn ? 1 : 0 });
+    const active = physics.activeLink(d, { batteryOn });
+    const passiveMargin = fieldOn ? 20 * Math.log10(Math.max(passive.rawVolts, 1e-6) / passive.wake) : -60;
+
+    const ctx = fit(p);
+    const bandY = 4, bandH = clamp(Math.round(p.h * .37), 108, 146), laneGap = 8;
+    const laneH = (bandH - laneGap) / 2;
+    const laneX = 8, laneW = p.w - 16;
+    const readerX = laneX + 26;
+    const tagMinX = readerX + 52, tagMaxX = laneX + laneW - 28;
+    const tagX = tagMinX + (tagMaxX - tagMinX) * (sliderVal / 1000);
+
+    function drawLane(y, { title, status, statusColor, activeColor, waveDir, waveOn, waveActive, strength, kind }) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(255, 254, 250, .48)';
+      ctx.strokeStyle = 'rgba(13, 13, 12, .12)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(laneX, y, laneW, laneH, 8);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.font = `600 11px ${SANS}`;
+      ctx.fillStyle = activeColor;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(title, laneX + 10, y + 7);
+
+      ctx.font = `600 11px ${MONO}`;
+      ctx.fillStyle = statusColor;
+      ctx.textAlign = 'right';
+      ctx.fillText(status, laneX + laneW - 10, y + 7);
+
+      const cy = y + laneH * .66;
+
+      // Reader side icon
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = 1.5;
+      if (kind === 'passive') {
+        ctx.beginPath();
+        ctx.roundRect(readerX - 11, cy - 10, 22, 20, 4);
+        ctx.stroke();
+        ctx.strokeStyle = fieldOn ? COPPER : MUTED;
+        ctx.beginPath();
+        ctx.arc(readerX, cy, 5.5, 0, Math.PI * 2);
+        ctx.stroke();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(readerX - 6, cy + 10);
+        ctx.lineTo(readerX + 6, cy + 10);
+        ctx.moveTo(readerX, cy + 10);
+        ctx.lineTo(readerX, cy - 8);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(readerX, cy - 8, 2.2, 0, Math.PI * 2);
+        ctx.fillStyle = INK;
+        ctx.fill();
+      }
+
+      // Animated waves between reader and tag
+      const span = Math.max(18, tagX - 16 - (readerX + 14));
+      if (waveOn) {
+        for (let i = 0; i < 3; i++) {
+          const prog = ((p.time * (kind === 'passive' ? .85 : 1.05)) + i / 3) % 1;
+          const x = waveDir > 0
+            ? readerX + 14 + prog * span
+            : tagX - 16 - prog * span;
+          const fade = Math.sin(prog * Math.PI);
+          const alpha = fade * (kind === 'passive' ? Math.max(.18, strength) : (waveActive ? .85 : .35));
+          ctx.save();
+          ctx.strokeStyle = kind === 'passive' ? COPPER : (waveActive ? INK : RED);
+          ctx.globalAlpha = alpha;
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          const r = 6 + prog * 7;
+          if (waveDir > 0) ctx.arc(x - r * .55, cy, r, -Math.PI * .34, Math.PI * .34);
+          else ctx.arc(x + r * .55, cy, r, Math.PI * .66, Math.PI * 1.34);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+      if (kind === 'passive' && waveActive) {
+        for (let i = 0; i < 2; i++) {
+          const prog = ((p.time * 1.15) + i / 2) % 1;
+          const x = tagX - 16 - prog * span;
+          ctx.save();
+          ctx.strokeStyle = GREEN;
+          ctx.globalAlpha = Math.sin(prog * Math.PI) * .72;
+          ctx.setLineDash([3, 3]);
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(x + 5, cy, 7, Math.PI * .68, Math.PI * 1.32);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
+      // Tag side icon
+      if (kind === 'passive') {
+        ctx.fillStyle = '#f5f2ec';
+        ctx.strokeStyle = passive.awake ? GREEN : (fieldOn ? COPPER : MUTED);
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(tagX - 14, cy - 9, 28, 18, 3);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = passive.awake ? GREEN : MUTED;
+        ctx.fillRect(tagX - 3, cy - 3, 6, 6);
+      } else {
+        ctx.fillStyle = '#f5f2ec';
+        ctx.strokeStyle = batteryOn ? INK : RED;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(tagX - 14, cy - 9, 28, 18, 3);
+        ctx.fill();
+        ctx.stroke();
+        // Drawn battery cell inside active tag
+        ctx.fillStyle = batteryOn ? GREEN : 'transparent';
+        ctx.strokeStyle = batteryOn ? GREEN : RED;
+        ctx.lineWidth = 1.2;
+        ctx.fillRect(tagX - 7, cy - 4, 11, 8);
+        ctx.strokeRect(tagX - 7, cy - 4, 11, 8);
+        ctx.fillRect(tagX + 4, cy - 2, 2.5, 4);
+        // Tiny TX antenna
+        ctx.strokeStyle = batteryOn ? INK : MUTED;
+        ctx.beginPath();
+        ctx.moveTo(tagX + 10, cy - 9);
+        ctx.lineTo(tagX + 10, cy - 14);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    const passiveVolts = passive.awake ? passive.chipVolts : passive.rawVolts;
+    const passiveVoltsText = passiveVolts < 1e-4 ? '< 0.1 mV' : si(passiveVolts, 'V', 2);
+    const passiveStrength = fieldOn ? clamp((passiveMargin + 40) / 80, .15, 1) : 0;
+    drawLane(bandY, {
+      title: 'Passive · 13.56 MHz · no battery',
+      status: !fieldOn ? 'Field off · 0 V' : passive.awake ? `Awake · ${passiveVoltsText}` : `Asleep · ${passiveVoltsText}`,
+      statusColor: !fieldOn ? MUTED : passive.awake ? GREEN : RED,
+      activeColor: COPPER,
+      waveDir: 1,
+      waveOn: fieldOn,
+      waveActive: passive.awake,
+      strength: passiveStrength,
+      kind: 'passive',
+    });
+    drawLane(bandY + laneH + laneGap, {
+      title: 'Active · 2.45 GHz · 3 V battery',
+      status: !batteryOn ? 'Battery off' : active.readable ? `Readable · ${active.rxDbm.toFixed(0)} dBm` : `Out of range · ${active.rxDbm.toFixed(0)} dBm`,
+      statusColor: !batteryOn ? RED : active.readable ? GREEN : RED,
+      activeColor: INK,
+      waveDir: -1,
+      waveOn: batteryOn,
+      waveActive: active.readable,
+      strength: 1,
+      kind: 'active',
+    });
+
+    // Lower shared log-distance margin chart
+    const bx = box(p, bandY + bandH + 26, 36, 52, 16);
+    const a = chart(ctx, bx,
+      { from: .01, to: 100, log: true, ticks: [[.01, '1 cm'], [.1, '10 cm'], [1, '1 m'], [10, '10 m'], [100, '100 m']], label: 'Distance' },
+      { from: -60, to: 90, ticks: [[-60, '−60'], [-30, '−30'], [0, '0 dB'], [45, '+45'], [90, '+90']], label: 'Signal margin' });
+
+    hline(ctx, a.Y(0), bx.x, bx.x + bx.w, GREEN);
+    curve(ctx, s18ActiveCurve, a.X, a.Y, batteryOn ? INK : 'rgba(13, 13, 12, .24)', 2.2, batteryOn ? [] : [4, 4]);
+    curve(ctx, s18PassiveCurve, a.X, a.Y, fieldOn ? COPPER : 'rgba(184, 101, 42, .28)', 2.2, fieldOn ? [] : [4, 4]);
+
+    // Direct curve and threshold labels (placed cleanly in open space)
+    ctx.save();
+    ctx.font = `600 11px ${SANS}`;
+    ctx.fillStyle = GREEN;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'top';
+    ctx.fillText('Working threshold', bx.x + bx.w - 2, a.Y(0) + 5);
+    ctx.fillStyle = batteryOn ? INK : MUTED;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('Active · 1/d²', a.X(1.2), a.Y(clamp(physics.activeLink(1.2).marginDb, -55, 84)) - 8);
+    ctx.fillStyle = fieldOn ? COPPER : MUTED;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Passive · 1/d³', a.X(.28), a.Y(-24));
+    ctx.restore();
+
+    const curX = a.X(d);
+    vline(ctx, curX, bx.y, bx.y + bx.h, MUTED);
+    const pPlotY = a.Y(clamp(fieldOn ? passiveMargin : -58, -58, 88));
+    const aPlotY = a.Y(clamp(batteryOn ? active.marginDb : -58, -58, 88));
+    dot(ctx, curX, pPlotY, fieldOn && passive.awake ? GREEN : RED, 4.5);
+    dot(ctx, curX, aPlotY, batteryOn && active.readable ? GREEN : RED, 4.5);
+
+    if (s18ReaderPulse) {
+      s18ReaderPulse.style.left = `${curX}px`;
+      s18ReaderPulse.style.top = `${aPlotY}px`;
+      s18ReaderPulse.hidden = false;
+    }
+
+    if (!fieldOn && !batteryOn) {
+      p.say('Both power sources are off. Neither tag can answer.');
+    } else if (!fieldOn) {
+      p.say(`At ${distText} with reader’s field off: passive card gets 0 V (no power); active tag still broadcasts at ${active.rxDbm.toFixed(0)} dBm on its battery.`);
+    } else if (!batteryOn) {
+      p.say(`At ${distText} with active battery off: passive card gets ${passiveVoltsText} (${passive.awake ? 'awake' : 'too far'}); active tag is silent.`);
+    } else {
+      p.say(`At ${distText}: passive card gets ${passiveVoltsText} (${passive.awake ? 'awake' : 'too far'}); active tag signal is ${active.rxDbm.toFixed(0)} dBm (${active.readable ? 'readable' : 'too far'}).`);
+    }
+  }, { animate: true });
 
   // ---------- Drawing only what is on screen ----------
   const seen = new IntersectionObserver(entries => {

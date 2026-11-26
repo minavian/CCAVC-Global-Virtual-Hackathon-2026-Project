@@ -200,6 +200,26 @@
       const a = .01, b = .01, d = .5;
       const small = physics.MU0 * Math.PI * a * a * b * b / (2 * (a * a + d * d) ** 1.5);
       near(physics.loopMutual(a, b, d) / small, 1, 1e-3, 'ratio');
+    }],
+    ['Active RFID follows inverse-square free-space loss (6 dB per doubling)', () => {
+      const one = physics.activeLink(1), two = physics.activeLink(2);
+      const ten = physics.activeLink(10), hundred = physics.activeLink(100);
+      near(one.rxDbm - two.rxDbm, 20 * Math.log10(2), 1e-6, '1 m vs 2 m dB');
+      near(ten.rxDbm - hundred.rxDbm, 20, 1e-6, '10 m vs 100 m dB');
+    }],
+    ['Active RFID stays readable across meters while passive cuts off in centimeters', () => {
+      const p10 = physics.solve({ tag: 'card', reader: 'pad', distance: 10 });
+      const a10 = physics.activeLink(10), a100 = physics.activeLink(100);
+      ok(!p10.awake && Number.isFinite(p10.rawVolts) && p10.rawVolts >= 0, 'passive asleep at 10 m');
+      ok(a10.readable && a100.readable, 'active readable at 10 m and 100 m');
+    }],
+    ['Turning off the reader’s field kills passive tags while active tags still broadcast', () => {
+      const pOff = physics.solve({ tag: 'card', reader: 'pad', distance: .02, drive: 0 });
+      const aOn = physics.activeLink(.02);
+      const aDead = physics.activeLink(.02, { batteryOn: false });
+      ok(!pOff.awake && pOff.rawVolts === 0, 'passive gets 0 V with field off');
+      ok(aOn.readable, 'active remains readable with field off');
+      ok(!aDead.readable, 'active stops when its battery is off');
     }]
   ];
 }));
