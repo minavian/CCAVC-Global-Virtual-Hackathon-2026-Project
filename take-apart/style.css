@@ -2328,20 +2328,26 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   #s12-chart { height: clamp(172px, 32svh, 210px); }
 }
 
+#top:focus:not(:focus-visible),
+#taps:focus:not(:focus-visible),
+#what-is-rfid:focus:not(:focus-visible),
+#try-it:focus:not(:focus-visible),
 .plate:focus:not(:focus-visible) { outline: none; }
 
-/* Left-edge thin-slab section index: 12 compressed row bars morph into the full paper list. */
+/* Left-edge thin-slab page index: 17 compressed row bars morph into the full paper list. */
 .deep-index {
+  --copper: #b8652a;
   --morph-ease: cubic-bezier(.16, 1, .3, 1);
   position: fixed;
   left: 0;
   top: 50%;
   transform: translateY(-50%);
-  z-index: 25;
+  z-index: 30;
   padding: 8px 10px 8px 12px;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
+  transition: opacity .22s ease, visibility .22s ease;
 }
 .deep-index.is-visible {
   opacity: 1;
@@ -2353,7 +2359,7 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   top: 50%;
   transform: translateY(-50%);
   width: 40px;
-  height: var(--slab-hit-h, 152px);
+  height: var(--slab-hit-h, 196px);
   z-index: 2;
   padding: 0;
   border: 0;
@@ -2371,7 +2377,7 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   left: 0;
   width: min(276px, calc(100vw - 24px));
   max-height: calc(100svh - 28px);
-  padding: 12px 8px;
+  padding: 10px 8px;
   overflow: visible;
   pointer-events: none;
 }
@@ -2389,22 +2395,24 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   opacity: 0;
   transform-origin: 0 50%;
   transform: translateX(-12px) scale(.08, var(--card-sy, .32));
+  transition: transform .36s var(--morph-ease), opacity .24s ease, border-radius .34s var(--morph-ease);
 }
 .deep-index-group {
   position: relative;
   z-index: 1;
-  margin: 0 10px 4px;
+  margin: 0 10px 3px;
   font-size: 11px;
   font-weight: 600;
   color: var(--muted);
   opacity: 0;
   transform: translateX(-10px);
+  transition: opacity .12s ease, transform .18s ease;
 }
-.deep-index-group-two {
-  margin-top: 10px;
-  padding-top: 10px;
+.deep-index-group-split {
+  margin-top: 8px;
+  padding-top: 8px;
 }
-.deep-index-group-two::before {
+.deep-index-group-split::before {
   content: "";
   position: absolute;
   left: 0;
@@ -2414,6 +2422,7 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   background: rgba(13, 13, 12, .10);
   transform-origin: 0 50%;
   transform: scaleX(0);
+  transition: transform .14s ease;
 }
 .deep-index-items {
   list-style: none;
@@ -2429,15 +2438,19 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   grid-template-columns: 1.8em minmax(0, 1fr);
   align-items: baseline;
   gap: 8px;
-  padding: 6px 10px 6px 16px;
+  padding: 4.5px 10px 4.5px 16px;
   border-radius: 8px;
   color: var(--muted);
   text-decoration: none;
-  font-size: 13px;
-  line-height: 1.28;
+  font-size: 12.5px;
+  line-height: 1.24;
   font-weight: 500;
   background: transparent;
   transform: translate3d(-24px, var(--slab-dy, 0px), 0);
+  transition: transform .36s var(--morph-ease) calc(var(--dist, 0) * 10ms), background-color .18s ease, color .18s ease;
+}
+.deep-index-items-plain a {
+  grid-template-columns: minmax(0, 1fr);
 }
 .deep-index-bar {
   position: absolute;
@@ -2449,6 +2462,7 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   border-radius: 0 2px 2px 0;
   background: rgba(13, 13, 12, .28);
   pointer-events: none;
+  transition: width .3s var(--morph-ease) calc(var(--dist, 0) * 8ms), height .3s var(--morph-ease) calc(var(--dist, 0) * 8ms), border-radius .26s ease, background-color .2s ease;
 }
 .deep-index-items a[aria-current="location"] .deep-index-bar {
   width: 24px;
@@ -2456,7 +2470,7 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   background: var(--copper);
 }
 .deep-index-num {
-  font: 600 11.5px "JetBrains Mono", ui-monospace, monospace;
+  font: 600 11px "JetBrains Mono", ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
   text-align: right;
   color: var(--muted);
@@ -2466,6 +2480,7 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
   opacity: 0;
   transform: translateX(-10px);
   filter: blur(3px);
+  transition: opacity .12s ease, transform .22s ease, filter .14s ease;
 }
 .deep-index.is-visible.is-hover,
 .deep-index.is-visible:focus-within,
@@ -2487,10 +2502,17 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
 }
 .deep-index.is-visible.is-hover .deep-index-group,
 .deep-index.is-visible:focus-within .deep-index-group,
-.deep-index.is-visible.is-open .deep-index-group { opacity: 1; transform: translateX(0); }
-.deep-index.is-visible.is-hover .deep-index-group-two::before,
-.deep-index.is-visible:focus-within .deep-index-group-two::before,
-.deep-index.is-visible.is-open .deep-index-group-two::before { transform: scaleX(1); }
+.deep-index.is-visible.is-open .deep-index-group {
+  opacity: 1;
+  transform: translateX(0);
+  transition: opacity .22s ease .08s, transform .28s var(--morph-ease) .06s;
+}
+.deep-index.is-visible.is-hover .deep-index-group-split::before,
+.deep-index.is-visible:focus-within .deep-index-group-split::before,
+.deep-index.is-visible.is-open .deep-index-group-split::before {
+  transform: scaleX(1);
+  transition: transform .3s var(--morph-ease) .08s;
+}
 .deep-index.is-visible.is-hover .deep-index-items a,
 .deep-index.is-visible:focus-within .deep-index-items a,
 .deep-index.is-visible.is-open .deep-index-items a { transform: translate3d(0, 0, 0); }
@@ -2499,7 +2521,12 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
 .deep-index.is-visible:focus-within .deep-index-num,
 .deep-index.is-visible:focus-within .deep-index-name,
 .deep-index.is-visible.is-open .deep-index-num,
-.deep-index.is-visible.is-open .deep-index-name { opacity: 1; transform: translateX(0); filter: blur(0); }
+.deep-index.is-visible.is-open .deep-index-name {
+  opacity: 1;
+  transform: translateX(0);
+  filter: blur(0);
+  transition: opacity .22s ease calc(60ms + var(--dist, 0) * 11ms), transform .32s var(--morph-ease) calc(40ms + var(--dist, 0) * 11ms), filter .26s ease calc(50ms + var(--dist, 0) * 11ms);
+}
 .deep-index.is-visible.is-hover .deep-index-bar,
 .deep-index.is-visible:focus-within .deep-index-bar,
 .deep-index.is-visible.is-open .deep-index-bar { width: 4px; border-radius: 2px; background: rgba(13, 13, 12, .18); }
@@ -2517,7 +2544,7 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
 .deep-index.is-visible:focus-within .deep-index-items a[aria-current="location"] .deep-index-bar,
 .deep-index.is-visible.is-open .deep-index-items a[aria-current="location"] .deep-index-bar {
   width: 3px;
-  height: 16px;
+  height: 15px;
   border-radius: 2px;
   background: var(--copper);
 }
@@ -2534,35 +2561,6 @@ html.deep-reverse-hold .plate-river, html.deep-reverse-hold .s16-instrument { to
 .deep-index-items a:focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: -2px;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .deep-index { transition: opacity .22s ease, visibility .22s ease; }
-  .deep-index-backdrop { transition: transform .36s var(--morph-ease), opacity .24s ease, border-radius .34s var(--morph-ease); }
-  .deep-index-group { transition: opacity .12s ease, transform .18s ease; }
-  .deep-index-group-two::before { transition: transform .14s ease; }
-  .deep-index-items a { transition: transform .36s var(--morph-ease) calc(var(--dist, 0) * 12ms), background-color .18s ease, color .18s ease; }
-  .deep-index-bar { transition: width .3s var(--morph-ease) calc(var(--dist, 0) * 10ms), height .3s var(--morph-ease) calc(var(--dist, 0) * 10ms), border-radius .26s ease, background-color .2s ease; }
-  .deep-index-num,
-  .deep-index-name { transition: opacity .12s ease, transform .22s ease, filter .14s ease; }
-  .deep-index.is-visible.is-hover .deep-index-group,
-  .deep-index.is-visible:focus-within .deep-index-group,
-  .deep-index.is-visible.is-open .deep-index-group { transition: opacity .22s ease .08s, transform .28s var(--morph-ease) .06s; }
-  .deep-index.is-visible.is-hover .deep-index-group-two::before,
-  .deep-index.is-visible:focus-within .deep-index-group-two::before,
-  .deep-index.is-visible.is-open .deep-index-group-two::before { transition: transform .3s var(--morph-ease) .08s; }
-  .deep-index.is-visible.is-hover .deep-index-num,
-  .deep-index.is-visible.is-hover .deep-index-name,
-  .deep-index.is-visible:focus-within .deep-index-num,
-  .deep-index.is-visible:focus-within .deep-index-name,
-  .deep-index.is-visible.is-open .deep-index-num,
-  .deep-index.is-visible.is-open .deep-index-name {
-    transition: opacity .22s ease calc(60ms + var(--dist, 0) * 14ms), transform .32s var(--morph-ease) calc(40ms + var(--dist, 0) * 14ms), filter .26s ease calc(50ms + var(--dist, 0) * 14ms);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .deep-index, .deep-index-backdrop, .deep-index-group, .deep-index-group-two::before,
-  .deep-index-items a, .deep-index-bar, .deep-index-num, .deep-index-name { transition: none; }
-  .deep-index-num, .deep-index-name { filter: none; }
 }
 @media (max-width: 860px) {
   .deep-index { padding: 8px 8px 8px 10px; }

@@ -27,12 +27,15 @@ export function hold({ experience, stage, done = () => true, nudge = () => {} })
     stale = false;
   }
   // Held: until the last step, once the visitor has been in the intro, not in presenter mode.
-  const holding = () => seen && !window.__presenting && !done();
+  const holding = () => seen && !window.__presenting && !window.__indexJumping && !done();
   // At the end of "Here's how", where a scroll down would leave it.
   const atEnd = () => { place(); return scrollY >= end - 4; };
 
   addEventListener('resize', () => { stale = true; }, { passive: true });
   new ResizeObserver(() => { stale = true; }).observe(document.body);
+  document.addEventListener('rfid:index-jump', event => {
+    if (event.detail?.pastIntro) seen = false;
+  });
   addEventListener('scroll', onScroll, { passive: true });
   addEventListener('wheel', onWheel, { passive: false, capture: true });
   addEventListener('touchstart', onTouchStart, { passive: true, capture: true });
@@ -44,17 +47,19 @@ export function hold({ experience, stage, done = () => true, nudge = () => {} })
 
   function onScroll() {
     place();
-    if (scrollY <= end + 4) seen = true;
+    if (!window.__indexJumping && scrollY <= end + 4) seen = true;
     if (holding() && scrollY > end + 4) { scrollTo(0, end); nudge(); }
   }
 
   function onWheel(event) {
+    if (event.target.closest?.('.deep-index')) return;
     if (event.defaultPrevented || !event.cancelable || event.ctrlKey || event.deltaY <= 0 ||
       Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
     if (holding() && atEnd()) { event.preventDefault(); nudge(); }
   }
 
   function onTouchStart(event) {
+    if (event.target.closest?.('.deep-index')) { touch = null; return; }
     touch = event.touches.length === 1 ? { x: event.touches[0].clientX, y: event.touches[0].clientY } : null;
   }
 

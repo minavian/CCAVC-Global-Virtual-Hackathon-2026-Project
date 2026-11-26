@@ -24,7 +24,7 @@
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
   <link rel="stylesheet" href="styles.css?v=64">
-  <link rel="stylesheet" href="take-apart/style.css?v=part-two-wave-1">
+  <link rel="stylesheet" href="take-apart/style.css?v=full-page-index-1">
   <script type="importmap">
     {"imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -43,14 +43,14 @@
   <script src="js/story.js?v=5" defer></script>
   <script src="js/lab.js" defer></script>
   <script src="js/deep.js?v=finale-cue-1" defer></script>
-  <script type="module" src="js/deep-motion.js?v=part-two-wave-1"></script>
+  <script type="module" src="js/deep-motion.js?v=full-page-index-1"></script>
   <script src="js/landing.js?v=9" defer></script>
   <script src="js/present.js?v=6" defer></script>
   <script type="module" src="js/taps.js"></script>
-  <script type="module" src="js/intro/main.js?v=120"></script>
+  <script type="module" src="js/intro/main.js?v=121"></script>
 </head>
 <body>
-  <main class="hero">
+  <main class="hero" id="top" tabindex="-1">
     <!-- Straight to the mechanism: "Here's how" in the card intro, where the card waits to be
          dragged onto the reader (js/intro/main.js wires it; without it, the link goes to the
          intro's start). In the page from the first frame, top right, over the 3D stage. -->
@@ -73,7 +73,7 @@
 
   <!-- Every day: three taps, one after another (js/taps.js). It slides up over the
        landing page; the story below starts where this section ends. -->
-  <section class="taps" id="taps" aria-labelledby="taps-title">
+  <section class="taps" id="taps" aria-labelledby="taps-title" tabindex="-1">
     <h2 class="taps-title" id="taps-title">One tap, and it just works.</h2>
     <div class="taps-row">
       <canvas class="taps-canvas" aria-hidden="true"></canvas>
@@ -98,7 +98,7 @@
 
   <!-- What RFID is (js/intro/). A pinned stage that scrolling plays: the card opens and
        lets out R, F, I, D, an X-ray shows its antenna and chip, and you drag it onto a reader. -->
-  <section class="intro" id="what-is-rfid" aria-labelledby="intro-title">
+  <section class="intro" id="what-is-rfid" aria-labelledby="intro-title" tabindex="-1">
     <a class="skip-link" href="#try-it">Skip to the card and reader</a>
     <div class="intro-stage">
       <h2 class="story-title" id="intro-title">RFID</h2>
@@ -304,7 +304,7 @@
         </span>
       </div>
     </div>
-    <div id="try-it"></div>
+    <div id="try-it" tabindex="-1"></div>
   </section>
 
   <!-- The key-fob story, played by scrolling (js/story.js). It is off the page's path:
@@ -350,30 +350,6 @@
 
   <!-- Part 2: take it apart (js/deep.js). Every scene runs on the same simulation as the film. -->
   <section class="deep" id="take-apart" aria-labelledby="deep-title" tabindex="-1">
-    <nav class="deep-index" id="deep-index" aria-label="Take it apart sections">
-      <button class="deep-index-toggle" type="button" aria-expanded="false" aria-controls="deep-index-list" aria-label="Show Take it apart sections"></button>
-      <div class="deep-index-panel" id="deep-index-list">
-        <div class="deep-index-backdrop" aria-hidden="true"></div>
-        <p class="deep-index-group">Part one</p>
-        <ol class="deep-index-items">
-          <li><a href="#s6" data-target="s6"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">1</span><span class="deep-index-name">Closer is stronger</span></a></li>
-          <li><a href="#s7" data-target="s7"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">2</span><span class="deep-index-name">It has to keep flipping</span></a></li>
-          <li><a href="#s8" data-target="s8"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">3</span><span class="deep-index-name">The tuning trick</span></a></li>
-          <li><a href="#s9" data-target="s9"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">4</span><span class="deep-index-name">Why metal fights back</span></a></li>
-          <li><a href="#s10" data-target="s10"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">5</span><span class="deep-index-name">Getting through the pauses</span></a></li>
-        </ol>
-        <p class="deep-index-group deep-index-group-two">Part two</p>
-        <ol class="deep-index-items" start="6">
-          <li><a href="#s11" data-target="s11"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">6</span><span class="deep-index-name">Soaking up more, then less</span></a></li>
-          <li><a href="#s12" data-target="s12"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">7</span><span class="deep-index-name">Whispering next to a shout</span></a></li>
-          <li><a href="#s13" data-target="s13"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">8</span><span class="deep-index-name">Keeping count</span></a></li>
-          <li><a href="#s14" data-target="s14"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">9</span><span class="deep-index-name">Catching mistakes</span></a></li>
-          <li><a href="#s15" data-target="s15"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">10</span><span class="deep-index-name">The whole conversation</span></a></li>
-          <li><a href="#s16" data-target="s16"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">11</span><span class="deep-index-name">Two cards in one field</span></a></li>
-          <li><a href="#s17" data-target="s17"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">12</span><span class="deep-index-name">Why your phone can’t read your car key</span></a></li>
-        </ol>
-      </div>
-    </nav>
     <header class="deep-head">
       <div class="deep-head-words">
         <p class="kicker">Take it apart</p>
@@ -834,5 +810,38 @@
       <p class="deep-fine">Sources: ISO/IEC 14443-2 and -3; NIST SP 800-98; NXP NTAG21x and PN7462 datasheets; TI TMS37145 datasheet; EM4100 format; Transport for London, “card clash”. 3D models made by our team. Built with Three.js.</p>
     </footer>
   </section>
+
+  <nav class="deep-index" id="deep-index" aria-label="Page sections">
+    <button class="deep-index-toggle" type="button" aria-expanded="false" aria-controls="deep-index-list" aria-label="Show page sections"></button>
+    <div class="deep-index-panel" id="deep-index-list">
+      <div class="deep-index-backdrop" aria-hidden="true"></div>
+      <p class="deep-index-group">Overview</p>
+      <ol class="deep-index-items deep-index-items-plain">
+        <li><a href="#top" data-target="top"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-name">Start</span></a></li>
+        <li><a href="#taps" data-target="taps"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-name">One tap, and it just works</span></a></li>
+        <li><a href="#what-is-rfid" data-target="what-is-rfid"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-name">What RFID is</span></a></li>
+        <li><a href="#try-it" data-target="try-it"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-name">Try the card</span></a></li>
+        <li><a href="#take-apart" data-target="take-apart"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-name">Take it apart</span></a></li>
+      </ol>
+      <p class="deep-index-group deep-index-group-split">Part one</p>
+      <ol class="deep-index-items">
+        <li><a href="#s6" data-target="s6"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">1</span><span class="deep-index-name">Closer is stronger</span></a></li>
+        <li><a href="#s7" data-target="s7"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">2</span><span class="deep-index-name">It has to keep flipping</span></a></li>
+        <li><a href="#s8" data-target="s8"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">3</span><span class="deep-index-name">The tuning trick</span></a></li>
+        <li><a href="#s9" data-target="s9"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">4</span><span class="deep-index-name">Why metal fights back</span></a></li>
+        <li><a href="#s10" data-target="s10"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">5</span><span class="deep-index-name">Getting through the pauses</span></a></li>
+      </ol>
+      <p class="deep-index-group deep-index-group-split">Part two</p>
+      <ol class="deep-index-items" start="6">
+        <li><a href="#s11" data-target="s11"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">6</span><span class="deep-index-name">Soaking up more, then less</span></a></li>
+        <li><a href="#s12" data-target="s12"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">7</span><span class="deep-index-name">Whispering next to a shout</span></a></li>
+        <li><a href="#s13" data-target="s13"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">8</span><span class="deep-index-name">Keeping count</span></a></li>
+        <li><a href="#s14" data-target="s14"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">9</span><span class="deep-index-name">Catching mistakes</span></a></li>
+        <li><a href="#s15" data-target="s15"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">10</span><span class="deep-index-name">The whole conversation</span></a></li>
+        <li><a href="#s16" data-target="s16"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">11</span><span class="deep-index-name">Two cards in one field</span></a></li>
+        <li><a href="#s17" data-target="s17"><span class="deep-index-bar" aria-hidden="true"></span><span class="deep-index-num">12</span><span class="deep-index-name">Why your phone can’t read your car key</span></a></li>
+      </ol>
+    </div>
+  </nav>
 </body>
 </html>
