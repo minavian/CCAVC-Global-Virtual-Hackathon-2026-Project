@@ -84,7 +84,6 @@ function intro(experience) {
     id: $('.try-id input'), idNote: $('.try-id-note'), behind: $('.try-behind'), check: $('.try-check b'), ask: $('.try-ask'), prove: $('.try-prove'), reset: $('.try-reset'), presets: $('.try-presets'),
     // (Only the buttons that name a reader: the tag's switch shares the reader switch's look.)
     readers: [...experience.querySelectorAll('.try-reader button[data-reader]')], driveLabel: $('.try-control-drive span'),
-    tags: [...experience.querySelectorAll('.try-tag button')],
   };
   // Each slider is drawn by the page (styles.css `.try-slider`): its track is a thin line, black
   // where along it the chip would wake with everything else as set (`paintZones`), and its thumb
@@ -838,7 +837,6 @@ function intro(experience) {
   function paintReader() {
     const reader = lab.set.reader, info = READERS[reader];
     for (const button of labUi.readers) button.setAttribute('aria-pressed', String(button.dataset.reader === reader));
-    for (const button of labUi.tags) button.setAttribute('aria-pressed', String(button.dataset.tag === lab.set.tag));
     labUi.inputs.distance.min = info.nearest;
     labUi.driveLabel.textContent = reader === 'phone' ? 'Phone’s power' : 'Reader’s power';
     labUi.presets.replaceChildren(...Object.values(PRESETS[reader]).map(preset => {
@@ -2112,13 +2110,8 @@ function intro(experience) {
       labUi.plot.classList.remove('is-held');
     });
   }
-  // The tag's size: a bank card, a key ring tag or a sticker.
-  for (const button of labUi.tags) {
-    button.addEventListener('click', event => {
-      if (event.isTrusted) takeOver();
-      setLab({ tag: button.dataset.tag });
-    });
-  }
+  // (The tag's size switch, Card / Key ring / Sticker, was taken out on 2026-11-26: it only changed
+  // the coil's size. The lab always uses the bank card; lab-model.js still knows the other sizes.)
   // Which reader: the card reader or a phone.
   for (const button of labUi.readers) {
     button.addEventListener('click', event => {
