@@ -53,9 +53,17 @@ Written by <who> · <date> · Issue #<n>
 The root page runs from the landing and card demonstration into the animated [Take it apart chapter](#take-it-apart-scenes-6-to-17-jsdeepjs).
 
 ### Landing page layout and style (`index.html`, `styles.css`)
-Owner: Mina Vian · 2026-11-20, updated 2026-11-21 · Issues #3, #5, #9
+Owner: Mina Vian · 2026-11-20, updated 2026-11-21 and 2026-11-26 · Issues #3, #5, #9
 
-**What it does.** The first screen: on the left, the three everyday RFID objects (key fob, phone, contactless card) in 3D; on the right, the headline "Those are the things you use every day." and the line "and almost nobody knows how it works…". On phones the words sit on top and the objects below. Scrolling then plays the story (see its own entry).
+**What it does.** The first screen: the headline "Those are the things you use every day." and the line "and almost nobody knows how it works…" in the middle, with the three everyday RFID objects (key fob, phone, contactless card) turning in 3D around them. Faint rings flow out from behind the words, like a reader's field. A bar along the top holds the site's name and the link straight to the mechanism; a row along the bottom holds a scroll cue and the three objects' names. On phones the words sit on top and the objects below. Scrolling then slides the everyday taps up over it.
+
+- **The redesign** (Owner: Mina Vian · 2026-11-26; `index.html` `.hero`, `styles.css` from "Layout: the words in the middle", `js/landing.js` `paintField`, `showPicked`):
+  - **The field** (`.stage-field`, a 2D canvas at the back of the stage; `paintField` in `landing.js`). Thin ink rings, centred on the words, drift slowly outward. Every 4.6 seconds a copper wave runs out through them, and each ring it passes glows copper and thickens a little. The rings fade in clear of the words and fade out toward the corners. All its numbers are in `FIELD` at the top of `landing.js`. It is drawn in the landing's own frame loop, so it sleeps with it while the taps or the card intro cover the page. It is a picture, not the simulation: the real field lines are in the close-up. It starts from the words, never from an object, because the card and the key don't send anything; the reader's field does.
+  - **Light and edges.** A soft pool of light sits behind the words (`.stage-light`, centred on them through `--field-x`/`--field-y`), and the screen's edges are a shade darker (`.hero::before`), so the eye goes to the middle.
+  - **Type.** "every day." is set in Instrument Serif italic (`.line-accent`), a little larger than the sans beside it, with its line height tightened so it doesn't open a gap. The font was already loaded with the others; the opening now also waits for it (`fontsReady`), because the headline is measured for the glide.
+  - **The top bar** (`.hero-bar`): on the left the site's mark (the favicon's two arcs and a copper dot, on an ink tile) and its name, "The Reader Is the Battery"; on the right the "Jump straight to the mechanism" pill. Under 620 px wide only the mark stays, so the name never crowds the link. Only the link takes clicks, so the stage can still be dragged from under the bar.
+  - **The bottom row** (`.hero-foot`), shown once the opening ends: on the left "Scroll", with a line that runs down; on the right "Key fob", "Phone" and "Card". The one in front is in ink with a copper dot (`aria-current`, kept up to date by `showPicked`). Pressing a name turns that object to the front, and it stays there (see the carousel's entry). The row is placed on the small viewport (`100lvh - 100svh`), so a phone's toolbar never covers it.
+  - The scroll cue's animation pauses while the page is covered (`.hero.is-asleep`, set in `frame`).
 
 **How it works.**
 - `index.html` holds the words as real text (an `h1` and a `p`), an empty `#stage` for the 3D canvas, the story's words (`.story`) and an empty `.track` that only gives the page its scroll length. It loads four scripts: `js/lockscreen.js`, `js/models.js`, `js/story.js`, `js/landing.js`. Three.js 0.170 comes from the jsDelivr CDN through an import map; the fonts (Inter Tight, and Antonio for the phone's clock) come from Google Fonts.
@@ -68,7 +76,7 @@ Owner: Mina Vian · 2026-11-20, updated 2026-11-21 · Issues #3, #5, #9
 
 **Why it is built this way.** The words are real HTML (not drawn in 3D) so they are sharp, selectable and readable by screen readers. No build step, so anyone can open the folder and serve it.
 
-**How to check it.** Serve the folder (for example `python -m http.server`) and open it. The `.glb` models do not load from `file://`, so double-clicking `index.html` shows the words only. "Jump straight to the mechanism" shows at the top right at once, while the headline is still fading in; press it and the page lands on "Here is how it works", where the card soon goes to the reader by itself.
+**How to check it.** Serve the folder (for example `python -m http.server`) and open it. The `.glb` models do not load from `file://`, so double-clicking `index.html` shows the words only. "Jump straight to the mechanism" shows at the top right at once, while the headline is still fading in; press it and the page lands on "Here is how it works", where the card soon goes to the reader by itself. Behind the words the rings fade in within about two seconds, and a copper wave runs out about every five seconds. When the opening ends, the bottom row fades in; press "Phone" and the phone turns to the front and stays there.
 
 **Likely questions.**
 - Q: Why does the page need a server? A: Browsers block loading model files straight from disk for security; any static host works.
@@ -95,7 +103,7 @@ Owner: Mina Vian · 2026-11-26
 ### Opening animation and carousel (`js/landing.js`)
 Owner: Mina Vian · 2026-11-20 · Issues #3, #5
 
-**What it does.** The opening: the headline appears full-screen with every word faint, each word pops to full strength one by one, the headline glides to its place, the three objects spin in and land on the key fob, and the subline fades in (about 8 seconds). Afterwards the visitor can drag, fling, tap or use the arrow keys to turn the objects; after 6 idle seconds the carousel drifts back to the key fob.
+**What it does.** The opening: the headline appears full-screen with every word faint, each word pops to full strength one by one, the headline glides to its place, the three objects spin in and land on the key fob, and the subline fades in (about 8 seconds). Afterwards the visitor can drag, fling, tap or use the arrow keys to turn the objects, or press an object's name along the bottom; after 6 idle seconds the carousel drifts back to the key fob, unless the visitor picked an object by name (`chosen`, Owner: Mina Vian · 2026-11-26; the next drag clears it).
 
 **How it works.**
 - **A smooth start** (`begin`, `warm`, `openingDone`). The opening waits until its 3D is ready as well as its font (at most 3 s), and the 3D is drawn once, out of sight, while it warms up (Chrome on Windows only finishes a shader the first time it is really drawn). So the heavy loading happens before anything moves: a first visit used to stutter for up to half a second at a time while the words were popping. When the opening ends, `openingDone` sets `window.__openingDone` and sends `rfid:opening-done`; the taps, the card intro and presenter mode wait for it before they load their own 3D. A full first visit, timed frame by frame, now has no slow frame from the first word to the end of the opening.
