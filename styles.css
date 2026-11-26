@@ -446,7 +446,9 @@ html[data-intro] .stage-light { opacity: 0; }
 .intro .definition-lead { max-width: 30ch; font-size: clamp(2rem, 6vw, 4rem); font-weight: 750; line-height: 1; }
 .intro-stage .aside { margin-top: .7em; font-size: clamp(1.1rem, 2.1vw, 1.65rem); font-weight: 520; }
 .intro .question { max-width: 30ch; font-size: clamp(1.5rem, 4vw, 2.75rem); font-weight: 720; line-height: 1.13; }
-.intro .instruction h2 { font-size: clamp(2.75rem, 7vw, 6rem); letter-spacing: -.04em; line-height: .95; font-weight: 770; }
+/* "Here is how it works:" may take two lines on a narrow screen (the page's text doesn't wrap
+   by default), split evenly. */
+.intro .instruction h2 { font-size: clamp(2.75rem, 7vw, 6rem); letter-spacing: -.04em; line-height: .95; font-weight: 770; white-space: normal; text-wrap: balance; }
 .intro-stage #drag-instruction { margin-top: .85rem; font-size: clamp(1rem, 2.25vw, 1.55rem); font-weight: 580; }
 .intro .card-poster { position: relative; width: min(70vw, 24rem); }
 .intro .card-poster img { display: block; width: 100%; height: auto; }
