@@ -23,7 +23,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@100..900&family=JetBrains+Mono:wght@400;600&display=block">
-  <link rel="stylesheet" href="styles.css?v=61">
+  <link rel="stylesheet" href="styles.css?v=62">
   <link rel="stylesheet" href="take-apart/style.css?v=part-two-wave-1">
   <script type="importmap">
     {"imports": {
@@ -47,7 +47,7 @@
   <script src="js/landing.js?v=9" defer></script>
   <script src="js/present.js?v=6" defer></script>
   <script type="module" src="js/taps.js"></script>
-  <script type="module" src="js/intro/main.js?v=117"></script>
+  <script type="module" src="js/intro/main.js?v=118"></script>
 </head>
 <body>
   <main class="hero">
@@ -239,8 +239,10 @@
           </details>
           <!-- Last, and pinned to the panel's bottom edge, so they never scroll out of reach. -->
           <div class="try-actions">
-            <button class="try-ask" type="button" aria-label="Ask the card">Ask<span class="try-long"> the card</span></button>
-            <button class="try-prove" type="button">Prove it</button>
+            <!-- Read ID only gets the card's ID (a copy has it too); Check it's real asks for a code
+                 only the card's secret key gives. On a narrow panel the second says "Is it real?". -->
+            <button class="try-ask" type="button" aria-label="Read the card’s ID">Read ID</button>
+            <button class="try-prove" type="button" aria-label="Check it’s real"><span class="try-long">Check it’s real</span><span class="try-short" aria-hidden="true">Is it real?</span></button>
             <button class="try-reset" type="button">Reset</button>
           </div>
         </section>

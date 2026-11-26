@@ -1445,7 +1445,7 @@ function intro(experience) {
     invalidate();
   }
 
-  // The lab's conversation is over (or cut short): Ask and Prove it can be pressed again, if the
+  // The lab's conversation is over (or cut short): Read ID and Check it's real can be pressed again, if the
   // reader is on.
   function endTalk() {
     lab.talk = null;
@@ -1529,7 +1529,7 @@ function intro(experience) {
           else if (!t.answers) ({ text, detail } = unanswered());
           else if (e < t.after) { text = 'The chip works out a code.'; detail = 'From the number and its secret key.'; }
           else if (!landed) { text = 'The card answers with its code.'; detail = 'Only the right key gives the right code.'; }
-          else if (t.genuine) { text = 'Genuine. The code matches.'; detail = 'The bank checks it with its copy of the key.'; }
+          else if (t.genuine) { text = 'Genuine. The code matches.'; detail = 'Only its secret key gives it. Now try A copy.'; }
           else { text = 'Rejected: the code is wrong.'; detail = 'A copy has the ID, but not the key.'; }
         } else if (lab.talk) {
           const e = lab.talk.still ? 99 : clock - lab.talk.start, asked = TALK.ask.length / SAMPLES_PER_BIT * .15;
@@ -1538,8 +1538,9 @@ function intro(experience) {
           else if (!lab.talk.answers) ({ text, detail } = unanswered());
           else if (e < ANSWER_AFTER) { text = 'The chip works out its answer.'; detail = 'In life this takes 86 millionths of a second.'; }
           else if (!(b.message?.dir < 0 && b.message.landed >= 1)) { text = 'The card answers: ' + TALK.answer.words + '.'; detail = `The ${noun} feels a ${(lab.m.dip * 100).toFixed(1)}% change.`; }
-          // The whole answer is in: the reader has checked it.
-          else { text = `Verified. The ${noun} has the ID.`; detail = 'Its check byte matches the four ID bytes.'; }
+          // The whole answer is in: the reader has the ID, which arrived whole (its check byte
+          // matches), but which any copy would give too.
+          else { text = 'Got the ID. Not proof it’s real.'; detail = 'A copy has the same ID. Press Check it’s real.'; }
         }
       }
       // In the lab, a new sentence for the setting waits until it has held for a moment, so a
@@ -1694,10 +1695,13 @@ function intro(experience) {
       };
     } else if (docked && available && STEPS[step].shot === 'read') {
       tag = { kind: 'check', text: CARD_ID, note: '', at: scene.anchor('readerChip') };
+    } else if (docked && available && STEPS[step].lab && lab.talk && !lab.talk.proof && said?.dir < 0 && said.landed >= 1) {
+      // Read ID in the lab, done: the ID the reader now has, and what that is worth.
+      tag = { kind: 'check', text: CARD_ID, note: 'Check byte OK · not a proof', at: scene.anchor('readerChip') };
     }
     film.tag.classList.toggle('is-shown', Boolean(tag));
     if (tag) {
-      if (film.tagWords.textContent !== tag.text) {
+      if (film.tagWords.textContent !== tag.text || film.tagNote.textContent !== tag.note) {
         film.tagWords.textContent = tag.text;
         film.tagNote.textContent = tag.note;
       }
@@ -1822,12 +1826,13 @@ function intro(experience) {
         // The card's answer only once it answers: while the reader still asks, nothing comes back
         // (it used to show the answer coming down from the moment Ask was pressed).
         const levels = { ...plan.levels, ...labLevels(lab.set, lab.m), reply: lab.talk?.answers && said?.dir < 0 ? 1 : 0 };
-        // Once the whole answer is in, the reader confirms it, as in the tap's last step: the check
-        // mark over it, the pad's light (or the phone's screen) turning green.
-        if (lab.talk?.answers && said?.dir < 0 && said.landed >= 1) {
-          // A proof's code that is wrong (a copy) is turned down: the light goes red, no check mark.
-          if (lab.talk.proof && !lab.talk.genuine) levels.deny = 1;
-          else levels.check = 1;
+        // Once the whole answer is in: a proof's code that is right gets the check mark over the
+        // reader and its light (or the phone's screen) turns green; a wrong one (a copy) is turned
+        // down, the light red and a cross. Read ID gets neither: having the ID proves nothing, as a
+        // copy has it too, so the ID just shows by the reader's chip (paintFilm's tag).
+        if (lab.talk?.proof && lab.talk.answers && said?.dir < 0 && said.landed >= 1) {
+          if (lab.talk.genuine) levels.check = 1;
+          else levels.deny = 1;
         }
         goal = said ? talkLevels(levels, said) : levels;
         if (said && reduce.matches && said.dir < 0) goal = { ...goal, reply: 1 };

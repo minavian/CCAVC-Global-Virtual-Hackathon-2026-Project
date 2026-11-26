@@ -1252,7 +1252,7 @@ html[data-intro] .stage-light { opacity: 0; }
 .intro .try-behind dt { margin: 0; }
 .intro .try-behind dd { margin: 0; color: var(--try-ink); white-space: nowrap; font: 650 .72rem/1.3 "Inter Tight", system-ui, sans-serif; font-variant-numeric: tabular-nums; }
 
-/* Ask the card (black), Prove it (outlined) and Reset (quiet). Pinned to the panel's bottom edge:
+/* Read ID (black), Check it's real (outlined) and Reset (quiet). Pinned to the panel's bottom edge:
    on a short screen the panel scrolls, and they stay in reach, over a white fade so what scrolls
    under them doesn't show through. */
 .intro .try-actions {
@@ -1270,6 +1270,7 @@ html[data-intro] .stage-light { opacity: 0; }
 .intro .try-prove { border: 1px solid var(--try-ink); color: var(--try-ink); background: #fff; }
 .intro .try-prove:hover:not(:disabled) { background: var(--try-faint); }
 .intro .try-reset { border: 1px solid transparent; color: var(--try-sub); background: transparent; }
+.intro .try-short { display: none; }
 .intro .try-reset:hover { color: var(--try-ink); background: var(--try-faint); }
 .intro .try-ask:disabled, .intro .try-prove:disabled { opacity: .3; cursor: default; }
 .intro .try :focus-visible { outline: 2px solid var(--try-ink); outline-offset: 2px; }
@@ -1280,9 +1281,10 @@ html[data-intro] .stage-light { opacity: 0; }
   .intro .try-controls { grid-template-columns: 1fr 1fr; column-gap: 1.4rem; }
 }
 /* A narrow panel (a small laptop, a tablet held sideways): the three buttons only fit with
-   "Ask the card" said as "Ask" (its name for screen readers stays whole). */
+   "Check it's real" said as "Is it real?" (its name for screen readers stays whole). */
 @container (max-width: 300px) {
   .intro .try-long { display: none; }
+  .intro .try-short { display: inline; }
   .intro .try-actions { gap: .4rem; }
   .intro .try-actions button { padding-inline: .6rem; }
   .intro .try-reader button { padding-inline: .35rem; white-space: nowrap; }
