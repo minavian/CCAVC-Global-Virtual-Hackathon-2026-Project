@@ -624,8 +624,10 @@ function intro(experience) {
       const want = clampSetting({ ...lab.set, ...next });
       if (Object.keys(next).some(key => want[key] !== lab.set[key])) setLab(next);
       if (copying && !lab.talk && !lab.demoProved && auto.held > DEMO_COPY[0] + .6) { lab.demoProved = true; labAsk(true); }
-      // The lab is the last step: at the demo's end it stops playing by itself (Play runs it again).
-      if (auto.held >= plan.hold) { auto.on = false; invalidate(); }
+      // The lab is the last step: at the demo's end it stops playing by itself (Play runs it again),
+      // and turns Real physics on, so the visitor is left with the coils' real field lines.
+      // (Only when it plays to its end: pausing it, or taking over, leaves the switch as it is.)
+      if (auto.held >= plan.hold) { auto.on = false; setPhysics(true); invalidate(); }
     } else if (auto.held >= plan.hold) go(step + 1);
   }
 
@@ -2169,11 +2171,13 @@ function intro(experience) {
     film.xray.setAttribute('aria-pressed', String(xray));
     invalidate();
   });
-  film.physics.addEventListener('click', () => {
-    physics = !physics;
-    film.physics.setAttribute('aria-pressed', String(physics));
+  // Real physics on or off: the switch, and the end of the demo (which turns it on).
+  function setPhysics(on) {
+    physics = on;
+    film.physics.setAttribute('aria-pressed', String(on));
     invalidate();
-  });
+  }
+  film.physics.addEventListener('click', () => setPhysics(!physics));
   film.auto.addEventListener('click', () => {
     auto.on = !auto.on;
     auto.held = auto.after = auto.wait = 0;
