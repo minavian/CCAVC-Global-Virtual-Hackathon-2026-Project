@@ -5,6 +5,7 @@
   --paper: #f5f2ec;
   --ink: #0d0d0c;
   --muted: #57534c;
+  --copper: #b8652a;
   --gutter: clamp(20px, 5vw, 104px);
   color-scheme: light;
 }
@@ -56,7 +57,8 @@ body::after {
   white-space: nowrap;
 }
 
-/* Layout: objects on the left, words on the right. */
+/* Layout: the words in the middle and the three objects around them, a bar along the top and
+   a row along the bottom. A soft light behind the words, and the edges a shade darker. */
 .hero {
   position: fixed;
   top: 0;
@@ -70,10 +72,20 @@ body::after {
   grid-template-areas: "copy";
   align-items: center;
   padding: 0 var(--gutter);
+  --hero-edge: clamp(16px, 3.2vh, 32px);
+}
+
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(125% 95% at 50% 46%, rgba(120, 96, 64, 0) 55%, rgba(120, 96, 64, .085) 100%);
 }
 
 /* The stage spans the page behind the words, so objects are never clipped by a column.
-   landing.js sets --region-* to the area the objects occupy. */
+   landing.js sets --region-* to the area the objects occupy, and --field-x/-y to the words'
+   centre, where the field's rings start. */
 .stage {
   position: absolute;
   inset: 0;
@@ -112,12 +124,14 @@ body::after {
   pointer-events: none;
 }
 
+/* A soft pool of light behind the words. */
 .stage-light {
-  left: calc(var(--region-x, 0px) - var(--region-w, 100vw) * .15);
-  top: calc(var(--region-y, 0px) - var(--region-h, 100vh) * .15);
-  width: calc(var(--region-w, 100vw) * 1.3);
-  height: calc(var(--region-h, 100vh) * 1.3);
-  background: radial-gradient(closest-side, rgba(255, 254, 250, .9), rgba(255, 254, 250, .38) 48%, rgba(255, 254, 250, 0));
+  left: var(--field-x, 50%);
+  top: var(--field-y, 50%);
+  width: max(120vw, 150vh);
+  height: max(90vw, 110vh);
+  translate: -50% -50%;
+  background: radial-gradient(closest-side, rgba(255, 254, 250, .95), rgba(255, 254, 250, .5) 42%, rgba(255, 254, 250, 0));
 }
 
 .shadows i {
@@ -134,29 +148,75 @@ body::after {
 
 .stage canvas { display: block; }
 
-/* The way straight to the mechanism ("Here's how" in the card intro; js/intro/main.js): top
-   right, over the 3D stage, there from the first frame (it takes no part in the opening). */
-.jump {
+/* The top bar: the site's name on the left, the way straight to the mechanism on the right.
+   Only the link takes the pointer, so the stage can still be dragged from under the bar. */
+.hero-bar {
   position: absolute;
-  top: clamp(14px, 3vh, 30px);
+  top: calc(env(safe-area-inset-top) + var(--hero-edge));
+  left: var(--gutter);
   right: var(--gutter);
   z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  pointer-events: none;
+}
+
+.brand {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: .7em;
+  font-size: clamp(13px, 1.05vw, 15px);
+  font-weight: 650;
+  letter-spacing: -.012em;
+  white-space: nowrap;
+  color: var(--ink);
+  animation: hero-in 1.2s cubic-bezier(.16, 1, .3, 1) .35s backwards;
+}
+
+/* The favicon's mark, as a small ink tile: two arcs of field and a copper dot. */
+.brand-mark {
+  flex: none;
+  width: 2.05em;
+  height: 2.05em;
+  padding: .34em;
+  border-radius: .62em;
+  background: var(--ink);
+  fill: none;
+  stroke: var(--paper);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  box-shadow: 0 4px 12px rgba(13, 13, 12, .16);
+}
+.brand-mark circle { fill: #e08b4c; stroke: none; }
+
+@keyframes hero-in {
+  from { opacity: 0; translate: 0 6px; }
+}
+
+/* The way straight to the mechanism ("Here's how" in the card intro; js/intro/main.js), there
+   from the first frame (it takes no part in the opening). */
+.jump {
   display: inline-flex;
   align-items: center;
   gap: .55em;
-  padding: .7em 1.15em .7em 1.25em;
+  padding: .72em 1.1em .72em 1.25em;
   border-radius: 999px;
   font-size: clamp(13px, 1.05vw, 15px);
   font-weight: 650;
   letter-spacing: -.01em;
+  white-space: nowrap;
   color: #fff;
   background: var(--ink);
   text-decoration: none;
-  box-shadow: 0 6px 18px rgba(13, 13, 12, .18);
-  transition: transform .2s cubic-bezier(.3, 1.3, .5, 1), box-shadow .25s ease;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .12) inset, 0 6px 18px rgba(13, 13, 12, .18);
+  pointer-events: auto;
+  transition: transform .2s cubic-bezier(.3, 1.3, .5, 1), box-shadow .25s ease, background-color .25s ease;
 }
 .jump svg { width: 1.05em; height: 1.05em; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.jump:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(13, 13, 12, .24); }
+.jump:hover { transform: translateY(-1px); background: #24221f; box-shadow: 0 1px 0 rgba(255, 255, 255, .12) inset, 0 10px 24px rgba(13, 13, 12, .24); }
 .jump:hover svg { animation: jump-nudge .9s ease-in-out infinite; }
 .jump:active { transform: scale(.96); }
 .jump:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
@@ -189,17 +249,125 @@ body::after {
 
 .word { display: inline-block; transform-origin: 50% 82%; }
 
-#subline {
-  margin: clamp(16px, 3.1vh, 36px) auto 0;
-  text-align: center;
+/* "every day." in a serif italic, a little larger so it matches the sans beside it. Its line
+   height is tightened so the bigger type doesn't open a gap above it. */
+.line-accent .word {
+  font-family: "Instrument Serif", Georgia, "Times New Roman", serif;
+  font-style: italic;
   font-weight: 400;
-  font-size: clamp(16px, min(1.75vw, 3.2vh), 30px);
+  font-size: 1.14em;
+  line-height: .82;
+  letter-spacing: -.012em;
+}
+.line-accent { word-spacing: -.02em; }
+
+#subline {
+  margin: clamp(18px, 3.4vh, 40px) auto 0;
+  text-align: center;
+  font-weight: 450;
+  font-size: clamp(16px, min(1.65vw, 3vh), 28px);
   line-height: 1.35;
   letter-spacing: -.012em;
   color: var(--muted);
 }
 
 .dots span { display: inline-block; }
+
+/* Along the bottom: the scroll cue on the left, the objects' names on the right. It sits on
+   the small viewport (100svh), so a phone's toolbar never covers it. */
+.hero-foot {
+  position: absolute;
+  left: var(--gutter);
+  right: var(--gutter);
+  bottom: calc(env(safe-area-inset-bottom) + var(--hero-edge));
+  bottom: calc(100lvh - 100svh + env(safe-area-inset-bottom) + var(--hero-edge));
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  pointer-events: none;
+  transition: opacity 1s cubic-bezier(.16, 1, .3, 1) .45s, translate 1s cubic-bezier(.16, 1, .3, 1) .45s;
+}
+
+.hero-scroll {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: .9em;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .24em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.hero-scroll i {
+  position: relative;
+  width: 1px;
+  height: 34px;
+  overflow: hidden;
+  background: rgba(13, 13, 12, .14);
+}
+.hero-scroll i::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 40%;
+  background: var(--ink);
+  animation: hero-cue 1.9s cubic-bezier(.65, 0, .35, 1) infinite;
+}
+@keyframes hero-cue {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(250%); }
+}
+
+/* The three objects by name. The one in front is in ink, with a copper dot. */
+.hero-picker {
+  display: flex;
+  align-items: center;
+  gap: clamp(16px, 2vw, 28px);
+  pointer-events: auto;
+}
+
+.hero-picker button {
+  appearance: none;
+  position: relative;
+  padding: 8px 0 8px 14px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -.005em;
+  white-space: nowrap;
+  color: var(--muted);
+  opacity: .72;
+  cursor: pointer;
+  transition: color .3s ease, opacity .3s ease;
+}
+.hero-picker button::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: var(--copper);
+  transform: scale(0);
+  transition: transform .45s cubic-bezier(.3, 1.6, .5, 1);
+}
+.hero-picker button:hover { color: var(--ink); opacity: 1; }
+.hero-picker button[aria-current="true"] { color: var(--ink); opacity: 1; }
+.hero-picker button[aria-current="true"]::before { transform: scale(1); }
+.hero-picker button:focus-visible { outline: 1.5px solid var(--ink); outline-offset: 4px; border-radius: 4px; }
+
+/* While the taps or the card intro cover the landing page, its animations rest (landing.js). */
+.hero.is-asleep *, .hero.is-asleep *::after { animation-play-state: paused; }
 
 /* Opening: the headline starts centered and full screen, everything else waits. */
 html[data-intro] #headline:not([data-docked]) {
@@ -213,6 +381,9 @@ html[data-intro] #headline:not([data-docked]) {
 
 html[data-intro] #subline,
 html[data-intro] .stage-light { opacity: 0; }
+
+html[data-intro] .hero-foot { opacity: 0; translate: 0 10px; transition: none; }
+html[data-intro] .hero-foot * { pointer-events: none; }
 
 /* ---------- Every day: three taps under the landing page (js/taps.js) ----------
    Three panels side by side, split by hairlines. One canvas lies under the row and
@@ -1884,13 +2055,15 @@ html[data-intro] .chapters { opacity: 0; pointer-events: none; }
     grid-template-rows: auto minmax(0, 1fr);
     grid-template-areas: "copy" ".";
     align-items: stretch;
-    padding: calc(env(safe-area-inset-top) + clamp(36px, 8svh, 120px)) 0 env(safe-area-inset-bottom);
+    padding: calc(env(safe-area-inset-top) + clamp(76px, 11svh, 130px)) 0 env(safe-area-inset-bottom);
   }
 
   .copy {
     justify-self: stretch;
     padding: 0 var(--gutter);
   }
+
+  .hero-picker { gap: 14px; }
 
   #headline, .headline-slot { font-size: clamp(38px, min(12.6vw, 7.4svh), 104px); }
 
@@ -1921,6 +2094,11 @@ html[data-intro] .chapters { opacity: 0; pointer-events: none; }
   .chapters button { position: relative; }
 
   .lab-fine { display: none; }
+}
+
+/* On a phone the bar keeps the mark and the link: the name would crowd the link. */
+@media (max-width: 620px) {
+  .brand-name { display: none; }
 }
 
 /* ---------- The film's frame ----------

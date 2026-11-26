@@ -42,9 +42,17 @@
   const SHADOW = [[.46, .55], [.5, .57], [.74, .4]];   // [width, drop] as fractions of pose size
   const TAU = Math.PI * 2;
 
+  // The field behind the words (paintField): rings drifting outward at `flow` px/s, and a
+  // copper wave `width` px wide every `every` seconds (the first at `first`), running out at
+  // `speed` px/s. `ink` and `glow` are the rings' opacity, and what the wave adds to it.
+  const FIELD = { flow: 14, every: 4.6, first: 1.1, speed: 310, width: 64, ink: .075, glow: .3 };
+
   const root = document.documentElement;
   const $ = id => document.getElementById(id);
-  const stage = $('stage'), headline = $('headline'), subline = $('subline');
+  const hero = $('top'), stage = $('stage'), headline = $('headline'), subline = $('subline');
+  const fieldCanvas = stage.querySelector('.stage-field');
+  const fieldPaint = fieldCanvas?.getContext('2d') || null;
+  const picks = [...document.querySelectorAll('.hero-picker [data-pick]')];
   const copyBox = document.querySelector('.copy');
   const announcer = $('focus-name');
   const words = [...headline.querySelectorAll('.word')];
@@ -115,6 +123,9 @@
   let gl = null;
   let lastNow = null, frameId = 0;
   let skipPointer = null, skipEvent = null;
+  let chosen = false;             // an object was picked by name: no drift back to the key fob
+  let asleep = false;             // the landing page is covered (see `covered`)
+  const field = { w: 0, h: 0, ratio: 1, x: 0, y: 0, waves: [], next: FIELD.first, blank: true };
   // Five things on the stage: the key, the phone and the card (the carousel), then the
   // reader pad and the metal plate, which only the lab uses.
   const READER = 3, PLATE = 4;
@@ -182,6 +193,7 @@
       layout.heroBox = { x: 0, y: 0, w: Math.round(w), h: Math.round(h) };
     } else layout.ring = null;
     layout.box = storyOn ? { x: 0, y: 0, w: Math.round(w), h: Math.round(h) } : layout.heroBox;
+    sizeField(w, h, copyBox.offsetLeft + copyBox.offsetWidth / 2, copyBox.offsetTop + copyBox.offsetHeight / 2);
     measureHeadline();
     gl?.resize(layout.box);
     setFrame();
@@ -196,6 +208,65 @@
     headline.style.fontSize = dockFont * k + 'px';
     // Type scales linearly, so the large layout is exactly k times the docked one.
     dock = { left: r.left, top: r.top, width: r.width, height: r.height, k, bigW: r.width * k, bigH: r.height * k };
+  }
+
+  // ---------- The field ----------
+  // Behind everything, faint rings flow out from the words' centre, and every few seconds a
+  // copper wave runs out through them, brightening each ring it passes: a picture of a
+  // reader's field, not a simulation (the close-up further down draws the real one). It never
+  // starts from an object: the card and the key don't send anything, the reader does.
+  function sizeField(w, h, x, y) {
+    stage.style.setProperty('--field-x', x.toFixed(1) + 'px');
+    stage.style.setProperty('--field-y', y.toFixed(1) + 'px');
+    if (!fieldPaint) return;
+    const ratio = Math.min(devicePixelRatio || 1, 2);
+    Object.assign(field, { x, y, ratio });
+    if (field.w === w && field.h === h && fieldCanvas.width === Math.round(w * ratio)) return;
+    field.w = w; field.h = h;
+    fieldCanvas.width = Math.round(w * ratio);
+    fieldCanvas.height = Math.round(h * ratio);
+    field.blank = true;
+  }
+
+  function paintField() {
+    if (!fieldPaint || !field.w) return;
+    const ctx = fieldPaint, { w, h, x, y, ratio } = field;
+    // Not while the story plays over the stage: there the objects tell it.
+    const show = storyOn ? 0 : easeOutCubic(clamp01((clock - .2) / 2.4));
+    if (show <= 0) {
+      if (!field.blank) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, fieldCanvas.width, fieldCanvas.height); field.blank = true; }
+      return;
+    }
+    // The waves: one now and then, dropped once past the farthest corner.
+    const reach = Math.hypot(Math.max(x, w - x), Math.max(y, h - y));
+    if (clock >= field.next) { field.waves.push(clock); field.next = clock + FIELD.every; }
+    while (field.waves.length && (clock - field.waves[0]) * FIELD.speed > reach + FIELD.width * 3) field.waves.shift();
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, fieldCanvas.width, fieldCanvas.height);
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    field.blank = false;
+    const unit = Math.min(w, h), gap = Math.max(34, unit * .062);
+    // Rings fade in clear of the words' middle and fade out toward the far corners.
+    const inner = unit * .14, full = unit * .44, fadeFrom = reach * .6;
+    for (let r = (clock * FIELD.flow) % gap + gap * .25; r < reach; r += gap) {
+      const rise = smoothstep(clamp01((r - inner) / (full - inner)));
+      const fall = 1 - smoothstep(clamp01((r - fadeFrom) / (reach - fadeFrom)));
+      const env = rise * fall * show;
+      if (env < .004) continue;
+      let wave = 0;
+      for (const at of field.waves) {
+        const d = (r - (clock - at) * FIELD.speed) / FIELD.width;
+        wave = Math.max(wave, Math.exp(-d * d));
+      }
+      // Ink, warming to copper where the wave is.
+      const red = lerp(13, 184, wave), green = lerp(13, 101, wave), blue = lerp(12, 42, wave);
+      ctx.strokeStyle = `rgba(${red | 0}, ${green | 0}, ${blue | 0}, ${(env * (FIELD.ink + FIELD.glow * wave)).toFixed(3)})`;
+      ctx.lineWidth = 1 + .7 * wave;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, TAU);
+      ctx.stroke();
+    }
   }
 
   // ---------- Carousel ----------
@@ -445,6 +516,12 @@
     gl?.present(focus);
     focus = next;
     if (intro === null) announcer.textContent = NAMES[focus];
+    showPicked();
+  }
+
+  // The names along the bottom: the one in front is marked (aria-current).
+  function showPicked() {
+    picks.forEach((button, i) => button.setAttribute('aria-current', i === focus ? 'true' : 'false'));
   }
 
   // Reduced motion: objects swap places with a quick fade instead of orbiting.
@@ -624,7 +701,7 @@
       if (flight && !drag) advanceFlight(dt);
       else if (!flight && !drag) {
         idle += dt;
-        if (focus !== 0 && idle > DRIFT_BACK_AFTER && !storyOn) bringToFront(0, DRIFT_DURATION);
+        if (focus !== 0 && idle > DRIFT_BACK_AFTER && !storyOn && !chosen) bringToFront(0, DRIFT_DURATION);
       }
     }
     updateFocus();
@@ -645,6 +722,7 @@
       el.style.opacity = (p.visible ? shown * (1 - p.depth) ** 2 * .85 * p.shade : 0).toFixed(3);
     });
     if (gl) looks.forEach((look, i) => gl.look(i, look));
+    paintField();
     gl?.draw(dt, fade);
     paintStory();
   }
@@ -687,7 +765,9 @@
 
   function frame(now) {
     frameId = 0;
-    if (document.hidden || covered()) { lastNow = null; return; }
+    const hide = covered();
+    if (hide !== asleep) { asleep = hide; hero.classList.toggle('is-asleep', hide); }
+    if (document.hidden || hide) { lastNow = null; return; }
     const raw = lastNow === null ? 0 : Math.max(0, (now - lastNow) / 1000);
     // Clamp the step so a hitch slows the motion down instead of skipping it.
     const dt = Math.min(.1, raw);
@@ -729,8 +809,16 @@
     try { stage.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
     drag = { id: e.pointerId, x: e.clientX, y: e.clientY, from: phase, moved: false, time: performance.now(), v: 0 };
     flight = null;   // catch the carousel where it is
-    velocity = 0; idle = 0;
+    velocity = 0; idle = 0; chosen = false;
   });
+
+  // A name along the bottom turns its object to the front, and it stays there.
+  picks.forEach(button => button.addEventListener('click', () => {
+    if (!started || storyOn) return;
+    if (intro !== null) finishIntro(true);
+    chosen = true;
+    bringToFront(+button.dataset.pick);
+  }));
 
   stage.addEventListener('pointermove', e => {
     if (!drag || e.pointerId !== drag.id) return;
@@ -1146,7 +1234,8 @@
   // ---------- Start ----------
   function fontsReady() {
     if (!document.fonts?.load) return Promise.resolve();
-    const load = Promise.all([document.fonts.load('800 1em "Inter Tight"'), document.fonts.load('400 1em "Inter Tight"')]);
+    const load = Promise.all([document.fonts.load('800 1em "Inter Tight"'), document.fonts.load('400 1em "Inter Tight"'),
+      document.fonts.load('italic 400 1em "Instrument Serif"')]);
     // Text stays invisible while the font loads (display=block, up to 3 s), so the opening waits for it.
     return Promise.race([load, new Promise(resolve => setTimeout(resolve, 3000))]).catch(() => {});
   }
