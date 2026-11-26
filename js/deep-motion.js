@@ -45,17 +45,17 @@ const ALL_HOLD_CLASSES = [
   'deep-closer-hold', 'deep-flipping-hold', 'deep-tuning-hold',
   'deep-metal-hold', 'deep-pauses-hold', 'deep-part-two-hold', 'deep-soaking-hold',
   'deep-whispering-hold', 'deep-counting-hold', 'deep-mistakes-hold', 'deep-conversation-hold',
-  'deep-twocards-hold', 'deep-carkey-hold', 'deep-finale-hold', 'deep-reverse-hold',
+  'deep-twocards-hold', 'deep-carkey-hold', 'deep-passive-active-hold', 'deep-finale-hold', 'deep-reverse-hold',
 ];
 const ALL_STAGED_CLASSES = [
   's8-awaiting', 's9-entering',
   's10-awaiting', 's10-entering', 'part-two-active', 's12-staged', 's12-title-in-flight',
-  's15-staged', 's16-staged', 's17-staged', 'deep-end-staged', 'deep-rev-staged',
+  's15-staged', 's16-staged', 's17-staged', 's18-staged', 'deep-end-staged', 'deep-rev-staged',
 ];
 const STRAY_OVERLAY_SELECTOR = [
   '.deep-rev-copy', '.deep-blink-cover', '.s7-trace-handoff', '.s9-plot-copy', '.part-two-reveal', '.part-two-wave', '.part-two-reverse-cover',
   '.s12-vortex', '.s13-spectrum-copy', '.s14-timing-copy',
-  '.s15-handoff-copy', '.s16-handoff-copy', '.s16-title-morph', '.s17-handoff-copy', '.s17-portal-wallet',
+  '.s15-handoff-copy', '.s16-handoff-copy', '.s16-title-morph', '.s17-handoff-copy', '.s17-portal-wallet', '.s18-handoff-copy',
 ].join(', ');
 
 function sanitizeChapter() {
@@ -65,7 +65,7 @@ function sanitizeChapter() {
     for (const el of document.querySelectorAll(`.${cls}`)) el.classList.remove(cls);
   }
   for (const node of document.querySelectorAll(STRAY_OVERLAY_SELECTOR)) node.remove();
-  for (const id of ['s6-chart', 's7-chart', 's8-chart', 's9-chart', 's10-chart', 's11-chart', 's12-chart', 's13-chart', 's14-chart', 's15-chart', 's16-chart', 's17-chart']) {
+  for (const id of ['s6-chart', 's7-chart', 's8-chart', 's9-chart', 's10-chart', 's11-chart', 's12-chart', 's13-chart', 's14-chart', 's15-chart', 's16-chart', 's17-chart', 's18-chart']) {
     const el = document.getElementById(id);
     if (!el) continue;
     el.style.removeProperty('opacity');
@@ -95,7 +95,7 @@ function sanitizeChapter() {
     pausesWord.style.removeProperty('transform');
     pausesWord.style.removeProperty('color');
   }
-  for (const el of document.querySelectorAll('.plate-words, .plate-words > *, .s16-desk, #s14-replies > *, #deep-end > *')) {
+  for (const el of document.querySelectorAll('.plate-words, .plate-words > *, .s16-desk, .s18-compare, #s14-replies > *, #deep-end > *')) {
     el.style.removeProperty('opacity');
     el.style.removeProperty('transform');
     el.style.removeProperty('filter');
@@ -3593,9 +3593,202 @@ function watchCarKey(previous, scene) {
   };
 }
 
+function watchPassiveActive(previous, scene) {
+  const root = document.documentElement, chapter = scene.closest('.deep');
+  const before = previous.querySelector('.plate-words'), after = scene.querySelector('.plate-words');
+  const sourceChart = previous.querySelector('#s17-chart'), targetChart = scene.querySelector('#s18-chart');
+  const compareTable = scene.querySelector('.s18-compare');
+  const readerPulse = previous.querySelector('#s17-reader-pulse');
+  const copy = document.createElement('canvas');
+  copy.className = 's18-handoff-copy';
+  copy.setAttribute('aria-hidden', 'true');
+  const ctx = copy.getContext('2d');
+
+  const cut = 420, arrivalEnd = 960, readHold = 1000;
+  let run, revCtrl, frame;
+  const canPlay = () => !document.hidden;
+
+  function clearEffects() {
+    copy.remove();
+    scene.classList.remove('s18-staged');
+    sourceChart?.style.removeProperty('opacity');
+    targetChart?.style.removeProperty('opacity');
+    run?.animations.forEach(a => a.cancel());
+  }
+
+  function finish() {
+    if (!run) return;
+    cancelAnimationFrame(frame);
+    clearEffects();
+    run = undefined;
+    root.classList.remove('deep-passive-active-hold');
+    scheduleMotion();
+  }
+
+  function finishReverse() {
+    revCtrl?.cancel();
+    revCtrl = undefined;
+  }
+
+  function land() {
+    scrollTo({ top: run.destination, behavior: 'instant' });
+    run.top = scrollY;
+    run.landed = true;
+    scene.classList.remove('s18-staged');
+    const items = [...Array.from(after.children), compareTable].filter(Boolean);
+    for (const [i, node] of items.entries()) {
+      run.animations.push(node.animate([
+        { opacity: 0, transform: 'translateY(10px)', filter: 'blur(3px)' },
+        { opacity: 1, transform: 'none', filter: 'blur(0px)' },
+      ], { duration: 400, delay: 40 + i * 36, easing: arrivalEase, fill: 'both' }));
+    }
+  }
+
+  function drawHandoff(elapsed) {
+    if (!ctx) return;
+    const { width, height, fromBox, toBox, snap, originX, originY } = run;
+    ctx.clearRect(0, 0, width, height);
+    const move = ease(80, arrivalEnd - 120, elapsed);
+    const arc = Math.sin(Math.PI * move) * -14;
+    const cx = mix(fromBox.x, toBox.x, move);
+    const cy = mix(fromBox.y, toBox.y, move) + arc;
+    const cw = mix(fromBox.w, toBox.w, move);
+    const ch = mix(fromBox.h, toBox.h, move);
+    const snapAlpha = 1 - ease(cut + 80, arrivalEnd - 40, elapsed);
+
+    if (snap && snapAlpha > 0) {
+      ctx.save();
+      ctx.globalAlpha = snapAlpha;
+      ctx.drawImage(snap, cx, cy, cw, ch);
+      ctx.restore();
+    }
+
+    const ringFade = ease(30, 200, elapsed) * (1 - ease(cut + 120, arrivalEnd, elapsed));
+    if (ringFade > 0) {
+      for (let i = 0; i < 3; i++) {
+        const k = stage(i * 75, arrivalEnd - 100, elapsed);
+        if (k <= 0 || k >= 1) continue;
+        ctx.save();
+        ctx.strokeStyle = i === 1 ? '#0d0d0c' : '#b8652a';
+        ctx.globalAlpha = ringFade * (1 - k) * .45;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(originX, originY, 12 + k * Math.max(width, height) * .42, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    if (run.landed && targetChart) {
+      targetChart.style.opacity = String(ease(cut + 40, arrivalEnd, elapsed));
+    }
+  }
+
+  function animate(now) {
+    const elapsed = now - run.start;
+    if (elapsed >= cut && !run.landed) land();
+    if (elapsed < arrivalEnd) drawHandoff(elapsed);
+    else if (copy.isConnected) clearEffects();
+    if (elapsed >= arrivalEnd + readHold) return finish();
+    frame = requestAnimationFrame(animate);
+  }
+
+  function approach(top, height) {
+    const start = bounds(previous, top).y, end = bounds(scene, top).y;
+    const cue = Math.max(start, end - height);
+    return { start, cue, end };
+  }
+
+  function startRun(height) {
+    if (run || !canPlay()) return;
+    const width = viewportWidth();
+    const { cue, end } = approach(scrollY, height);
+    if (scrollY > cue + 1) scrollTo({ top: cue, behavior: 'instant' });
+    const top = scrollY;
+
+    const fb = sourceChart ? bounds(sourceChart, top) : { x: width * .5, y: top + height * .25, w: 320, h: 200 };
+    const tb = targetChart ? bounds(targetChart, top) : { x: width * .5, y: end + height * .25, w: 320, h: 200 };
+    const fromBox = { x: fb.x, y: fb.y - top, w: Math.max(40, fb.w), h: Math.max(40, fb.h) };
+    const toBox = { x: tb.x, y: tb.y - end, w: Math.max(40, tb.w), h: Math.max(40, tb.h) };
+    const pr = readerPulse && !readerPulse.hidden ? readerPulse.getBoundingClientRect() : null;
+    const originX = pr ? pr.left + pr.width * .5 : fromBox.x + fromBox.w * .7;
+    const originY = pr ? pr.top + pr.height * .5 : fromBox.y + fromBox.h * .55;
+
+    let snap = null;
+    if (sourceChart && sourceChart.width > 0 && sourceChart.height > 0) {
+      snap = document.createElement('canvas');
+      snap.width = sourceChart.width;
+      snap.height = sourceChart.height;
+      snap.getContext('2d')?.drawImage(sourceChart, 0, 0);
+    }
+
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    copy.width = Math.round(width * dpr);
+    copy.height = Math.round(height * dpr);
+    ctx?.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    run = { top, width, height, destination: end, start: performance.now(), landed: false, fromBox, toBox, snap, originX, originY, animations: [] };
+    root.classList.add('deep-passive-active-hold');
+    scene.classList.add('s18-staged');
+    if (sourceChart) sourceChart.style.opacity = '0';
+    if (targetChart) targetChart.style.opacity = '0';
+    chapter.append(copy);
+
+    if (readerPulse && !readerPulse.hidden) {
+      run.animations.push(readerPulse.animate([
+        { opacity: 0, transform: 'scale(.8)' },
+        { opacity: .85, transform: 'scale(1)', offset: .2, easing: arrivalEase },
+        { opacity: 0, transform: 'scale(2.6)' },
+      ], { duration: 480 }));
+    }
+    for (const [i, node] of Array.from(before.children).entries()) {
+      run.animations.push(node.animate([
+        { opacity: 1, transform: 'none', filter: 'blur(0px)' },
+        { opacity: 0, transform: 'translateY(-10px)', filter: 'blur(3px)' },
+      ], { duration: 300, delay: i * 24, easing: 'ease-in', fill: 'both' }));
+    }
+
+    drawHandoff(0);
+    frame = requestAnimationFrame(animate);
+  }
+
+  function startReverse() {
+    if (run || revCtrl?.active() || !canPlay()) return;
+    revCtrl = runReverseCanvasMorph(scene, previous, {
+      mode: 'default',
+      onDone: () => { revCtrl = undefined; },
+    });
+  }
+
+  watchScrollMotion((top, height) => {
+    if (run) {
+      if (!canPlay() || Math.abs(top - run.top) > height * .95) finish();
+      else if (Math.abs(top - run.top) > 1) scrollTo({ top: run.top, behavior: 'instant' });
+    }
+  });
+
+  for (const area of [previous.querySelector('.plate-controls'), scene.querySelector('.plate-controls')]) {
+    if (!area) continue;
+    for (const event of ['focusin', 'pointerdown', 'input']) area.addEventListener(event, () => { finishReverse(); finish(); });
+  }
+  for (const event of ['resize', 'hashchange', 'pagehide']) addEventListener(event, () => { finishReverse(); finish(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { finishReverse(); finish(); } });
+
+  return {
+    forward() {
+      if (!canPlay() || run || revCtrl?.active()) return;
+      sanitizeChapter();
+      startRun(innerHeight);
+    },
+    reverse: startReverse,
+    cancel: () => { finishReverse(); finish(); },
+    active: () => !!run || !!revCtrl?.active(),
+  };
+}
+
 function watchFinale(previous, end) {
   const root = document.documentElement, chapter = end.closest('.deep');
-  const readerPulse = previous.querySelector('#s17-reader-pulse'), endBlink = end.querySelector('#deep-end-blink');
+  const readerPulse = previous.querySelector('#s18-reader-pulse, #s17-reader-pulse'), endBlink = end.querySelector('#deep-end-blink');
   if (!endBlink) return;
 
   const cover = document.createElement('span');
@@ -4328,6 +4521,7 @@ const chapterStops = [
   document.getElementById('s15'),
   document.getElementById('s16'),
   document.getElementById('s17'),
+  document.getElementById('s18'),
   document.getElementById('deep-end'),
 ];
 
@@ -4346,6 +4540,7 @@ const mistakes = document.getElementById('s14');
 const conversationScene = document.getElementById('s15');
 const twoCards = document.getElementById('s16');
 const carKey = document.getElementById('s17');
+const passiveActive = document.getElementById('s18');
 const finale = document.getElementById('deep-end');
 
 const t1 = closer && power && typeof closer.animate === 'function' ? watchCloser(power, closer) : null;
@@ -4361,6 +4556,7 @@ const t10 = counting && mistakes ? watchMistakes(counting, mistakes) : null;
 const t11 = mistakes && conversationScene ? watchConversation(mistakes, conversationScene) : null;
 const t12 = conversationScene && twoCards ? watchTwoCards(conversationScene, twoCards) : null;
 const t13 = twoCards && carKey ? watchCarKey(twoCards, carKey) : null;
-const t14 = carKey && finale ? watchFinale(carKey, finale) : null;
+const t14 = carKey && passiveActive ? watchPassiveActive(carKey, passiveActive) : null;
+const t15 = passiveActive && finale ? watchFinale(passiveActive, finale) : null;
 
-createChapterDeck(chapterStops, [t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14]);
+createChapterDeck(chapterStops, [t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14, t15]);

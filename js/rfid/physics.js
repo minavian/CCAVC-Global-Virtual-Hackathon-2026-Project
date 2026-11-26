@@ -263,6 +263,44 @@
     reader.current = Math.sqrt(lo * hi);
   })();
 
-  return { MU0, TAGS, READERS, H_MIN, H_MAX, ellipticKE, loopMutual, coilInductance, axialH, loopField,
-    solve, sweep, range, distanceForField };
+  // Typical active RFID beacon (2.45 GHz ISO/IEC 18000-4 band, 1 mW / 0 dBm coin-cell radio,
+  // -90 dBm receiver sensitivity, free-space Friis path loss).
+  const ACTIVE_TAG = {
+    name: 'Active tag',
+    frequency: 2.45e9,
+    txDbm: 0,
+    sensitivityDbm: -90,
+    batteryVolts: 3.0,
+    batteryYears: 4,
+  };
+
+  // Free-space radio link for a battery-powered active RFID beacon (Friis equation, 1/d²).
+  // Independent of any reader magnetic field; depends only on distance and the tag's own battery.
+  function activeLink(distance = .02, options = {}) {
+    const c = 299792458;
+    const d = Math.max(.01, distance);
+    const f = options.frequency ?? ACTIVE_TAG.frequency;
+    const txDbm = options.txDbm ?? ACTIVE_TAG.txDbm;
+    const sensitivityDbm = options.sensitivityDbm ?? ACTIVE_TAG.sensitivityDbm;
+    const batteryOn = options.batteryOn ?? true;
+    const pathLossDb = Math.max(0, 20 * Math.log10(4 * Math.PI * d * f / c));
+    const rxDbm = batteryOn ? txDbm - pathLossDb : -Infinity;
+    const marginDb = batteryOn ? rxDbm - sensitivityDbm : -Infinity;
+    return {
+      name: ACTIVE_TAG.name,
+      frequency: f,
+      distance: d,
+      batteryOn,
+      batteryVolts: batteryOn ? ACTIVE_TAG.batteryVolts : 0,
+      txDbm: batteryOn ? txDbm : -Infinity,
+      pathLossDb,
+      rxDbm,
+      sensitivityDbm,
+      marginDb,
+      readable: batteryOn && rxDbm >= sensitivityDbm,
+    };
+  }
+
+  return { MU0, TAGS, READERS, H_MIN, H_MAX, ACTIVE_TAG, ellipticKE, loopMutual, coilInductance, axialH, loopField,
+    solve, sweep, range, distanceForField, activeLink };
 }));
