@@ -4,7 +4,8 @@
 // else moves the page further (the scroll bar, a link) brings it back. Each try calls `nudge`
 // (main.js), which shows what to do next. Not in presenter mode (js/present.js), and not for a
 // visitor who came in below the intro (a link to a later section) until they come up into it.
-// Started by main.js. See EXPLAINED.md.
+// Started by main.js, which it tells where "Here's how" is (`at`, for the landing's jump to it).
+// See EXPLAINED.md.
 // (It replaced autoplay.js on 2026-11-26: the scroll assist that played one animation per scroll
 // from the top of the page to the card's drop. That file is in the git history, last at ec55bb0.)
 import { PACE, SCROLL_SCREENS } from './timeline.js?v=4';
@@ -71,10 +72,14 @@ export function hold({ experience, stage, done = () => true, nudge = () => {} })
     if (dy < -12) nudge();
   }
 
+  // Where "Here's how" holds still on the page, for the landing's jump straight to it (main.js).
+  const at = () => { place(); return end; };
+
   function onKey(event) {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.target.closest?.('a, button, input, textarea, select, [contenteditable], [tabindex]')) return;
     const down = DOWN_KEYS.has(event.key) || (event.key === ' ' && !event.shiftKey);
     if (down && holding() && atEnd()) { event.preventDefault(); nudge(); }
   }
+  return { at };
 }

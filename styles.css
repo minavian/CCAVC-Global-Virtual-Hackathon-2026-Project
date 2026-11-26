@@ -11,13 +11,13 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
-/* The page scrolls (that is how the story plays), with a thin scroll bar in ink, so the
-   visitor can always see where they are on the page and how much is left. */
+/* The page scrolls (that is how the story plays), with no scroll bar showing: the wheel, a swipe,
+   the keys and the section index on the left still move it. */
 html {
   background: var(--paper);
-  scrollbar-width: thin;
-  scrollbar-color: rgba(13, 13, 12, .45) transparent;
+  scrollbar-width: none;
 }
+html::-webkit-scrollbar { display: none; }
 
 body {
   margin: 0;
@@ -133,6 +133,34 @@ body::after {
 }
 
 .stage canvas { display: block; }
+
+/* The way straight to the mechanism ("Here's how" in the card intro; js/intro/main.js): top
+   right, over the 3D stage, there from the first frame (it takes no part in the opening). */
+.jump {
+  position: absolute;
+  top: clamp(14px, 3vh, 30px);
+  right: var(--gutter);
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: .55em;
+  padding: .7em 1.15em .7em 1.25em;
+  border-radius: 999px;
+  font-size: clamp(13px, 1.05vw, 15px);
+  font-weight: 650;
+  letter-spacing: -.01em;
+  color: #fff;
+  background: var(--ink);
+  text-decoration: none;
+  box-shadow: 0 6px 18px rgba(13, 13, 12, .18);
+  transition: transform .2s cubic-bezier(.3, 1.3, .5, 1), box-shadow .25s ease;
+}
+.jump svg { width: 1.05em; height: 1.05em; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.jump:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(13, 13, 12, .24); }
+.jump:hover svg { animation: jump-nudge .9s ease-in-out infinite; }
+.jump:active { transform: scale(.96); }
+.jump:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+@keyframes jump-nudge { 0%, 100% { translate: 0 0; } 50% { translate: 0 2px; } }
 
 /* Words. */
 .copy {
@@ -418,7 +446,9 @@ html[data-intro] .stage-light { opacity: 0; }
 .intro .definition-lead { max-width: 30ch; font-size: clamp(2rem, 6vw, 4rem); font-weight: 750; line-height: 1; }
 .intro-stage .aside { margin-top: .7em; font-size: clamp(1.1rem, 2.1vw, 1.65rem); font-weight: 520; }
 .intro .question { max-width: 30ch; font-size: clamp(1.5rem, 4vw, 2.75rem); font-weight: 720; line-height: 1.13; }
-.intro .instruction h2 { font-size: clamp(2.75rem, 7vw, 6rem); letter-spacing: -.04em; line-height: .95; font-weight: 770; }
+/* "Here is how it works:" may take two lines on a narrow screen (the page's text doesn't wrap
+   by default), split evenly. */
+.intro .instruction h2 { font-size: clamp(2.75rem, 7vw, 6rem); letter-spacing: -.04em; line-height: .95; font-weight: 770; white-space: normal; text-wrap: balance; }
 .intro-stage #drag-instruction { margin-top: .85rem; font-size: clamp(1rem, 2.25vw, 1.55rem); font-weight: 580; }
 .intro .card-poster { position: relative; width: min(70vw, 24rem); }
 .intro .card-poster img { display: block; width: 100%; height: auto; }

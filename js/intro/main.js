@@ -5,7 +5,7 @@
 // distance; dropping it lets the visitor step through the tap, ask the card for its ID and
 // watch the answer flow back, and drag to turn the camera. See EXPLAINED.md.
 import { follow, settle, smoother, spring } from './easing.js';
-import { hold } from './hold.js?v=2';
+import { hold } from './hold.js?v=3';
 import { ARRIVE, HERO, MOUTH_CLOSED, DROP_READY, SCROLL_SCREENS, beats, cardPose, clamp, ease, mix, measureStage, restingFrame, scrollTime } from './timeline.js?v=4';
 import { renderSignals } from './signals.js?v=3';
 import { ANSWER_AFTER, APPROACH_DETAIL, APPROACH_TEXT, ASK, SAMPLES_PER_BIT, CARD_ID, IDLE, LAB, LAST, NEAREST, REAL_MS, SHOTS, STEPS, TALK, approach, approachBand, approachView, centimetres,
@@ -624,8 +624,10 @@ function intro(experience) {
       const want = clampSetting({ ...lab.set, ...next });
       if (Object.keys(next).some(key => want[key] !== lab.set[key])) setLab(next);
       if (copying && !lab.talk && !lab.demoProved && auto.held > DEMO_COPY[0] + .6) { lab.demoProved = true; labAsk(true); }
-      // The lab is the last step: at the demo's end it stops playing by itself (Play runs it again).
-      if (auto.held >= plan.hold) { auto.on = false; invalidate(); }
+      // The lab is the last step: at the demo's end it stops playing by itself (Play runs it again),
+      // and turns Real physics on, so the visitor is left with the coils' real field lines.
+      // (Only when it plays to its end: pausing it, or taking over, leaves the switch as it is.)
+      if (auto.held >= plan.hold) { auto.on = false; setPhysics(true); invalidate(); }
     } else if (auto.held >= plan.hold) go(step + 1);
   }
 
@@ -2169,11 +2171,13 @@ function intro(experience) {
     film.xray.setAttribute('aria-pressed', String(xray));
     invalidate();
   });
-  film.physics.addEventListener('click', () => {
-    physics = !physics;
-    film.physics.setAttribute('aria-pressed', String(physics));
+  // Real physics on or off: the switch, and the end of the demo (which turns it on).
+  function setPhysics(on) {
+    physics = on;
+    film.physics.setAttribute('aria-pressed', String(on));
     invalidate();
-  });
+  }
+  film.physics.addEventListener('click', () => setPhysics(!physics));
   film.auto.addEventListener('click', () => {
     auto.on = !auto.on;
     auto.held = auto.after = auto.wait = 0;
@@ -2429,7 +2433,18 @@ function intro(experience) {
   // "Here's how" `auto` above carries the card to the reader and plays the close-up. The page
   // stays at "Here's how" until the visitor has reached the tap's last step (`completed`, hold.js);
   // a scroll that tries to leave before then is answered by `nudge`.
-  hold({ experience, stage, done: () => completed, nudge });
+  const held = hold({ experience, stage, done: () => completed, nudge });
+  // The landing's "Jump straight to the mechanism" (index.html `.jump`): straight to "Here's
+  // how", where the card waits to be dragged onto the reader, in one jump. The intro's animations
+  // aren't played on the way: off screen until then, it starts at the scroll it is shown at.
+  // Focus goes to "Here's how", so the keyboard carries on from there.
+  const instruction = $('.instruction');
+  instruction.tabIndex = -1;
+  document.querySelector('.jump')?.addEventListener('click', event => {
+    event.preventDefault();
+    scrollTo({ top: Math.max(0, held.at() - 2), behavior: 'instant' });
+    instruction.focus({ preventScroll: true });
+  });
   window.addEventListener('resize', remeasure, { passive: true });
   // The sections above can change height (fonts, a phone's toolbar), which moves this one.
   new ResizeObserver(remeasure).observe(stage);
