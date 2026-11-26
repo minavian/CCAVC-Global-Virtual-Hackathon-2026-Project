@@ -51,9 +51,10 @@ The main page (`index.html`) is one long page, read by scrolling, in this order.
 
 ### 1. The landing page
 
-- Three everyday RFID objects turn in 3D: a key fob, a phone and a contactless card. Drag sideways or use the arrow keys to turn them.
-- The headline: "Those are the things you use every day, and almost nobody knows how it works…"
-- **Jump straight to the mechanism** (top right), there from the first frame. It skips straight to the tap, "Here is how it works".
+- **A top bar:** the site's mark and name on the left, and **Jump straight to the mechanism** on the right. The jump link is there from the first frame and goes straight to the tap, "Here is how it works".
+- **Three everyday RFID objects** turn in 3D around the words, over a field of rings with a copper wave: a key fob, a phone and a contactless card. Drag sideways or use the arrow keys to turn them.
+- **The headline:** "Those are the things you use every day, and almost nobody knows how it works…"
+- **A bottom row:** a scroll cue, and the three objects' names (Key fob, Phone, Card). Press one to turn it to the front.
 
 ### 2. Every day: three taps
 
